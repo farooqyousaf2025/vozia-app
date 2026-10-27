@@ -1,0 +1,38 @@
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.jks
+*.keystore
+local.properties
+
+# node
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# android
+android/.gradle/
+android/app/build/
+android/build/
+android/*.iml
+android/.idea/
+android/captures/
+android/local.properties
+android/.kotlin/
+
+# Signing material and Firebase config never go in the repo.
+android/keystore.properties
+android/app/google-services.json
+
+# editors / os
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+logs/

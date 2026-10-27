@@ -1,0 +1,1162 @@
+{
+ "rooms": {
+  "status": 200,
+  "body": {
+   "rooms": [
+    {
+     "id": "9c0f9ee3-fb83-447b-a9a8-1920a5e089d8",
+     "roomNumber": 735466,
+     "title": "Wire Room 7256248",
+     "description": null,
+     "coverUrl": null,
+     "theme": "nebula",
+     "category": "CHAT",
+     "language": null,
+     "region": null,
+     "rules": null,
+     "ambientEffect": "/effects/room-glow.json",
+     "type": "PUBLIC",
+     "seatCapacity": 4,
+     "status": "ACTIVE",
+     "listenerCount": 3,
+     "likeCount": 15,
+     "totalGiftValue": 2,
+     "livekitRoomName": "voiza-room-735466",
+     "createdAt": "2026-10-22T13:54:16.865Z",
+     "closedAt": null,
+     "host": {
+      "id": "14cbe792-a25d-4621-ae3d-96ea2ee75acb",
+      "username": "wire_host_6248",
+      "avatarUrl": null
+     },
+     "seats": [
+      {
+       "seatIndex": 0,
+       "status": "OCCUPIED",
+       "isMuted": false,
+       "isSpeaker": true,
+       "user": {
+        "id": "14cbe792-a25d-4621-ae3d-96ea2ee75acb",
+        "username": "wire_host_6248",
+        "avatarUrl": null
+       }
+      },
+      {
+       "seatIndex": 1,
+       "status": "OCCUPIED",
+       "isMuted": false,
+       "isSpeaker": true,
+       "user": {
+        "id": "28cbb917-cd35-411e-bd1c-966fe1363bec",
+        "username": "wire_aud_6248",
+        "avatarUrl": null
+       }
+      },
+      {
+       "seatIndex": 2,
+       "status": "EMPTY",
+       "isMuted": false,
+       "isSpeaker": false,
+       "user": null
+      },
+      {
+       "seatIndex": 3,
+       "status": "EMPTY",
+       "isMuted": false,
+       "isSpeaker": false,
+       "user": null
+      }
+     ]
+    },
+    {
+     "id": "407f087c-f31d-4901-a31d-429b012e34d5",
+     "roomNumber": 764862,
+     "title": "Anim Fix Proof",
+     "description": null,
+     "coverUrl": null,
+     "theme": "nebula",
+     "category": "PARTY",
+     "language": null,
+     "region": null,
+     "rules": null,
+     "ambientEffect": "/effects/room-confetti.json",
+     "type": "PUBLIC",
+     "seatCapacity": 4,
+     "status": "ACTIVE",
+     "listenerCount": 2,
+     "likeCount": 0,
+     "totalGiftValue": 4050,
+     "livekitRoomName": "voiza-room-764862",
+     "createdAt": "2026-10-21T20:54:36.358Z",
+     "closedAt": null,
+     "host": {
+      "id": "90bcb99c-7c79-469e-966d-fd891dcdd1f0",
+      "username": "voiza_551234",
+      "avatarUrl": null
+     },
+     "seats": [
+      {
+       "seatIndex": 0,
+       "status": "OCCUPIED",
+       "isMuted": false,
+       "isSpeaker": true,
+       "user": {
+        "id": "90bcb99c-7c79-469e-966d-fd891dcdd1f0",
+        "username": "voiza_551234",
+        "avatarUrl": null
+       }
+      },
+      {
+       "seatIndex": 1,
+       "status": "OCCUPIED",
+       "isMuted": false,
+       "isSpeaker": true,
+       "user": {
+        "id": "efa0dd1b-40a6-4345-8823-aa2a363b1ff9",
+        "username": "gfx_sender",
+        "avatarUrl": null
+       }
+      },
+      {
+       "seatIndex": 2,
+       "status": "EMPTY",
+       "isMuted": false,
+       "isSpeaker": false,
+       "user": null
+      },
+      {
+       "seatIndex": 3,
+       "status": "EMPTY",
+       "isMuted": false,
+       "isSpeaker": false,
+       "user": null
+      }
+     ]
+    },
+    {
+     "id": "5876236a-6a0c-42d7-a666-ad3546dc43ab",
+     "roomNumber": 688756,
+     "title": "Diag Probe",
+     "description": null,
+     "coverUrl": null,
+     "theme": "aurora",
+     "category": "CHAT",
+     "language": null,
+     "region": null,
+     "rules": null,
+     "ambientEffect": "/effects/room-glow.json",
+     "type": "PUBLIC",
+     "seatCapacity": 4,
+     "status": "ACTIVE",
+     "listenerCount": 1,
+     "likeCount": 0,
+     "totalGiftValue": 0,
+     "livekitRoomName": "voiza-room-688756",
+     "createdAt": "2026-10-18T07:36:41.921Z",
+     "closedAt": null,
+     "host": {
+      "id": "dc673726-ee55-4a66-815c-e85fa7872410",
+      "username": "diag_00604",
+      "avatarUrl": null
+     },
+     "seats": [
+      {
+       "seatIndex": 0,
+       "status": "OCCUPIED",
+       "isMuted": false,
+       "isSpeaker": true,
+       "user": {
+        "id": "dc673726-ee55-4a66-815c-e85fa7872410",
+        "username": "diag_00604",
+        "avatarUrl": null
+       }
+      },
+      {
+       "seatIndex": 1,
+       "status": "EMPTY",
+       "isMuted": false,
+       "isSpeaker": false,
+       "user": null
+      },
+      {
+       "seatIndex": 2,
+       "status": "EMPTY",
+       "isMuted": false,
+       "isSpeaker": false,
+       "user": null
+      },
+      {
+       "seatIndex": 3,
+       "status": "EMPTY",
+       "isMuted": false,
+       "isSpeaker": false,
+       "user": null
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "discovery": {
+  "status": 200,
+  "body": {
+   "rooms": []
+  }
+ },
+ "myRooms": {
+  "status": 200,
+  "body": {
+   "rooms": [
+    {
+     "id": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+     "roomNumber": 167836,
+     "title": "Wire Room 7985806",
+     "description": null,
+     "coverUrl": null,
+     "theme": "aurora",
+     "category": "CHAT",
+     "language": null,
+     "region": null,
+     "rules": null,
+     "ambientEffect": "/effects/room-glow.json",
+     "type": "PUBLIC",
+     "seatCapacity": 4,
+     "status": "ACTIVE",
+     "listenerCount": 3,
+     "likeCount": 0,
+     "totalGiftValue": 0,
+     "livekitRoomName": "voiza-room-167836",
+     "createdAt": "2026-10-27T10:46:26.277Z",
+     "closedAt": null,
+     "host": {
+      "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+      "username": "wire_host_5806",
+      "avatarUrl": null
+     }
+    }
+   ]
+  }
+ },
+ "quickJoin": {
+  "status": 200,
+  "body": {
+   "room": {
+    "id": "9c0f9ee3-fb83-447b-a9a8-1920a5e089d8",
+    "roomNumber": 735466,
+    "title": "Wire Room 7256248",
+    "description": null,
+    "coverUrl": null,
+    "theme": "nebula",
+    "category": "CHAT",
+    "language": null,
+    "region": null,
+    "rules": null,
+    "ambientEffect": "/effects/room-glow.json",
+    "type": "PUBLIC",
+    "seatCapacity": 4,
+    "status": "ACTIVE",
+    "listenerCount": 3,
+    "likeCount": 15,
+    "totalGiftValue": 2,
+    "livekitRoomName": "voiza-room-735466",
+    "createdAt": "2026-10-22T13:54:16.865Z",
+    "closedAt": null,
+    "host": {
+     "id": "14cbe792-a25d-4621-ae3d-96ea2ee75acb",
+     "username": "wire_host_6248",
+     "avatarUrl": null
+    }
+   }
+  }
+ },
+ "capacity": {
+  "status": 200,
+  "body": {
+   "seatCapacity": {
+    "min": 2,
+    "default": 16,
+    "max": 33
+   },
+   "speakerSeats": 15,
+   "maxSpeakerSeats": 32
+  }
+ },
+ "capacityRoom": {
+  "status": 201,
+  "body": {
+   "room": {
+    "id": "1416d508-144d-4830-b45c-0c1e6ca67359",
+    "roomNumber": 799461,
+    "title": "Wire Seats 7985806",
+    "description": null,
+    "coverUrl": null,
+    "theme": "aurora",
+    "category": "CHAT",
+    "language": null,
+    "region": null,
+    "rules": null,
+    "ambientEffect": "/effects/room-glow.json",
+    "type": "PUBLIC",
+    "seatCapacity": 16,
+    "status": "ACTIVE",
+    "listenerCount": 0,
+    "likeCount": 0,
+    "totalGiftValue": 0,
+    "livekitRoomName": "voiza-room-799461",
+    "createdAt": "2026-10-27T10:46:26.423Z",
+    "closedAt": null,
+    "host": {
+     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+     "username": "wire_host_5806",
+     "avatarUrl": null
+    },
+    "seats": [
+     {
+      "seatIndex": 0,
+      "status": "OCCUPIED",
+      "isMuted": false,
+      "isSpeaker": true,
+      "user": {
+       "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+       "username": "wire_host_5806",
+       "avatarUrl": null
+      }
+     },
+     {
+      "seatIndex": 1,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 2,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 3,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 4,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 5,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 6,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 7,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 8,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 9,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 10,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 11,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 12,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 13,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 14,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 15,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     }
+    ]
+   }
+  }
+ },
+ "detail": {
+  "status": 200,
+  "body": {
+   "room": {
+    "id": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+    "roomNumber": 167836,
+    "title": "Wire Room 7985806",
+    "description": null,
+    "coverUrl": null,
+    "theme": "aurora",
+    "category": "CHAT",
+    "language": null,
+    "region": null,
+    "rules": null,
+    "ambientEffect": "/effects/room-glow.json",
+    "type": "PUBLIC",
+    "seatCapacity": 4,
+    "status": "ACTIVE",
+    "listenerCount": 3,
+    "likeCount": 0,
+    "totalGiftValue": 0,
+    "livekitRoomName": "voiza-room-167836",
+    "createdAt": "2026-10-27T10:46:26.277Z",
+    "closedAt": null,
+    "host": {
+     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+     "username": "wire_host_5806",
+     "avatarUrl": null
+    }
+   },
+   "seats": [
+    {
+     "seatIndex": 0,
+     "status": "OCCUPIED",
+     "isMuted": false,
+     "isSpeaker": true,
+     "user": {
+      "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+      "username": "wire_host_5806",
+      "avatarUrl": null
+     }
+    },
+    {
+     "seatIndex": 1,
+     "status": "OCCUPIED",
+     "isMuted": false,
+     "isSpeaker": true,
+     "user": {
+      "id": "8b3b38d4-3ef5-4427-9256-dd67214bed59",
+      "username": "wire_seat_5806",
+      "avatarUrl": null
+     }
+    },
+    {
+     "seatIndex": 2,
+     "status": "EMPTY",
+     "isMuted": false,
+     "isSpeaker": false,
+     "user": null
+    },
+    {
+     "seatIndex": 3,
+     "status": "EMPTY",
+     "isMuted": false,
+     "isSpeaker": false,
+     "user": null
+    }
+   ],
+   "audience": [
+    {
+     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+     "username": "wire_host_5806",
+     "avatarUrl": null
+    },
+    {
+     "id": "8b3b38d4-3ef5-4427-9256-dd67214bed59",
+     "username": "wire_seat_5806",
+     "avatarUrl": null
+    },
+    {
+     "id": "b2384525-103c-4bbe-a7c1-b6025a99e6fc",
+     "username": "wire_aud_5806",
+     "avatarUrl": null
+    }
+   ],
+   "handRaises": [],
+   "chat": [],
+   "listenerCount": 3
+  }
+ },
+ "join": {
+  "status": 200,
+  "body": {
+   "room": {
+    "id": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+    "roomNumber": 167836,
+    "title": "Wire Room 7985806",
+    "description": null,
+    "coverUrl": null,
+    "theme": "aurora",
+    "category": "CHAT",
+    "language": null,
+    "region": null,
+    "rules": null,
+    "ambientEffect": "/effects/room-glow.json",
+    "type": "PUBLIC",
+    "seatCapacity": 4,
+    "status": "ACTIVE",
+    "listenerCount": 3,
+    "likeCount": 0,
+    "totalGiftValue": 0,
+    "livekitRoomName": "voiza-room-167836",
+    "createdAt": "2026-10-27T10:46:26.277Z",
+    "closedAt": null,
+    "host": {
+     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+     "username": "wire_host_5806",
+     "avatarUrl": null
+    }
+   },
+   "seats": [
+    {
+     "seatIndex": 0,
+     "status": "OCCUPIED",
+     "isMuted": false,
+     "isSpeaker": true,
+     "user": {
+      "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+      "username": "wire_host_5806",
+      "avatarUrl": null
+     }
+    },
+    {
+     "seatIndex": 1,
+     "status": "OCCUPIED",
+     "isMuted": false,
+     "isSpeaker": true,
+     "user": {
+      "id": "8b3b38d4-3ef5-4427-9256-dd67214bed59",
+      "username": "wire_seat_5806",
+      "avatarUrl": null
+     }
+    },
+    {
+     "seatIndex": 2,
+     "status": "EMPTY",
+     "isMuted": false,
+     "isSpeaker": false,
+     "user": null
+    },
+    {
+     "seatIndex": 3,
+     "status": "EMPTY",
+     "isMuted": false,
+     "isSpeaker": false,
+     "user": null
+    }
+   ],
+   "audience": [
+    {
+     "id": "b2384525-103c-4bbe-a7c1-b6025a99e6fc",
+     "username": "wire_aud_5806",
+     "avatarUrl": null
+    }
+   ],
+   "livekit": {
+    "url": "ws://127.0.0.1:7880",
+    "token": "redacted-token",
+    "roomName": "voiza-room-167836",
+    "identity": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+    "canPublish": true
+   }
+  }
+ },
+ "create": {
+  "status": 201,
+  "body": {
+   "room": {
+    "id": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+    "roomNumber": 167836,
+    "title": "Wire Room 7985806",
+    "description": null,
+    "coverUrl": null,
+    "theme": "aurora",
+    "category": "CHAT",
+    "language": null,
+    "region": null,
+    "rules": null,
+    "ambientEffect": "/effects/room-glow.json",
+    "type": "PUBLIC",
+    "seatCapacity": 4,
+    "status": "ACTIVE",
+    "listenerCount": 0,
+    "likeCount": 0,
+    "totalGiftValue": 0,
+    "livekitRoomName": "voiza-room-167836",
+    "createdAt": "2026-10-27T10:46:26.277Z",
+    "closedAt": null,
+    "host": {
+     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+     "username": "wire_host_5806",
+     "avatarUrl": null
+    },
+    "seats": [
+     {
+      "seatIndex": 0,
+      "status": "OCCUPIED",
+      "isMuted": false,
+      "isSpeaker": true,
+      "user": {
+       "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+       "username": "wire_host_5806",
+       "avatarUrl": null
+      }
+     },
+     {
+      "seatIndex": 1,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 2,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     },
+     {
+      "seatIndex": 3,
+      "status": "EMPTY",
+      "isMuted": false,
+      "isSpeaker": false,
+      "user": null
+     }
+    ]
+   }
+  }
+ },
+ "wallet": {
+  "status": 200,
+  "body": {
+   "user": {
+    "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+    "phone": "+15557798580601",
+    "username": "wire_host_5806",
+    "avatarUrl": null,
+    "bio": null,
+    "gender": null,
+    "countryCode": null,
+    "diamondBalance": 5000,
+    "rCoinBalance": 0,
+    "totalGiftsSent": 0,
+    "totalGiftsReceived": 0,
+    "userType": "HOST",
+    "status": "ACTIVE",
+    "isVerified": false,
+    "vipLevel": 0,
+    "lastSeenAt": null,
+    "createdAt": "2026-10-27T10:46:26.005Z"
+   },
+   "transactions": [
+    {
+     "id": "4e75b5f0-2ea0-4370-9e35-8b764931acf3",
+     "type": "RECHARGE",
+     "status": "COMPLETED",
+     "quantity": 1,
+     "amountDiamonds": 5000,
+     "amountRCoins": 0,
+     "giftName": null,
+     "sender": null,
+     "receiver": {
+      "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+      "username": "wire_host_5806",
+      "avatarUrl": null
+     },
+     "note": null,
+     "createdAt": "2026-10-27T10:46:26.259Z"
+    }
+   ],
+   "stats": {
+    "diamondsSpent": 0,
+    "rCoinsEarned": 0,
+    "giftsSent": 0
+   }
+  }
+ },
+ "gifts": {
+  "status": 200,
+  "body": {
+   "gifts": [
+    {
+     "id": "65314a39-92ef-4cc8-b637-22ecfeae749f",
+     "name": "Rose",
+     "iconUrl": "/gifts/rose.png",
+     "animationUrl": "/gifts/rose.json",
+     "soundUrl": "/gifts/sounds/chime.wav",
+     "diamondPrice": 1,
+     "rCoinValue": 1,
+     "category": "ROSE",
+     "effectKind": "TICKER",
+     "minVipLevel": 0,
+     "sortOrder": 10,
+     "isActive": true
+    },
+    {
+     "id": "68ee7951-a395-407d-8973-e75d2a453b71",
+     "name": "True Heart",
+     "iconUrl": "/gifts/heart.png",
+     "animationUrl": "/gifts/heart.json",
+     "soundUrl": "/gifts/sounds/chime.wav",
+     "diamondPrice": 2,
+     "rCoinValue": 2,
+     "category": "SPECIAL",
+     "effectKind": "TICKER",
+     "minVipLevel": 0,
+     "sortOrder": 15,
+     "isActive": true
+    },
+    {
+     "id": "af705a5e-9809-4cd2-a97c-e80406522763",
+     "name": "Ice Cream",
+     "iconUrl": "/gifts/icecream.png",
+     "animationUrl": "/gifts/icecream.json",
+     "soundUrl": "/gifts/sounds/chime.wav",
+     "diamondPrice": 5,
+     "rCoinValue": 5,
+     "category": "SPECIAL",
+     "effectKind": "TICKER",
+     "minVipLevel": 0,
+     "sortOrder": 20,
+     "isActive": true
+    },
+    {
+     "id": "b3ffc53d-6ef0-4bd5-adc3-5365a5e16806",
+     "name": "Lucky Star",
+     "iconUrl": "/gifts/star.png",
+     "animationUrl": "/gifts/star.json",
+     "soundUrl": "/gifts/sounds/chime.wav",
+     "diamondPrice": 10,
+     "rCoinValue": 9,
+     "category": "SPECIAL",
+     "effectKind": "TICKER",
+     "minVipLevel": 0,
+     "sortOrder": 24,
+     "isActive": true
+    },
+    {
+     "id": "47f601a7-85e4-46c5-9852-ed8d612d88c8",
+     "name": "Balloon",
+     "iconUrl": "/gifts/balloon.png",
+     "animationUrl": "/gifts/balloon.json",
+     "soundUrl": "/gifts/sounds/chime.wav",
+     "diamondPrice": 15,
+     "rCoinValue": 14,
+     "category": "SPECIAL",
+     "effectKind": "TICKER",
+     "minVipLevel": 0,
+     "sortOrder": 27,
+     "isActive": true
+    },
+    {
+     "id": "24cdfb52-f7df-4d3c-9770-6017f61995c8",
+     "name": "Perfume",
+     "iconUrl": "/gifts/perfume.png",
+     "animationUrl": "/gifts/perfume.json",
+     "soundUrl": "/gifts/sounds/chime.wav",
+     "diamondPrice": 20,
+     "rCoinValue": 18,
+     "category": "SPECIAL",
+     "effectKind": "TICKER",
+     "minVipLevel": 0,
+     "sortOrder": 30,
+     "isActive": true
+    },
+    {
+     "id": "2ad0854a-7ae9-4509-a696-de9b6d2c4af4",
+     "name": "Lollipop",
+     "iconUrl": "/gifts/lollipop.png",
+     "animationUrl": "/gifts/lollipop.json",
+     "soundUrl": "/gifts/sounds/chime.wav",
+     "diamondPrice": 35,
+     "rCoinValue": 32,
+     "category": "SPECIAL",
+     "effectKind": "TICKER",
+     "minVipLevel": 0,
+     "sortOrder": 35,
+     "isActive": true
+    },
+    {
+     "id": "19882022-ee4e-4bb2-bd81-6223745931fb",
+     "name": "Teddy",
+     "iconUrl": "/gifts/teddy.png",
+     "animationUrl": "/gifts/teddy.json",
+     "soundUrl": "/gifts/sounds/chime.wav",
+     "diamondPrice": 50,
+     "rCoinValue": 45,
+     "category": "SPECIAL",
+     "effectKind": "TICKER",
+     "minVipLevel": 0,
+     "sortOrder": 40,
+     "isActive": true
+    },
+    {
+     "id": "d23fded8-7be4-47f8-ac3f-ebc3d8cbe682",
+     "name": "Ring",
+     "iconUrl": "/gifts/ring.png",
+     "animationUrl": "/gifts/ring.json",
+     "soundUrl": "/gifts/sounds/chime.wav",
+     "diamondPrice": 100,
+     "rCoinValue": 90,
+     "category": "SPECIAL",
+     "effectKind": "TICKER",
+     "minVipLevel": 1,
+     "sortOrder": 50,
+     "isActive": true
+    },
+    {
+     "id": "e7268a00-4180-49ed-862b-174a69e7e4d5",
+     "name": "Happy Cake",
+     "iconUrl": "/gifts/cake.png",
+     "animationUrl": "/gifts/cake.json",
+     "soundUrl": "/gifts/sounds/chime.wav",
+     "diamondPrice": 150,
+     "rCoinValue": 135,
+     "category": "EVENT",
+     "effectKind": "TICKER",
+     "minVipLevel": 2,
+     "sortOrder": 55,
+     "isActive": true
+    },
+    {
+     "id": "d625451f-2eff-4578-bc82-e4795ce39fe5",
+     "name": "Rocket",
+     "iconUrl": "/gifts/rocket.png",
+     "animationUrl": "/gifts/rocket.json",
+     "soundUrl": "/gifts/sounds/whoosh.wav",
+     "diamondPrice": 500,
+     "rCoinValue": 450,
+     "category": "LUXURY",
+     "effectKind": "FULLSCREEN",
+     "minVipLevel": 3,
+     "sortOrder": 60,
+     "isActive": true
+    },
+    {
+     "id": "88ea2053-edf8-4d01-876a-db501ded16af",
+     "name": "Sports Car",
+     "iconUrl": "/gifts/car.png",
+     "animationUrl": "/gifts/car.json",
+     "soundUrl": "/gifts/sounds/whoosh.wav",
+     "diamondPrice": 1000,
+     "rCoinValue": 900,
+     "category": "LUXURY",
+     "effectKind": "FULLSCREEN",
+     "minVipLevel": 5,
+     "sortOrder": 70,
+     "isActive": true
+    },
+    {
+     "id": "e51c9b63-99f3-401f-91dd-9466695bf1f5",
+     "name": "Fireworks",
+     "iconUrl": "/gifts/fireworks.png",
+     "animationUrl": "/gifts/fireworks.json",
+     "soundUrl": "/gifts/sounds/fanfare.wav",
+     "diamondPrice": 2500,
+     "rCoinValue": 2250,
+     "category": "LUXURY",
+     "effectKind": "FULLSCREEN",
+     "minVipLevel": 6,
+     "sortOrder": 75,
+     "isActive": true
+    },
+    {
+     "id": "2d081b16-9f72-4c0e-9605-13d53887a658",
+     "name": "Castle",
+     "iconUrl": "/gifts/castle.png",
+     "animationUrl": "/gifts/castle.json",
+     "soundUrl": "/gifts/sounds/fanfare.wav",
+     "diamondPrice": 5000,
+     "rCoinValue": 4500,
+     "category": "LUXURY",
+     "effectKind": "FULLSCREEN",
+     "minVipLevel": 8,
+     "sortOrder": 80,
+     "isActive": true
+    },
+    {
+     "id": "957e5082-212c-4190-a0af-bf28b4751aa2",
+     "name": "King Crown",
+     "iconUrl": "/gifts/crown.png",
+     "animationUrl": "/gifts/crown.json",
+     "soundUrl": "/gifts/sounds/fanfare.wav",
+     "diamondPrice": 10000,
+     "rCoinValue": 9000,
+     "category": "EVENT",
+     "effectKind": "FULLSCREEN",
+     "minVipLevel": 12,
+     "sortOrder": 90,
+     "isActive": true
+    },
+    {
+     "id": "b295ad63-dfa2-4963-b7a6-efe8c43a8227",
+     "name": "Private Jet",
+     "iconUrl": "/gifts/jet.png",
+     "animationUrl": "/gifts/jet.json",
+     "soundUrl": "/gifts/sounds/whoosh.wav",
+     "diamondPrice": 20000,
+     "rCoinValue": 18000,
+     "category": "EVENT",
+     "effectKind": "FULLSCREEN",
+     "minVipLevel": 15,
+     "sortOrder": 100,
+     "isActive": true
+    }
+   ]
+  }
+ },
+ "withdrawals": {
+  "status": 200,
+  "body": {
+   "withdrawals": []
+  }
+ },
+ "boardReceivers": {
+  "status": 200,
+  "body": {
+   "window": "week",
+   "role": "receivers",
+   "unit": "r_coin",
+   "leaders": [
+    {
+     "id": "90bcb99c-7c79-469e-966d-fd891dcdd1f0",
+     "username": "voiza_551234",
+     "avatarUrl": null,
+     "userType": "HOST",
+     "isVerified": false,
+     "earned": 4050
+    },
+    {
+     "id": "1152cd09-4b37-4998-8483-c7aba980c8a2",
+     "username": "e2e_carol_7326",
+     "avatarUrl": null,
+     "userType": "USER",
+     "isVerified": false,
+     "earned": 1080
+    },
+    {
+     "id": "ffe56a13-48a0-404d-b038-540018d54bd6",
+     "username": "e2e_carol_5959",
+     "avatarUrl": null,
+     "userType": "USER",
+     "isVerified": false,
+     "earned": 1080
+    },
+    {
+     "id": "31a0061a-9db2-4101-bfd5-773f6651eaa2",
+     "username": "e2e_carol_0495",
+     "avatarUrl": null,
+     "userType": "USER",
+     "isVerified": false,
+     "earned": 1080
+    },
+    {
+     "id": "490595ee-258d-41fd-87a0-8574f35456d3",
+     "username": "e2e_carol_5667",
+     "avatarUrl": null,
+     "userType": "USER",
+     "isVerified": false,
+     "earned": 1080
+    }
+   ]
+  }
+ },
+ "boardSenders": {
+  "status": 200,
+  "body": {
+   "window": "week",
+   "role": "senders",
+   "unit": "diamond",
+   "leaders": [
+    {
+     "id": "efa0dd1b-40a6-4345-8823-aa2a363b1ff9",
+     "username": "gfx_sender",
+     "avatarUrl": null,
+     "userType": "USER",
+     "isVerified": false,
+     "earned": 4500
+    },
+    {
+     "id": "e02db5bf-c513-4c22-9458-f5d6e986074d",
+     "username": "e2e_alice_6622_9190",
+     "avatarUrl": null,
+     "userType": "HOST",
+     "isVerified": false,
+     "earned": 1200
+    },
+    {
+     "id": "60a53afa-ced2-4669-aeb6-970df05d7c89",
+     "username": "e2e_alice_5667",
+     "avatarUrl": null,
+     "userType": "HOST",
+     "isVerified": false,
+     "earned": 1200
+    },
+    {
+     "id": "c565d18e-4758-445a-9cf5-a00bfd3083e0",
+     "username": "e2e_alice_6425",
+     "avatarUrl": null,
+     "userType": "HOST",
+     "isVerified": false,
+     "earned": 1200
+    },
+    {
+     "id": "ff8657a1-4fdb-4828-8a69-4258719fb00c",
+     "username": "e2e_alice_4000",
+     "avatarUrl": null,
+     "userType": "HOST",
+     "isVerified": false,
+     "earned": 1200
+    }
+   ]
+  }
+ },
+ "theme": {
+  "status": 200,
+  "body": {
+   "room": {
+    "id": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+    "roomNumber": 167836,
+    "title": "Wire Room 7985806",
+    "description": null,
+    "coverUrl": null,
+    "theme": "nebula",
+    "category": "CHAT",
+    "language": null,
+    "region": null,
+    "rules": null,
+    "ambientEffect": "/effects/room-glow.json",
+    "type": "PUBLIC",
+    "seatCapacity": 4,
+    "status": "ACTIVE",
+    "listenerCount": 3,
+    "likeCount": 15,
+    "totalGiftValue": 2,
+    "livekitRoomName": "voiza-room-167836",
+    "createdAt": "2026-10-27T10:46:26.277Z",
+    "closedAt": null,
+    "host": {
+     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+     "username": "wire_host_5806",
+     "avatarUrl": null
+    }
+   }
+  }
+ },
+ "themes": {
+  "status": 200,
+  "body": {
+   "themes": [
+    {
+     "slug": "aurora",
+     "name": "Aurora",
+     "accent": "#3ddc97",
+     "wallpaper": "/themes/aurora/wallpaper.png"
+    },
+    {
+     "slug": "nebula",
+     "name": "Nebula",
+     "accent": "#f472b6",
+     "wallpaper": "/themes/nebula/wallpaper.png"
+    },
+    {
+     "slug": "sunset-glass",
+     "name": "Sunset Glass",
+     "accent": "#fbbf24",
+     "wallpaper": "/themes/sunset-glass/wallpaper.png"
+    },
+    {
+     "slug": "midnight-ocean",
+     "name": "Midnight Ocean",
+     "accent": "#38bdf8",
+     "wallpaper": "/themes/midnight-ocean/wallpaper.png"
+    }
+   ],
+   "defaultTheme": "aurora",
+   "welcome": "/welcome.json",
+   "effects": [
+    "/effects/room-sparkle.json",
+    "/effects/room-confetti.json",
+    "/effects/room-hearts.json",
+    "/effects/room-glow.json"
+   ]
+  }
+ },
+ "update": {
+  "status": 200,
+  "body": {
+   "room": {
+    "id": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+    "roomNumber": 167836,
+    "title": "Wire Room Edited 7985806",
+    "description": "captured profile",
+    "coverUrl": null,
+    "theme": "nebula",
+    "category": "CHAT",
+    "language": "en",
+    "region": "BD",
+    "rules": "mic off when not on the seat",
+    "ambientEffect": "/effects/room-glow.json",
+    "type": "PUBLIC",
+    "seatCapacity": 4,
+    "status": "ACTIVE",
+    "listenerCount": 3,
+    "likeCount": 15,
+    "totalGiftValue": 2,
+    "livekitRoomName": "voiza-room-167836",
+    "createdAt": "2026-10-27T10:46:26.277Z",
+    "closedAt": null,
+    "host": {
+     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+     "username": "wire_host_5806",
+     "avatarUrl": null
+    }
+   }
+  }
+ }
+}

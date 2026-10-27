@@ -1,0 +1,50 @@
+{
+  "name": "@voiza/backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Voiza audio party room platform — realtime API, LiveKit token service and wallet ledger",
+  "license": "AGPL-3.0-only",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "node scripts/migrate.cjs",
+    "db:seed": "psql \"$DATABASE_URL\" -f database/seed.sql",
+    "assets:generate": "node scripts/generate-placeholder-assets.cjs",
+    "test:e2e": "node scripts/e2e-live.cjs",
+    "test:business": "node scripts/business-e2e.cjs",
+    "test:games": "node scripts/games-e2e.cjs",
+    "test:sms": "tsx scripts/sms-provider-contract.ts twilio && tsx scripts/sms-provider-contract.ts vonage && tsx scripts/sms-provider-contract.ts mock",
+    "test:payments": "tsx scripts/payments-provider-contract.ts stripe && tsx scripts/payments-provider-contract.ts simulated",
+    "test:wire-fixtures": "node scripts/capture-wire-fixtures.cjs",
+    "test:game-wire-fixtures": "node scripts/capture-game-wire.cjs > ../android/scripts/fixtures/wire-games.json",
+    "demo:gifts": "node scripts/demo-gift-chat.cjs",
+    "webhook:sink": "node scripts/livekit-webhook-sink.cjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "livekit-server-sdk": "^2.7.1",
+    "pg": "^8.13.1",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^20.16.11",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.1",
+    "typescript": "^5.5.4"
+  }
+}

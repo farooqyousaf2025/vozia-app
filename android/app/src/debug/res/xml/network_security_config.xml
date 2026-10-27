@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Debug-only override (this whole file replaces main's for the debug variant):
+    cleartext HTTP is allowed so the emulator/LAN device can hit a local backend,
+    and user-installed CAs are trusted so a proxy can be inspected.
+    The release variant never sees this file.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

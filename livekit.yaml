@@ -1,0 +1,54 @@
+# LiveKit Server configuration for Voiza — tuned for low-latency voice party rooms.
+# Ports must match docker-compose.yml. Keys must match LIVEKIT_API_KEY / LIVEKIT_API_SECRET
+# in the backend environment (see .env.example).
+
+port: 7880
+bind_addresses:
+  - ""
+
+# RTC signalling / media
+rtc:
+  # WebSocket over TCP on the HTTP port, plus a dedicated TCP port for environments
+  # where UDP is blocked (mobile networks, corporate VPNs).
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  # Set true when the VPS has a stable public IPv4 and you want ICE to advertise it.
+  # docker-desktop / NAT without 1:1 mapping should keep this false and rely on TURN(7881).
+  use_external_ip: false
+
+keys:
+  voiza-dev-access-key: voiza-dev-secret-key-change-me-32chars
+
+# Voiza rooms are long-lived party rooms kept alive by the backend's agent-less
+# token issuance; room lifecycle is owned by PostgreSQL, so enable the escape
+# hatch that lets a room exist before a participant joins.
+room:
+  empty_timeout: 300            # close a room 5 min after everyone leaves
+  departure_timeout: 20         # tolerate brief mobile network handoffs
+  max_participants: 1000
+  # Hosts mute and unmute seats through RoomService.MutePublishedTrack, which needs
+  # this on: without it the SFU answers an unmute with "remote unmute not enabled" and
+  # the member stays silent even though the seat shows as live.
+  enable_remote_unmute: true
+  # Do NOT set enabled_codecs to audio/opus. Browsers pre-negotiate a video m-line for
+  # every publisher, and an audio-only answer makes their next createOffer fail with
+  # "Transceiver not found based on m-line index" — nobody in a web client can publish.
+  # Voiza clients simply never publish video, so the default codec set is left alone.
+
+# Redis is used as the SFU's signalling bus so multiple LiveKit nodes could be
+# added behind a load balancer later without code changes.
+redis:
+  address: redis:6379
+
+# Webhooks -> backend POST /api/livekit/webhook. Lets Voiza reconcile room state
+# when participants drop without a clean leave. LiveKit signs each delivery with a
+# JWT for api_key and posts every room/participant event; the backend picks the
+# ones it acts on.
+webhook:
+  api_key: voiza-dev-access-key
+  urls:
+    - http://backend:4000/api/livekit/webhook
+
+logging:
+  level: info

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Release policy: TLS only, system trust anchors only.
+
+    A debug build replaces this whole file with src/debug/res/xml/
+    network_security_config.xml (the debug source set wins in resource merging),
+    which is what lets the emulator talk to http://10.0.2.2:4000.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

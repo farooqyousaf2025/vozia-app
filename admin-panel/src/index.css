@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+   Design tokens — dark, high-contrast admin theme.
+   Values are rgb triplets so Tailwind can apply alpha via <alpha-value>.
+   -------------------------------------------------------------------------- */
+:root {
+  --c-bg: 8 7 20;           /* page background          */
+  --c-surface: 18 16 38;    /* cards / sidebar          */
+  --c-elevated: 27 24 56;   /* inputs, table headers    */
+  --c-edge: 47 42 88;       /* borders / dividers       */
+  --c-ink: 237 233 254;     /* primary text             */
+  --c-muted: 167 158 214;   /* secondary text           */
+  --c-faint: 113 104 158;   /* tertiary text / icons    */
+
+  color-scheme: dark;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-base text-ink antialiased;
+    font-family: theme('fontFamily.sans');
+  }
+
+  ::selection {
+    background: rgba(217, 70, 239, 0.35);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--c-edge)) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--c-edge));
+    border-radius: 8px;
+    border: 2px solid rgb(var(--c-bg));
+  }
+}
+
+@layer components {
+  /* Reusable surface used by Card and page-level panels. */
+  .panel {
+    @apply rounded-xl border border-edge/60 bg-surface;
+  }
+
+  .panel-header {
+    @apply flex items-center justify-between gap-3 border-b border-edge/60 px-5 py-4;
+  }
+
+  /* Focus ring used by every interactive element. */
+  .focus-ring {
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-base;
+  }
+}

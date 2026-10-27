@@ -1,0 +1,24 @@
+# Gradle / Android build outputs
+.gradle/
+build/
+*/build/
+local.properties
+*.iml
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Keystores & signing — the real keystore never ships; the template does.
+*.keystore
+*.jks
+keystore.properties
+app/google-services.json
+
+# The wrapper jar/scripts are committed so a clean checkout builds with no
+# system Gradle; regenerate with `gradle wrapper --gradle-version 8.7` only to
+# upgrade Gradle itself.
+
+# Wire-shape harness scratch output (android/scripts/run-dto-harness.sh)
+scripts/.build/

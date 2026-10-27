@@ -1,0 +1,430 @@
+{
+ "room:user_joined": [
+  {
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "user": {
+    "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+    "username": "wire_host_5806",
+    "avatarUrl": null,
+    "vipLevel": 0
+   }
+  }
+ ],
+ "room:chat_message": [
+  {
+   "id": "fbfd3711-6bdc-42c9-93e4-e934009b4ed6",
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "user": null,
+   "content": "wire_host_5806 entered the room",
+   "type": "SYSTEM",
+   "createdAt": "2026-10-27T10:46:26.511Z"
+  },
+  {
+   "id": "0105c9ad-59c9-4f3a-8657-e83540e352cb",
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "user": {
+    "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+    "username": "wire_host_5806",
+    "avatarUrl": null
+   },
+   "content": "wire capture hello",
+   "type": "TEXT",
+   "createdAt": "2026-10-27T10:46:27.724Z"
+  },
+  {
+   "id": "64fb99c5-743c-4b80-824f-e81aba02e9a0",
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "user": null,
+   "content": "wire_host_5806 sent 1x Rose to wire_seat_5806",
+   "type": "SYSTEM",
+   "createdAt": "2026-10-27T10:46:31.001Z"
+  },
+  {
+   "id": "0ba0dfc8-aa01-4857-91ae-8c6dcfeee374",
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "user": null,
+   "content": "wire_host_5806 sent 1x Rose to wire_aud_5806",
+   "type": "SYSTEM",
+   "createdAt": "2026-10-27T10:46:31.015Z"
+  }
+ ],
+ "room:seat_update": [
+  {
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "seats": [
+    {
+     "seatIndex": 0,
+     "status": "OCCUPIED",
+     "isMuted": false,
+     "isSpeaker": true,
+     "user": {
+      "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+      "username": "wire_host_5806",
+      "avatarUrl": null
+     }
+    },
+    {
+     "seatIndex": 1,
+     "status": "OCCUPIED",
+     "isMuted": false,
+     "isSpeaker": true,
+     "user": {
+      "id": "8b3b38d4-3ef5-4427-9256-dd67214bed59",
+      "username": "wire_seat_5806",
+      "avatarUrl": null
+     }
+    },
+    {
+     "seatIndex": 2,
+     "status": "EMPTY",
+     "isMuted": false,
+     "isSpeaker": false,
+     "user": null
+    },
+    {
+     "seatIndex": 3,
+     "status": "EMPTY",
+     "isMuted": false,
+     "isSpeaker": false,
+     "user": null
+    }
+   ],
+   "audience": [
+    {
+     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+     "username": "wire_host_5806",
+     "avatarUrl": null
+    },
+    {
+     "id": "8b3b38d4-3ef5-4427-9256-dd67214bed59",
+     "username": "wire_seat_5806",
+     "avatarUrl": null
+    },
+    {
+     "id": "b2384525-103c-4bbe-a7c1-b6025a99e6fc",
+     "username": "wire_aud_5806",
+     "avatarUrl": null
+    }
+   ]
+  },
+  {
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "seats": [
+    {
+     "seatIndex": 0,
+     "status": "OCCUPIED",
+     "isMuted": false,
+     "isSpeaker": true,
+     "user": {
+      "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+      "username": "wire_host_5806",
+      "avatarUrl": null
+     }
+    },
+    {
+     "seatIndex": 1,
+     "status": "EMPTY",
+     "isMuted": false,
+     "isSpeaker": false,
+     "user": null
+    },
+    {
+     "seatIndex": 2,
+     "status": "EMPTY",
+     "isMuted": false,
+     "isSpeaker": false,
+     "user": null
+    },
+    {
+     "seatIndex": 3,
+     "status": "EMPTY",
+     "isMuted": false,
+     "isSpeaker": false,
+     "user": null
+    }
+   ],
+   "audience": [
+    {
+     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+     "username": "wire_host_5806",
+     "avatarUrl": null
+    },
+    {
+     "id": "8b3b38d4-3ef5-4427-9256-dd67214bed59",
+     "username": "wire_seat_5806",
+     "avatarUrl": null
+    },
+    {
+     "id": "b2384525-103c-4bbe-a7c1-b6025a99e6fc",
+     "username": "wire_aud_5806",
+     "avatarUrl": null
+    }
+   ]
+  },
+  {
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "seats": [
+    {
+     "seatIndex": 0,
+     "status": "OCCUPIED",
+     "isMuted": false,
+     "isSpeaker": true,
+     "user": {
+      "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+      "username": "wire_host_5806",
+      "avatarUrl": null
+     }
+    },
+    {
+     "seatIndex": 1,
+     "status": "OCCUPIED",
+     "isMuted": false,
+     "isSpeaker": true,
+     "user": {
+      "id": "b2384525-103c-4bbe-a7c1-b6025a99e6fc",
+      "username": "wire_aud_5806",
+      "avatarUrl": null
+     }
+    },
+    {
+     "seatIndex": 2,
+     "status": "EMPTY",
+     "isMuted": false,
+     "isSpeaker": false,
+     "user": null
+    },
+    {
+     "seatIndex": 3,
+     "status": "EMPTY",
+     "isMuted": false,
+     "isSpeaker": false,
+     "user": null
+    }
+   ],
+   "audience": [
+    {
+     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+     "username": "wire_host_5806",
+     "avatarUrl": null
+    },
+    {
+     "id": "b2384525-103c-4bbe-a7c1-b6025a99e6fc",
+     "username": "wire_aud_5806",
+     "avatarUrl": null
+    },
+    {
+     "id": "8b3b38d4-3ef5-4427-9256-dd67214bed59",
+     "username": "wire_seat_5806",
+     "avatarUrl": null
+    }
+   ]
+  }
+ ],
+ "room:listener_count": [
+  {
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "count": 3
+  },
+  {
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "count": 3
+  },
+  {
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "count": 3
+  }
+ ],
+ "room:liked": [
+  {
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "count": 10,
+   "total": 10,
+   "user": {
+    "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+    "username": "wire_host_5806",
+    "avatarUrl": null,
+    "vipLevel": 0
+   }
+  },
+  {
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "count": 5,
+   "total": 15,
+   "user": {
+    "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+    "username": "wire_host_5806",
+    "avatarUrl": null,
+    "vipLevel": 0
+   }
+  }
+ ],
+ "room:hand_raise": [
+  {
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "raised": true,
+   "user": {
+    "id": "b2384525-103c-4bbe-a7c1-b6025a99e6fc",
+    "username": "wire_aud_5806",
+    "avatarUrl": null,
+    "vipLevel": 0
+   }
+  },
+  {
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "raised": false,
+   "user": {
+    "id": "b2384525-103c-4bbe-a7c1-b6025a99e6fc",
+    "username": "wire_aud_5806",
+    "avatarUrl": null,
+    "vipLevel": 0
+   }
+  }
+ ],
+ "room:gift_animated": [
+  {
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "gift": {
+    "id": "65314a39-92ef-4cc8-b637-22ecfeae749f",
+    "name": "Rose",
+    "iconUrl": "/gifts/rose.png",
+    "animationUrl": "/gifts/rose.json",
+    "soundUrl": "/gifts/sounds/chime.wav",
+    "diamondPrice": 1,
+    "rCoinValue": 1,
+    "category": "ROSE",
+    "effectKind": "TICKER",
+    "minVipLevel": 0,
+    "sortOrder": 10,
+    "isActive": true
+   },
+   "sender": {
+    "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+    "phone": "+15557798580601",
+    "username": "wire_host_5806",
+    "avatarUrl": null,
+    "bio": null,
+    "gender": null,
+    "countryCode": null,
+    "diamondBalance": 4999,
+    "rCoinBalance": 0,
+    "totalGiftsSent": 1,
+    "totalGiftsReceived": 0,
+    "userType": "HOST",
+    "status": "ACTIVE",
+    "isVerified": false,
+    "vipLevel": 0,
+    "lastSeenAt": null,
+    "createdAt": "2026-10-27T10:46:26.005Z"
+   },
+   "receiver": {
+    "id": "8b3b38d4-3ef5-4427-9256-dd67214bed59",
+    "phone": "+15557798580602",
+    "username": "wire_seat_5806",
+    "avatarUrl": null,
+    "bio": null,
+    "gender": null,
+    "countryCode": null,
+    "diamondBalance": 0,
+    "rCoinBalance": 1,
+    "totalGiftsSent": 0,
+    "totalGiftsReceived": 1,
+    "userType": "USER",
+    "status": "ACTIVE",
+    "isVerified": false,
+    "vipLevel": 0,
+    "lastSeenAt": null,
+    "createdAt": "2026-10-27T10:46:26.124Z"
+   },
+   "seatIndex": 1,
+   "quantity": 1,
+   "animationUrl": "/gifts/rose.json",
+   "totalDiamonds": 1,
+   "totalRCoins": 1
+  },
+  {
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "gift": {
+    "id": "65314a39-92ef-4cc8-b637-22ecfeae749f",
+    "name": "Rose",
+    "iconUrl": "/gifts/rose.png",
+    "animationUrl": "/gifts/rose.json",
+    "soundUrl": "/gifts/sounds/chime.wav",
+    "diamondPrice": 1,
+    "rCoinValue": 1,
+    "category": "ROSE",
+    "effectKind": "TICKER",
+    "minVipLevel": 0,
+    "sortOrder": 10,
+    "isActive": true
+   },
+   "sender": {
+    "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+    "phone": "+15557798580601",
+    "username": "wire_host_5806",
+    "avatarUrl": null,
+    "bio": null,
+    "gender": null,
+    "countryCode": null,
+    "diamondBalance": 4998,
+    "rCoinBalance": 0,
+    "totalGiftsSent": 2,
+    "totalGiftsReceived": 0,
+    "userType": "HOST",
+    "status": "ACTIVE",
+    "isVerified": false,
+    "vipLevel": 0,
+    "lastSeenAt": null,
+    "createdAt": "2026-10-27T10:46:26.005Z"
+   },
+   "receiver": {
+    "id": "b2384525-103c-4bbe-a7c1-b6025a99e6fc",
+    "phone": "+15557798580603",
+    "username": "wire_aud_5806",
+    "avatarUrl": null,
+    "bio": null,
+    "gender": null,
+    "countryCode": null,
+    "diamondBalance": 0,
+    "rCoinBalance": 1,
+    "totalGiftsSent": 0,
+    "totalGiftsReceived": 1,
+    "userType": "USER",
+    "status": "ACTIVE",
+    "isVerified": false,
+    "vipLevel": 0,
+    "lastSeenAt": null,
+    "createdAt": "2026-10-27T10:46:26.255Z"
+   },
+   "seatIndex": null,
+   "quantity": 1,
+   "animationUrl": "/gifts/rose.json",
+   "totalDiamonds": 1,
+   "totalRCoins": 1
+  }
+ ],
+ "wallet:update": [
+  {
+   "diamondBalance": 4999
+  },
+  {
+   "diamondBalance": 4998
+  }
+ ],
+ "room:theme_changed": [
+  {
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "theme": "nebula"
+  }
+ ],
+ "room:profile_updated": [
+  {
+   "roomId": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
+   "title": "Wire Room Edited 7985806",
+   "description": "captured profile",
+   "category": "CHAT",
+   "language": "en",
+   "region": "BD",
+   "rules": "mic off when not on the seat"
+  }
+ ]
+}

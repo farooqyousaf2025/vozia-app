@@ -1,0 +1,36 @@
+{
+  "generatedBy": "scripts/generate-placeholder-assets.cjs",
+  "welcome": "/welcome.json",
+  "effects": [
+    "/effects/room-sparkle.json",
+    "/effects/room-confetti.json",
+    "/effects/room-hearts.json",
+    "/effects/room-glow.json"
+  ],
+  "themes": [
+    {
+      "slug": "aurora",
+      "name": "Aurora",
+      "accent": "#3ddc97",
+      "wallpaper": "/themes/aurora/wallpaper.png"
+    },
+    {
+      "slug": "nebula",
+      "name": "Nebula",
+      "accent": "#f472b6",
+      "wallpaper": "/themes/nebula/wallpaper.png"
+    },
+    {
+      "slug": "sunset-glass",
+      "name": "Sunset Glass",
+      "accent": "#fbbf24",
+      "wallpaper": "/themes/sunset-glass/wallpaper.png"
+    },
+    {
+      "slug": "midnight-ocean",
+      "name": "Midnight Ocean",
+      "accent": "#38bdf8",
+      "wallpaper": "/themes/midnight-ocean/wallpaper.png"
+    }
+  ]
+}

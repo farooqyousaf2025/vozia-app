@@ -1,0 +1,179 @@
+name: CI
+
+# One pipeline for all three artefacts. The e2e suite is the reason the Postgres,
+# Redis and LiveKit services are real containers rather than mocks: it drives a
+# running backend, so the job that matters most is also the slowest one.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  NODE_ENV: development
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Matches the local stack (PostgreSQL 16) and the schema, which uses
+        # `CREATE INDEX ... USING GIN (col gin_trgm_ops)` from contrib.
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: voiza
+          POSTGRES_PASSWORD: voiza
+          POSTGRES_DB: voiza
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U voiza"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+      livekit:
+        image: livekit/livekit-server:v1.8.1
+        # --dev mints no auth requirement for the HTTP API used by the suite and
+        # pins the key pair the backend defaults to (src/config/env.ts).
+        args: >-
+          --dev --bind 0.0.0.0
+          --keys "voiza-dev-access-key=voiza-dev-secret-key-change-me-32chars"
+        ports: ['7880:7880', '7881:7881']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install
+        working-directory: backend
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: backend
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: backend
+        run: npm run build
+
+      - name: Provider contract checks
+        working-directory: backend
+        # No Postgres, no accounts: these stub `fetch` and assert the exact request
+        # we would send to Twilio/Vonage/Stripe plus how their replies map to errors.
+        run: |
+          npm run test:sms
+          npm run test:payments
+
+      - name: Apply schema and migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://voiza:voiza@localhost:5432/voiza
+        # The runner, not raw psql: database/schema.sql is the frozen baseline (it also
+        # self-seeds the gift catalogue) and every change since then is a numbered file in
+        # database/migrations/. A fresh CI database must land on the same shape a real
+        # upgraded server has, so the delta log is replayed too — 0012_room_seat_policy.sql
+        # is what widens rooms.seat_capacity beyond the old 1..12 CHECK that the baseline
+        # still carries, and the e2e seat-policy checks fail against a baseline-only schema.
+        run: npm run db:migrate
+
+      - name: Generate placeholder assets
+        working-directory: backend
+        run: node scripts/generate-placeholder-assets.cjs
+
+      - name: Start the API
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://voiza:voiza@localhost:5432/voiza
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci-only-jwt-secret-not-a-default
+        run: |
+          node dist/index.js > api.log 2>&1 &
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:4000/health && break
+            sleep 1
+            if [ "$i" = 40 ]; then cat api.log; exit 1; fi
+          done
+
+      - name: End-to-end suite
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://voiza:voiza@localhost:5432/voiza
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci-only-jwt-secret-not-a-default
+        run: npm run test:e2e
+
+      - name: API log on failure
+        if: failure()
+        working-directory: backend
+        run: cat api.log || true
+
+  admin-panel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: admin-panel/package-lock.json
+      - name: Install
+        working-directory: admin-panel
+        run: npm ci
+      # The panel has no separate typecheck script: `npm run build` is tsc && vite build.
+      - name: Typecheck and build
+        working-directory: admin-panel
+        run: npm run build
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # The repo is authored on Windows, where the filesystem has no exec bit, so
+      # the wrapper can land here non-executable after a checkout.
+      - name: Make the wrapper executable
+        working-directory: android
+        run: chmod +x ./gradlew ./scripts/run-dto-harness.sh
+
+      - name: Unit tests
+        working-directory: android
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Debug APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+
+      # The release build is where signing and shrinking actually happen, so it is
+      # built on every run. Without a keystore in CI it is assembled unsigned.
+      - name: Release APK (unsigned in CI)
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Wire-fixture harness
+        working-directory: android
+        run: ./scripts/run-dto-harness.sh

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand palette (mirrors ui/theme/Color.kt; XML copies exist for
+         window background and launcher icon tint before Compose inflates). -->
+    <color name="voiza_background">#FF0B0A1F</color>
+    <color name="voiza_surface">#FF151233</color>
+    <color name="voiza_primary">#FF7C4DFF</color>
+    <color name="voiza_accent_fuchsia">#FFE040FB</color>
+    <color name="voiza_accent_cyan">#FF22D3EE</color>
+    <color name="voiza_on_dark">#FFFFFFFF</color>
+    <color name="ic_launcher_background">#FF1B1140</color>
+</resources>

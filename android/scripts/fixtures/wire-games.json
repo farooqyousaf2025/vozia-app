@@ -1,0 +1,838 @@
+{
+ "capturedAt": "2026-10-23T10:28:38.390Z",
+ "api": "http://127.0.0.1:4000",
+ "catalog": {
+  "sessions": [],
+  "games": []
+ },
+ "games": {
+  "TIC_TAC_TOE": {
+   "sessionId": "362d63b2-05c4-4c7b-b55c-50470f77cf9c",
+   "mid": {
+    "hostMove": {
+     "session": {
+      "id": "362d63b2-05c4-4c7b-b55c-50470f77cf9c",
+      "gameKey": "TIC_TAC_TOE",
+      "roomId": "cdff0098-96ce-4611-b5dc-6d5a0a295f22",
+      "createdBy": "b100050c-89f8-40c9-8ec7-847536082ce7",
+      "status": "IN_PROGRESS",
+      "settlementStatus": "PENDING",
+      "rulesVersion": 40,
+      "state": {
+       "draw": false,
+       "grid": [
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+       ],
+       "winLine": null,
+       "moveCount": 1,
+       "turnPosition": 1,
+       "winnerPosition": null,
+       "timeoutPosition": null
+      },
+      "entryFeeDiamonds": 0,
+      "maxPlayers": 2,
+      "turnOwnerId": "f46f3f7e-ee1d-4788-804a-a89befe23bcd",
+      "turnDeadlineAt": "2026-10-23T10:29:08.446Z",
+      "result": null,
+      "startedAt": "2026-10-23T10:28:38.437Z",
+      "endedAt": null,
+      "createdAt": "2026-10-23T10:28:38.408Z",
+      "participants": [
+       {
+        "userId": "b100050c-89f8-40c9-8ec7-847536082ce7",
+        "username": "wire_h_8011_1",
+        "avatarUrl": null,
+        "position": 0,
+        "status": "PLAYING",
+        "score": 0,
+        "rank": null,
+        "entryFeeDiamonds": 0,
+        "prizeDiamonds": 0,
+        "ready": true
+       },
+       {
+        "userId": "f46f3f7e-ee1d-4788-804a-a89befe23bcd",
+        "username": "wire_g_8011_2",
+        "avatarUrl": null,
+        "position": 1,
+        "status": "PLAYING",
+        "score": 0,
+        "rank": null,
+        "entryFeeDiamonds": 0,
+        "prizeDiamonds": 0,
+        "ready": true
+       }
+      ]
+     }
+    },
+    "guestMove": {
+     "session": {
+      "id": "362d63b2-05c4-4c7b-b55c-50470f77cf9c",
+      "gameKey": "TIC_TAC_TOE",
+      "roomId": "cdff0098-96ce-4611-b5dc-6d5a0a295f22",
+      "createdBy": "b100050c-89f8-40c9-8ec7-847536082ce7",
+      "status": "IN_PROGRESS",
+      "settlementStatus": "PENDING",
+      "rulesVersion": 40,
+      "state": {
+       "draw": false,
+       "grid": [
+        0,
+        null,
+        null,
+        1,
+        null,
+        null,
+        null,
+        null,
+        null
+       ],
+       "winLine": null,
+       "moveCount": 2,
+       "turnPosition": 0,
+       "winnerPosition": null,
+       "timeoutPosition": null
+      },
+      "entryFeeDiamonds": 0,
+      "maxPlayers": 2,
+      "turnOwnerId": "b100050c-89f8-40c9-8ec7-847536082ce7",
+      "turnDeadlineAt": "2026-10-23T10:29:08.452Z",
+      "result": null,
+      "startedAt": "2026-10-23T10:28:38.437Z",
+      "endedAt": null,
+      "createdAt": "2026-10-23T10:28:38.408Z",
+      "participants": [
+       {
+        "userId": "b100050c-89f8-40c9-8ec7-847536082ce7",
+        "username": "wire_h_8011_1",
+        "avatarUrl": null,
+        "position": 0,
+        "status": "PLAYING",
+        "score": 0,
+        "rank": null,
+        "entryFeeDiamonds": 0,
+        "prizeDiamonds": 0,
+        "ready": true
+       },
+       {
+        "userId": "f46f3f7e-ee1d-4788-804a-a89befe23bcd",
+        "username": "wire_g_8011_2",
+        "avatarUrl": null,
+        "position": 1,
+        "status": "PLAYING",
+        "score": 0,
+        "rank": null,
+        "entryFeeDiamonds": 0,
+        "prizeDiamonds": 0,
+        "ready": true
+       }
+      ]
+     }
+    }
+   },
+   "read": {
+    "session": {
+     "id": "362d63b2-05c4-4c7b-b55c-50470f77cf9c",
+     "gameKey": "TIC_TAC_TOE",
+     "roomId": "cdff0098-96ce-4611-b5dc-6d5a0a295f22",
+     "createdBy": "b100050c-89f8-40c9-8ec7-847536082ce7",
+     "status": "IN_PROGRESS",
+     "settlementStatus": "PENDING",
+     "rulesVersion": 40,
+     "state": {
+      "draw": false,
+      "grid": [
+       0,
+       null,
+       null,
+       1,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "winLine": null,
+      "moveCount": 2,
+      "turnPosition": 0,
+      "winnerPosition": null,
+      "timeoutPosition": null
+     },
+     "entryFeeDiamonds": 0,
+     "maxPlayers": 2,
+     "turnOwnerId": "b100050c-89f8-40c9-8ec7-847536082ce7",
+     "turnDeadlineAt": "2026-10-23T10:29:08.452Z",
+     "result": null,
+     "startedAt": "2026-10-23T10:28:38.437Z",
+     "endedAt": null,
+     "createdAt": "2026-10-23T10:28:38.408Z",
+     "participants": [
+      {
+       "userId": "b100050c-89f8-40c9-8ec7-847536082ce7",
+       "username": "wire_h_8011_1",
+       "avatarUrl": null,
+       "position": 0,
+       "status": "PLAYING",
+       "score": 0,
+       "rank": null,
+       "entryFeeDiamonds": 0,
+       "prizeDiamonds": 0,
+       "ready": true
+      },
+      {
+       "userId": "f46f3f7e-ee1d-4788-804a-a89befe23bcd",
+       "username": "wire_g_8011_2",
+       "avatarUrl": null,
+       "position": 1,
+       "status": "PLAYING",
+       "score": 0,
+       "rank": null,
+       "entryFeeDiamonds": 0,
+       "prizeDiamonds": 0,
+       "ready": true
+      }
+     ]
+    }
+   }
+  },
+  "QUIZ_BATTLE": {
+   "sessionId": "184c9e69-3afd-4778-9c3e-fe1c3f4d751a",
+   "mid": {
+    "host": {
+     "session": {
+      "id": "184c9e69-3afd-4778-9c3e-fe1c3f4d751a",
+      "gameKey": "QUIZ_BATTLE",
+      "roomId": "cdff0098-96ce-4611-b5dc-6d5a0a295f22",
+      "createdBy": "b100050c-89f8-40c9-8ec7-847536082ce7",
+      "status": "IN_PROGRESS",
+      "settlementStatus": "PENDING",
+      "rulesVersion": 1,
+      "state": {
+       "index": 0,
+       "answers": {
+        "b100050c-89f8-40c9-8ec7-847536082ce7": {
+         "0": {
+          "points": 0,
+          "correct": false,
+          "latencyMs": 9,
+          "optionIndex": 1
+         }
+        }
+       },
+       "finished": false,
+       "questions": [
+        {
+         "id": 1,
+         "prompt": "How many bits are in one byte?",
+         "options": [
+          "32",
+          "4",
+          "16",
+          "8"
+         ]
+        },
+        {
+         "id": 2,
+         "prompt": "How many continents are there?",
+         "options": [
+          "7",
+          "5",
+          "8",
+          "6"
+         ]
+        },
+        {
+         "id": 3,
+         "prompt": "Which language has the most native speakers?",
+         "options": [
+          "English",
+          "Hindi",
+          "Mandarin Chinese",
+          "Spanish"
+         ]
+        },
+        {
+         "id": 4,
+         "prompt": "Which vitamin does sunlight help the body make?",
+         "options": [
+          "Vitamin D",
+          "Vitamin C",
+          "Vitamin A",
+          "Vitamin K"
+         ]
+        },
+        {
+         "id": 5,
+         "prompt": "What gas do plants absorb from the air?",
+         "options": [
+          "Carbon dioxide",
+          "Hydrogen",
+          "Nitrogen",
+          "Oxygen"
+         ]
+        }
+       ],
+       "correctPoints": 100,
+       "maxSpeedBonus": 50,
+       "roundStartedAtMs": 1792751318496,
+       "secondsPerQuestion": 15
+      },
+      "entryFeeDiamonds": 0,
+      "maxPlayers": 8,
+      "turnOwnerId": null,
+      "turnDeadlineAt": "2026-10-23T10:28:53.506Z",
+      "result": null,
+      "startedAt": "2026-10-23T10:28:38.495Z",
+      "endedAt": null,
+      "createdAt": "2026-10-23T10:28:38.468Z",
+      "participants": [
+       {
+        "userId": "b100050c-89f8-40c9-8ec7-847536082ce7",
+        "username": "wire_h_8011_1",
+        "avatarUrl": null,
+        "position": 0,
+        "status": "PLAYING",
+        "score": 0,
+        "rank": null,
+        "entryFeeDiamonds": 0,
+        "prizeDiamonds": 0,
+        "ready": true
+       },
+       {
+        "userId": "f46f3f7e-ee1d-4788-804a-a89befe23bcd",
+        "username": "wire_g_8011_2",
+        "avatarUrl": null,
+        "position": 1,
+        "status": "PLAYING",
+        "score": 0,
+        "rank": null,
+        "entryFeeDiamonds": 0,
+        "prizeDiamonds": 0,
+        "ready": true
+       }
+      ]
+     }
+    },
+    "guest": {
+     "session": {
+      "id": "184c9e69-3afd-4778-9c3e-fe1c3f4d751a",
+      "gameKey": "QUIZ_BATTLE",
+      "roomId": "cdff0098-96ce-4611-b5dc-6d5a0a295f22",
+      "createdBy": "b100050c-89f8-40c9-8ec7-847536082ce7",
+      "status": "IN_PROGRESS",
+      "settlementStatus": "PENDING",
+      "rulesVersion": 1,
+      "state": {
+       "index": 1,
+       "answers": {
+        "b100050c-89f8-40c9-8ec7-847536082ce7": {
+         "0": {
+          "points": 0,
+          "correct": false,
+          "latencyMs": 9,
+          "optionIndex": 1
+         }
+        },
+        "f46f3f7e-ee1d-4788-804a-a89befe23bcd": {
+         "0": {
+          "points": 0,
+          "correct": false,
+          "latencyMs": 16,
+          "optionIndex": 2
+         }
+        }
+       },
+       "finished": false,
+       "questions": [
+        {
+         "id": 1,
+         "prompt": "How many bits are in one byte?",
+         "options": [
+          "32",
+          "4",
+          "16",
+          "8"
+         ]
+        },
+        {
+         "id": 2,
+         "prompt": "How many continents are there?",
+         "options": [
+          "7",
+          "5",
+          "8",
+          "6"
+         ]
+        },
+        {
+         "id": 3,
+         "prompt": "Which language has the most native speakers?",
+         "options": [
+          "English",
+          "Hindi",
+          "Mandarin Chinese",
+          "Spanish"
+         ]
+        },
+        {
+         "id": 4,
+         "prompt": "Which vitamin does sunlight help the body make?",
+         "options": [
+          "Vitamin D",
+          "Vitamin C",
+          "Vitamin A",
+          "Vitamin K"
+         ]
+        },
+        {
+         "id": 5,
+         "prompt": "What gas do plants absorb from the air?",
+         "options": [
+          "Carbon dioxide",
+          "Hydrogen",
+          "Nitrogen",
+          "Oxygen"
+         ]
+        }
+       ],
+       "correctPoints": 100,
+       "maxSpeedBonus": 50,
+       "roundStartedAtMs": 1792751318512,
+       "secondsPerQuestion": 15
+      },
+      "entryFeeDiamonds": 0,
+      "maxPlayers": 8,
+      "turnOwnerId": null,
+      "turnDeadlineAt": "2026-10-23T10:28:53.513Z",
+      "result": null,
+      "startedAt": "2026-10-23T10:28:38.495Z",
+      "endedAt": null,
+      "createdAt": "2026-10-23T10:28:38.468Z",
+      "participants": [
+       {
+        "userId": "b100050c-89f8-40c9-8ec7-847536082ce7",
+        "username": "wire_h_8011_1",
+        "avatarUrl": null,
+        "position": 0,
+        "status": "PLAYING",
+        "score": 0,
+        "rank": null,
+        "entryFeeDiamonds": 0,
+        "prizeDiamonds": 0,
+        "ready": true
+       },
+       {
+        "userId": "f46f3f7e-ee1d-4788-804a-a89befe23bcd",
+        "username": "wire_g_8011_2",
+        "avatarUrl": null,
+        "position": 1,
+        "status": "PLAYING",
+        "score": 0,
+        "rank": null,
+        "entryFeeDiamonds": 0,
+        "prizeDiamonds": 0,
+        "ready": true
+       }
+      ]
+     }
+    }
+   },
+   "read": {
+    "session": {
+     "id": "184c9e69-3afd-4778-9c3e-fe1c3f4d751a",
+     "gameKey": "QUIZ_BATTLE",
+     "roomId": "cdff0098-96ce-4611-b5dc-6d5a0a295f22",
+     "createdBy": "b100050c-89f8-40c9-8ec7-847536082ce7",
+     "status": "IN_PROGRESS",
+     "settlementStatus": "PENDING",
+     "rulesVersion": 1,
+     "state": {
+      "index": 1,
+      "answers": {
+       "b100050c-89f8-40c9-8ec7-847536082ce7": {
+        "0": {
+         "points": 0,
+         "correct": false,
+         "latencyMs": 9,
+         "optionIndex": 1
+        }
+       },
+       "f46f3f7e-ee1d-4788-804a-a89befe23bcd": {
+        "0": {
+         "points": 0,
+         "correct": false,
+         "latencyMs": 16,
+         "optionIndex": 2
+        }
+       }
+      },
+      "finished": false,
+      "questions": [
+       {
+        "id": 1,
+        "prompt": "How many bits are in one byte?",
+        "options": [
+         "32",
+         "4",
+         "16",
+         "8"
+        ]
+       },
+       {
+        "id": 2,
+        "prompt": "How many continents are there?",
+        "options": [
+         "7",
+         "5",
+         "8",
+         "6"
+        ]
+       },
+       {
+        "id": 3,
+        "prompt": "Which language has the most native speakers?",
+        "options": [
+         "English",
+         "Hindi",
+         "Mandarin Chinese",
+         "Spanish"
+        ]
+       },
+       {
+        "id": 4,
+        "prompt": "Which vitamin does sunlight help the body make?",
+        "options": [
+         "Vitamin D",
+         "Vitamin C",
+         "Vitamin A",
+         "Vitamin K"
+        ]
+       },
+       {
+        "id": 5,
+        "prompt": "What gas do plants absorb from the air?",
+        "options": [
+         "Carbon dioxide",
+         "Hydrogen",
+         "Nitrogen",
+         "Oxygen"
+        ]
+       }
+      ],
+      "correctPoints": 100,
+      "maxSpeedBonus": 50,
+      "roundStartedAtMs": 1792751318512,
+      "secondsPerQuestion": 15
+     },
+     "entryFeeDiamonds": 0,
+     "maxPlayers": 8,
+     "turnOwnerId": null,
+     "turnDeadlineAt": "2026-10-23T10:28:53.513Z",
+     "result": null,
+     "startedAt": "2026-10-23T10:28:38.495Z",
+     "endedAt": null,
+     "createdAt": "2026-10-23T10:28:38.468Z",
+     "participants": [
+      {
+       "userId": "b100050c-89f8-40c9-8ec7-847536082ce7",
+       "username": "wire_h_8011_1",
+       "avatarUrl": null,
+       "position": 0,
+       "status": "PLAYING",
+       "score": 0,
+       "rank": null,
+       "entryFeeDiamonds": 0,
+       "prizeDiamonds": 0,
+       "ready": true
+      },
+      {
+       "userId": "f46f3f7e-ee1d-4788-804a-a89befe23bcd",
+       "username": "wire_g_8011_2",
+       "avatarUrl": null,
+       "position": 1,
+       "status": "PLAYING",
+       "score": 0,
+       "rank": null,
+       "entryFeeDiamonds": 0,
+       "prizeDiamonds": 0,
+       "ready": true
+      }
+     ]
+    }
+   }
+  },
+  "LUDO": {
+   "sessionId": "c8f00e85-85a6-442b-91bf-bd3b03ceb9d5",
+   "mid": [
+    {
+     "error": {
+      "code": "out_of_turn",
+      "message": "Wait for your turn",
+      "details": {
+       "code": "out_of_turn"
+      }
+     }
+    },
+    {
+     "error": {
+      "code": "out_of_turn",
+      "message": "Wait for your turn",
+      "details": {
+       "code": "out_of_turn"
+      }
+     }
+    },
+    {
+     "session": {
+      "id": "c8f00e85-85a6-442b-91bf-bd3b03ceb9d5",
+      "gameKey": "LUDO",
+      "roomId": "cdff0098-96ce-4611-b5dc-6d5a0a295f22",
+      "createdBy": "b100050c-89f8-40c9-8ec7-847536082ce7",
+      "status": "IN_PROGRESS",
+      "settlementStatus": "PENDING",
+      "rulesVersion": 1,
+      "state": {
+       "order": [
+        0,
+        1
+       ],
+       "players": {
+        "0": {
+         "pieces": [
+          -1,
+          -1,
+          -1,
+          -1
+         ],
+         "position": 0,
+         "piecesHome": 0,
+         "pendingRoll": null
+        },
+        "1": {
+         "pieces": [
+          -1,
+          -1,
+          -1,
+          -1
+         ],
+         "position": 1,
+         "piecesHome": 0,
+         "pendingRoll": 1
+        }
+       },
+       "finished": false,
+       "rollCount": 1,
+       "startRoll": 6,
+       "turnPosition": 1,
+       "winnerPosition": null
+      },
+      "entryFeeDiamonds": 0,
+      "maxPlayers": 4,
+      "turnOwnerId": "f46f3f7e-ee1d-4788-804a-a89befe23bcd",
+      "turnDeadlineAt": "2026-10-23T10:29:23.572Z",
+      "result": null,
+      "startedAt": "2026-10-23T10:28:38.556Z",
+      "endedAt": null,
+      "createdAt": "2026-10-23T10:28:38.529Z",
+      "participants": [
+       {
+        "userId": "b100050c-89f8-40c9-8ec7-847536082ce7",
+        "username": "wire_h_8011_1",
+        "avatarUrl": null,
+        "position": 0,
+        "status": "PLAYING",
+        "score": 0,
+        "rank": null,
+        "entryFeeDiamonds": 0,
+        "prizeDiamonds": 0,
+        "ready": true
+       },
+       {
+        "userId": "f46f3f7e-ee1d-4788-804a-a89befe23bcd",
+        "username": "wire_g_8011_2",
+        "avatarUrl": null,
+        "position": 1,
+        "status": "PLAYING",
+        "score": 0,
+        "rank": null,
+        "entryFeeDiamonds": 0,
+        "prizeDiamonds": 0,
+        "ready": true
+       }
+      ]
+     }
+    },
+    {
+     "error": {
+      "code": "illegal_move",
+      "message": "That token cannot move this way",
+      "details": {
+       "code": "illegal_move"
+      }
+     }
+    },
+    {
+     "error": {
+      "code": "out_of_turn",
+      "message": "Wait for your turn",
+      "details": {
+       "code": "out_of_turn"
+      }
+     }
+    },
+    {
+     "error": {
+      "code": "out_of_turn",
+      "message": "Wait for your turn",
+      "details": {
+       "code": "out_of_turn"
+      }
+     }
+    },
+    {
+     "error": {
+      "code": "already_rolled",
+      "message": "Spend the dice you already have",
+      "details": {
+       "code": "already_rolled"
+      }
+     }
+    },
+    {
+     "error": {
+      "code": "illegal_move",
+      "message": "That token cannot move this way",
+      "details": {
+       "code": "illegal_move"
+      }
+     }
+    }
+   ],
+   "read": {
+    "session": {
+     "id": "c8f00e85-85a6-442b-91bf-bd3b03ceb9d5",
+     "gameKey": "LUDO",
+     "roomId": "cdff0098-96ce-4611-b5dc-6d5a0a295f22",
+     "createdBy": "b100050c-89f8-40c9-8ec7-847536082ce7",
+     "status": "IN_PROGRESS",
+     "settlementStatus": "PENDING",
+     "rulesVersion": 1,
+     "state": {
+      "order": [
+       0,
+       1
+      ],
+      "players": {
+       "0": {
+        "pieces": [
+         -1,
+         -1,
+         -1,
+         -1
+        ],
+        "position": 0,
+        "piecesHome": 0,
+        "pendingRoll": null
+       },
+       "1": {
+        "pieces": [
+         -1,
+         -1,
+         -1,
+         -1
+        ],
+        "position": 1,
+        "piecesHome": 0,
+        "pendingRoll": 1
+       }
+      },
+      "finished": false,
+      "rollCount": 1,
+      "startRoll": 6,
+      "turnPosition": 1,
+      "winnerPosition": null
+     },
+     "entryFeeDiamonds": 0,
+     "maxPlayers": 4,
+     "turnOwnerId": "f46f3f7e-ee1d-4788-804a-a89befe23bcd",
+     "turnDeadlineAt": "2026-10-23T10:29:23.572Z",
+     "result": null,
+     "startedAt": "2026-10-23T10:28:38.556Z",
+     "endedAt": null,
+     "createdAt": "2026-10-23T10:28:38.529Z",
+     "participants": [
+      {
+       "userId": "b100050c-89f8-40c9-8ec7-847536082ce7",
+       "username": "wire_h_8011_1",
+       "avatarUrl": null,
+       "position": 0,
+       "status": "PLAYING",
+       "score": 0,
+       "rank": null,
+       "entryFeeDiamonds": 0,
+       "prizeDiamonds": 0,
+       "ready": true
+      },
+      {
+       "userId": "f46f3f7e-ee1d-4788-804a-a89befe23bcd",
+       "username": "wire_g_8011_2",
+       "avatarUrl": null,
+       "position": 1,
+       "status": "PLAYING",
+       "score": 0,
+       "rank": null,
+       "entryFeeDiamonds": 0,
+       "prizeDiamonds": 0,
+       "ready": true
+      }
+     ]
+    }
+   }
+  }
+ },
+ "history": {
+  "games": [
+   {
+    "sessionId": "c8f00e85-85a6-442b-91bf-bd3b03ceb9d5",
+    "gameKey": "LUDO",
+    "status": "IN_PROGRESS",
+    "rank": null,
+    "score": 0,
+    "prizeDiamonds": 0,
+    "entryFeeDiamonds": 0,
+    "endedAt": null,
+    "createdAt": "2026-10-23T10:28:38.529Z"
+   },
+   {
+    "sessionId": "184c9e69-3afd-4778-9c3e-fe1c3f4d751a",
+    "gameKey": "QUIZ_BATTLE",
+    "status": "IN_PROGRESS",
+    "rank": null,
+    "score": 0,
+    "prizeDiamonds": 0,
+    "entryFeeDiamonds": 0,
+    "endedAt": null,
+    "createdAt": "2026-10-23T10:28:38.468Z"
+   },
+   {
+    "sessionId": "362d63b2-05c4-4c7b-b55c-50470f77cf9c",
+    "gameKey": "TIC_TAC_TOE",
+    "status": "IN_PROGRESS",
+    "rank": null,
+    "score": 0,
+    "prizeDiamonds": 0,
+    "entryFeeDiamonds": 0,
+    "endedAt": null,
+    "createdAt": "2026-10-23T10:28:38.408Z"
+   }
+  ]
+ }
+}

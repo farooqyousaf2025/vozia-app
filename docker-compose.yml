@@ -1,0 +1,161 @@
+x-app-env: &app-env
+  # The demo path has to stay login-able without an SMS gateway, so this stack
+  # boots in development mode. For a real deployment set NODE_ENV=production in
+  # .env and rotate every secret below: the backend then refuses to start while
+  # any development default is still in place.
+  NODE_ENV: ${NODE_ENV:-development}
+  PORT: "4000"
+  DATABASE_URL: postgres://voiza:${POSTGRES_PASSWORD:-voiza}@postgres:5432/voiza
+  REDIS_URL: redis://redis:6379
+  JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+  LIVEKIT_URL: ws://livekit:7880
+  # What phones dial, not what the backend dials: inside the compose network
+  # LIVEKIT_URL is reachable, but a client outside it needs a host address.
+  # For a VPS set this to ws://<public-ip-or-host>:7880 (or wss:// behind TLS).
+  LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL:-ws://localhost:7880}
+  LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-voiza-dev-access-key}
+  LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-voiza-dev-secret-key-change-me-32chars}
+  OTP_MOCK_CODE: ${OTP_MOCK_CODE:-}
+  ADMIN_BOOTSTRAP_PHONE: ${ADMIN_BOOTSTRAP_PHONE:-+10000000000}
+  ADMIN_BOOTSTRAP_OTP: ${ADMIN_BOOTSTRAP_OTP:-424242}
+  ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:-voiza-admin}
+  # Read by backend/docker-entrypoint.sh, not by the Node app itself: when set to
+  # 1 the container also applies database/seed.sql on boot. Set 0 for a clean stack.
+  SEED_DEMO_DATA: ${SEED_DEMO_DATA:-1}
+  # Push is optional. Left empty, the backend stores device tokens and logs sends
+  # instead of calling Google. To enable it, mount the Firebase service-account
+  # key read-only into the backend container and point FCM_SERVICE_ACCOUNT_FILE
+  # at that path (see .env.example).
+  FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+  FCM_SERVICE_ACCOUNT_FILE: ${FCM_SERVICE_ACCOUNT_FILE:-}
+  PUSH_ANDROID_CHANNEL: ${PUSH_ANDROID_CHANNEL:-voiza_activity}
+  # OTP delivery. `mock` never sends a text: the backend logs the code instead.
+  # A production boot refuses `mock`, so a real gateway has to be wired here too.
+  # The credentials below are only read by the matching SMS_PROVIDER. Add a
+  # read-only bind mount for FCM_SERVICE_ACCOUNT_FILE if you keep the key outside
+  # the image; nothing here is mounted automatically.
+  SMS_PROVIDER: ${SMS_PROVIDER:-mock}
+  TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+  TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+  TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+  VONAGE_API_KEY: ${VONAGE_API_KEY:-}
+  VONAGE_API_SECRET: ${VONAGE_API_SECRET:-}
+  VONAGE_FROM: ${VONAGE_FROM:-Voiza}
+  # Diamonds. `simulated` means POST /api/wallet/recharge mints balance for free,
+  # so production refuses to boot on it; `stripe` moves that endpoint behind a
+  # 403 and only the signed webhook can credit a wallet.
+  PAYMENTS_PROVIDER: ${PAYMENTS_PROVIDER:-simulated}
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+  STRIPE_CURRENCY: ${STRIPE_CURRENCY:-usd}
+  STRIPE_CENTS_PER_DIAMOND: ${STRIPE_CENTS_PER_DIAMOND:-10}
+  CORS_ORIGIN: ${CORS_ORIGIN:-*}
+
+name: voiza
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: voiza-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: voiza
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voiza}
+      POSTGRES_DB: voiza
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voiza -d voiza"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    container_name: voiza-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  livekit:
+    # Pinned to the release this stack was verified against: the config schema has
+    # changed across LiveKit majors, so `:latest` can turn a working deploy into a
+    # crash-looping SFU (and no audio) on the next `docker compose pull`.
+    image: livekit/livekit-server:v1.13.10
+    container_name: voiza-livekit
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    command:
+      - --config
+      - /etc/livekit.yaml
+      # No --dev: it puts Go pprof and /debug/rooms on the public port, ignores the
+      # Redis room state configured in livekit.yaml, and adds a well-known `devkey`
+      # key pair next to ours. The backend creates rooms through the admin API, so
+      # nothing here needs dev-mode auto-creation.
+    ports:
+      - "7880:7880"       # HTTP API + WebSocket signalling
+      - "7881:7881"       # RTC over TCP / TURN
+      - "50000-60000:50000-60000/udp"  # WebRTC media (audio)
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:7880/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  backend:
+    build:
+      context: ./backend
+    container_name: voiza-backend
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      livekit:
+        condition: service_started
+    ports:
+      - "4000:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+
+  admin-panel:
+    build:
+      context: ./admin-panel
+    container_name: voiza-admin-panel
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:4000}
+      VITE_SOCKET_URL: ${VITE_SOCKET_URL:-http://localhost:4000}
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  postgres_data:
+  redis_data:

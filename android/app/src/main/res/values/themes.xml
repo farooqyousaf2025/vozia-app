@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark-first splash/base theme: party apps live in dark mode.
+         Compose (Theme.Voiza app side) takes over styling immediately;
+         this only governs the window before/behind Compose. -->
+    <style name="Theme.Voiza" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/voiza_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
