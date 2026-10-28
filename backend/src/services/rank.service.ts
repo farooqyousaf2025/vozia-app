@@ -87,13 +87,34 @@ export async function loadRankRegistry(): Promise<void> {
 }
 
 function current(): Snapshot {
-  if (!snapshot) {
+  const loaded = peek();
+  if (!loaded) {
     throw new ApiError(503, 'Rank ladder is not loaded yet', 'rank_registry_loading');
   }
+  return loaded;
+}
+
+/** The ladder in memory, or null while the first load is still outstanding. */
+function peek(): Snapshot | null {
+  if (!snapshot) return null;
   if (Date.now() - snapshot.loadedAt > REFRESH_AFTER_MS) {
     void loadRankRegistry().catch((err) => console.warn('[voiza] rank ladder refresh failed:', err.message));
   }
   return snapshot;
+}
+
+/**
+ * Make the ladder a precondition of the work that is about to describe a member.
+ *
+ * `toUser()` resolves a rung, so every money path that returns a wallet does too. Without this
+ * the check in `current()` fires *inside* an open transaction — a webhook that arrived before the
+ * boot load finished would then roll back coins that were already collected. Waiting first turns
+ * that into a clean refusal with nothing to undo, and for the HTTP server it is free: the boot
+ * sequence has already loaded the ladder, so this returns without a query.
+ */
+export async function ensureRankRegistry(): Promise<void> {
+  if (peek()) return;
+  await loadRankRegistry();
 }
 
 // ---------------------------------------------------------------------------

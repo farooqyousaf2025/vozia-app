@@ -158,3 +158,19 @@ Order is the brief's phase order; each line is a working, testable deliverable, 
 
 Nothing in this programme may weaken a test above to make a build pass; new suites are additive
 and the e2e count only ever goes up.
+
+All three live suites now run in CI (`.github/workflows/ci.yml`): the end-to-end job was already
+there, and `test:business` and `test:games` were added as their own steps so a red pipeline names
+the domain that broke. The counts above were re-measured by rehearsing that job locally against a
+purpose-built database (`voiza_ci`, 18 migrations applied from empty) running the built
+`dist/index.js`, not against the development schema.
+
+**Art library.** Migration `0018_imported_asset_library.sql` replaced the generated placeholders
+on the level ladder with 21 imported seals and registered two imported Lottie loops as `AMBIENT`
+options (`GET /api/rooms/themes` now publishes six). The rows it rewrites are matched on the
+placeholder URL, so an operator's own upload is never overwritten. Provenance, the file-by-file
+map and the animations that were inspected and refused are in
+`THIRD_PARTY_LICENSES/trace-assets/PROVENANCE.md`; the pack is MIT-licensed and only its image and
+Lottie files were taken. Verified by serving every new file from the API origin, by the panel's
+ranks page loading all 21 seals (`21/21` images with a non-zero intrinsic size, none broken), and
+by the three suites above re-run after the migration.

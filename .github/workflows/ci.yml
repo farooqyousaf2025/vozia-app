@@ -118,6 +118,34 @@ jobs:
           JWT_SECRET: ci-only-jwt-secret-not-a-default
         run: npm run test:e2e
 
+      # Two more live suites run against the same API, each as its own step so a red
+      # pipeline says which domain broke. Both mint their own accounts over HTTP — the
+      # dev OTP back door and the `+10000000000 / 424242` bootstrap admin are
+      # development-mode defaults (src/config/env.ts), which is why nothing extra is
+      # passed here. They are separate scripts on purpose: the business suite walks the
+      # nine-step recharge, seller/BD scopes, commission versions and reversals, and the
+      # games suite drives the engine lifecycle, fees and settlement money. Both also
+      # open their own `pg` pool from DATABASE_URL to assert what the HTTP calls left
+      # in the ledger, so the env block is not decoration.
+      - name: Business accounts suite (BD, sellers, commissions)
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://voiza:voiza@localhost:5432/voiza
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci-only-jwt-secret-not-a-default
+        run: npm run test:business
+
+      - name: Games engine suite (fees, settlement, disputes)
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://voiza:voiza@localhost:5432/voiza
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci-only-jwt-secret-not-a-default
+          # The suite signs its own webhook fixtures; this is the development default the
+          # backend also falls back to, spelled out so the step cannot drift from it.
+          STRIPE_WEBHOOK_SECRET: whsec_development_only_not_a_real_secret
+        run: npm run test:games
+
       - name: API log on failure
         if: failure()
         working-directory: backend

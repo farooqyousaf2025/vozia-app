@@ -194,7 +194,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const rosterRow = (financeRoster.json && financeRoster.json.partners || [])[0] || {};
   check('roster: the finance desk can name the partners it owes commission to',
     financeRoster.status === 200 && (financeRoster.json.partners || []).length >= 2,
-    { count: financeRoster.json && financeRoster.json.partners.length });
+    { count: financeRoster.json?.partners?.length, status: financeRoster.status, error: financeRoster.json?.error });
   check('roster: naming a partner does not reveal their limits or contacts',
     Object.keys(rosterRow).sort().join(',') === 'code,displayName,id,kind,status',
     { fields: Object.keys(rosterRow).sort() });
@@ -233,8 +233,8 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const order = await api('POST', '/api/business/orders', { token: sellerToken, body: { phone: userPhone, packageKey: 'PKR_1000', paymentMethod: 'CASH', note: 'e2e counter sale' } });
   const orderId = order.json && order.json.order && order.json.order.id;
   check('recharge: a seller opens an order with a unique reference and an expiry',
-    order.status === 201 && /^RO-/.test(order.json.order.reference) && !!order.json.order.expiresAt,
-    order.json && { reference: order.json.order.reference, status: order.json.order.status, diamonds: order.json.order.diamonds, amountCents: order.json.order.amountCents });
+    order.status === 201 && /^RO-/.test(order.json?.order?.reference ?? '') && !!order.json?.order?.expiresAt,
+    order.json && { reference: order.json.order?.reference, status: order.json.order?.status, error: order.json.error, diamonds: order.json.order?.diamonds, amountCents: order.json.order?.amountCents });
 
   const attributed = order.json && order.json.order;
   check('recharge: the order is attributed to the BD that owns the seller',

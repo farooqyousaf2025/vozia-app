@@ -1,16 +1,16 @@
 {
  "room:user_joined": [
   {
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "user": {
-    "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
-    "username": "wire_host_8815",
+    "id": "c770b503-f309-4acc-8999-4b5fa2ab7ac9",
+    "username": "wire_host_8397",
     "avatarUrl": null,
     "vipLevel": 0,
     "rank": {
      "level": 0,
      "name": "Newcomer",
-     "badge": "/badges/level-0.png",
+     "badge": "/badges/trace/level-0.png",
      "accent": "#9aa5b1",
      "minXp": 0
     }
@@ -19,45 +19,45 @@
  ],
  "room:chat_message": [
   {
-   "id": "a29cb837-3402-4f1d-b469-173342baaba3",
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "id": "df3fd110-926e-4b06-a392-dcad7bee0b99",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "user": null,
-   "content": "wire_host_8815 entered the room",
+   "content": "wire_host_8397 entered the room",
    "type": "SYSTEM",
-   "createdAt": "2026-10-28T06:50:59.994Z"
+   "createdAt": "2026-10-28T09:48:19.377Z"
   },
   {
-   "id": "467b79fa-2aba-45ce-ad32-ef1823370482",
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "id": "da95431a-f934-46ee-adfb-b819dd977bbf",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "user": {
-    "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
-    "username": "wire_host_8815",
+    "id": "c770b503-f309-4acc-8999-4b5fa2ab7ac9",
+    "username": "wire_host_8397",
     "avatarUrl": null
    },
    "content": "wire capture hello",
    "type": "TEXT",
-   "createdAt": "2026-10-28T06:51:01.225Z"
+   "createdAt": "2026-10-28T09:48:20.583Z"
   },
   {
-   "id": "7307db33-908f-4637-a338-393e33205ec3",
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "id": "1d3d6f5b-7a70-4df6-9f6c-77476ec28b82",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "user": null,
-   "content": "wire_host_8815 sent 1x Rose to wire_seat_8815",
+   "content": "wire_host_8397 sent 1x Rose to wire_seat_8397",
    "type": "SYSTEM",
-   "createdAt": "2026-10-28T06:51:04.489Z"
+   "createdAt": "2026-10-28T09:48:23.875Z"
   },
   {
-   "id": "df2a4f38-e697-41fa-9799-cc0698ec46f8",
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "id": "4582a2f9-4513-4609-9536-bf7cf5b9ab8c",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "user": null,
-   "content": "wire_host_8815 sent 1x Rose to wire_aud_8815",
+   "content": "wire_host_8397 sent 1x Rose to wire_aud_8397",
    "type": "SYSTEM",
-   "createdAt": "2026-10-28T06:51:04.499Z"
+   "createdAt": "2026-10-28T09:48:23.896Z"
   }
  ],
  "room:seat_update": [
   {
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "seats": [
     {
      "seatIndex": 0,
@@ -65,8 +65,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
-      "username": "wire_host_8815",
+      "id": "c770b503-f309-4acc-8999-4b5fa2ab7ac9",
+      "username": "wire_host_8397",
       "avatarUrl": null
      }
     },
@@ -76,8 +76,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "89a22558-556d-47f3-aef5-ad75f1bec027",
-      "username": "wire_seat_8815",
+      "id": "49c92e61-ca17-4764-bf0d-0328f06da7c4",
+      "username": "wire_seat_8397",
       "avatarUrl": null
      }
     },
@@ -98,24 +98,24 @@
    ],
    "audience": [
     {
-     "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
-     "username": "wire_host_8815",
+     "id": "c770b503-f309-4acc-8999-4b5fa2ab7ac9",
+     "username": "wire_host_8397",
      "avatarUrl": null
     },
     {
-     "id": "89a22558-556d-47f3-aef5-ad75f1bec027",
-     "username": "wire_seat_8815",
+     "id": "49c92e61-ca17-4764-bf0d-0328f06da7c4",
+     "username": "wire_seat_8397",
      "avatarUrl": null
     },
     {
-     "id": "4abe31d5-f554-432f-a3c6-06fc4e7c1b2c",
-     "username": "wire_aud_8815",
+     "id": "da6e0f12-4fdb-47ca-a3ba-ce3822100fc7",
+     "username": "wire_aud_8397",
      "avatarUrl": null
     }
    ]
   },
   {
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "seats": [
     {
      "seatIndex": 0,
@@ -123,8 +123,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
-      "username": "wire_host_8815",
+      "id": "c770b503-f309-4acc-8999-4b5fa2ab7ac9",
+      "username": "wire_host_8397",
       "avatarUrl": null
      }
     },
@@ -152,24 +152,24 @@
    ],
    "audience": [
     {
-     "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
-     "username": "wire_host_8815",
+     "id": "c770b503-f309-4acc-8999-4b5fa2ab7ac9",
+     "username": "wire_host_8397",
      "avatarUrl": null
     },
     {
-     "id": "89a22558-556d-47f3-aef5-ad75f1bec027",
-     "username": "wire_seat_8815",
+     "id": "49c92e61-ca17-4764-bf0d-0328f06da7c4",
+     "username": "wire_seat_8397",
      "avatarUrl": null
     },
     {
-     "id": "4abe31d5-f554-432f-a3c6-06fc4e7c1b2c",
-     "username": "wire_aud_8815",
+     "id": "da6e0f12-4fdb-47ca-a3ba-ce3822100fc7",
+     "username": "wire_aud_8397",
      "avatarUrl": null
     }
    ]
   },
   {
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "seats": [
     {
      "seatIndex": 0,
@@ -177,8 +177,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
-      "username": "wire_host_8815",
+      "id": "c770b503-f309-4acc-8999-4b5fa2ab7ac9",
+      "username": "wire_host_8397",
       "avatarUrl": null
      }
     },
@@ -188,8 +188,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "4abe31d5-f554-432f-a3c6-06fc4e7c1b2c",
-      "username": "wire_aud_8815",
+      "id": "da6e0f12-4fdb-47ca-a3ba-ce3822100fc7",
+      "username": "wire_aud_8397",
       "avatarUrl": null
      }
     },
@@ -210,18 +210,18 @@
    ],
    "audience": [
     {
-     "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
-     "username": "wire_host_8815",
+     "id": "c770b503-f309-4acc-8999-4b5fa2ab7ac9",
+     "username": "wire_host_8397",
      "avatarUrl": null
     },
     {
-     "id": "4abe31d5-f554-432f-a3c6-06fc4e7c1b2c",
-     "username": "wire_aud_8815",
+     "id": "da6e0f12-4fdb-47ca-a3ba-ce3822100fc7",
+     "username": "wire_aud_8397",
      "avatarUrl": null
     },
     {
-     "id": "89a22558-556d-47f3-aef5-ad75f1bec027",
-     "username": "wire_seat_8815",
+     "id": "49c92e61-ca17-4764-bf0d-0328f06da7c4",
+     "username": "wire_seat_8397",
      "avatarUrl": null
     }
    ]
@@ -229,50 +229,50 @@
  ],
  "room:listener_count": [
   {
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "count": 3
   },
   {
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "count": 3
   },
   {
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "count": 3
   }
  ],
  "room:liked": [
   {
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "count": 10,
    "total": 10,
    "user": {
-    "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
-    "username": "wire_host_8815",
+    "id": "c770b503-f309-4acc-8999-4b5fa2ab7ac9",
+    "username": "wire_host_8397",
     "avatarUrl": null,
     "vipLevel": 0,
     "rank": {
      "level": 0,
      "name": "Newcomer",
-     "badge": "/badges/level-0.png",
+     "badge": "/badges/trace/level-0.png",
      "accent": "#9aa5b1",
      "minXp": 0
     }
    }
   },
   {
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "count": 5,
    "total": 15,
    "user": {
-    "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
-    "username": "wire_host_8815",
+    "id": "c770b503-f309-4acc-8999-4b5fa2ab7ac9",
+    "username": "wire_host_8397",
     "avatarUrl": null,
     "vipLevel": 0,
     "rank": {
      "level": 0,
      "name": "Newcomer",
-     "badge": "/badges/level-0.png",
+     "badge": "/badges/trace/level-0.png",
      "accent": "#9aa5b1",
      "minXp": 0
     }
@@ -281,34 +281,34 @@
  ],
  "room:hand_raise": [
   {
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "raised": true,
    "user": {
-    "id": "4abe31d5-f554-432f-a3c6-06fc4e7c1b2c",
-    "username": "wire_aud_8815",
+    "id": "da6e0f12-4fdb-47ca-a3ba-ce3822100fc7",
+    "username": "wire_aud_8397",
     "avatarUrl": null,
     "vipLevel": 0,
     "rank": {
      "level": 0,
      "name": "Newcomer",
-     "badge": "/badges/level-0.png",
+     "badge": "/badges/trace/level-0.png",
      "accent": "#9aa5b1",
      "minXp": 0
     }
    }
   },
   {
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "raised": false,
    "user": {
-    "id": "4abe31d5-f554-432f-a3c6-06fc4e7c1b2c",
-    "username": "wire_aud_8815",
+    "id": "da6e0f12-4fdb-47ca-a3ba-ce3822100fc7",
+    "username": "wire_aud_8397",
     "avatarUrl": null,
     "vipLevel": 0,
     "rank": {
      "level": 0,
      "name": "Newcomer",
-     "badge": "/badges/level-0.png",
+     "badge": "/badges/trace/level-0.png",
      "accent": "#9aa5b1",
      "minXp": 0
     }
@@ -317,7 +317,7 @@
  ],
  "room:gift_animated": [
   {
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "gift": {
     "id": "65314a39-92ef-4cc8-b637-22ecfeae749f",
     "name": "Rose",
@@ -333,9 +333,9 @@
     "isActive": true
    },
    "sender": {
-    "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
-    "phone": "+15557025881501",
-    "username": "wire_host_8815",
+    "id": "c770b503-f309-4acc-8999-4b5fa2ab7ac9",
+    "phone": "+15557089839701",
+    "username": "wire_host_8397",
     "avatarUrl": null,
     "bio": null,
     "gender": null,
@@ -352,25 +352,25 @@
     "rank": {
      "level": 0,
      "name": "Newcomer",
-     "badge": "/badges/level-0.png",
+     "badge": "/badges/trace/level-0.png",
      "accent": "#9aa5b1",
      "minXp": 0
     },
     "nextRank": {
      "level": 1,
      "name": "Bronze I",
-     "badge": "/badges/level-1.png",
+     "badge": "/badges/trace/level-1.png",
      "accent": "#a9714b",
      "minXp": 300,
      "remainingXp": 299
     },
     "lastSeenAt": null,
-    "createdAt": "2026-10-28T06:50:59.187Z"
+    "createdAt": "2026-10-28T09:48:18.665Z"
    },
    "receiver": {
-    "id": "89a22558-556d-47f3-aef5-ad75f1bec027",
-    "phone": "+15557025881502",
-    "username": "wire_seat_8815",
+    "id": "49c92e61-ca17-4764-bf0d-0328f06da7c4",
+    "phone": "+15557089839702",
+    "username": "wire_seat_8397",
     "avatarUrl": null,
     "bio": null,
     "gender": null,
@@ -387,20 +387,20 @@
     "rank": {
      "level": 0,
      "name": "Newcomer",
-     "badge": "/badges/level-0.png",
+     "badge": "/badges/trace/level-0.png",
      "accent": "#9aa5b1",
      "minXp": 0
     },
     "nextRank": {
      "level": 1,
      "name": "Bronze I",
-     "badge": "/badges/level-1.png",
+     "badge": "/badges/trace/level-1.png",
      "accent": "#a9714b",
      "minXp": 300,
      "remainingXp": 300
     },
     "lastSeenAt": null,
-    "createdAt": "2026-10-28T06:50:59.358Z"
+    "createdAt": "2026-10-28T09:48:18.810Z"
    },
    "seatIndex": 1,
    "quantity": 1,
@@ -409,7 +409,7 @@
    "totalRCoins": 1
   },
   {
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "gift": {
     "id": "65314a39-92ef-4cc8-b637-22ecfeae749f",
     "name": "Rose",
@@ -425,9 +425,9 @@
     "isActive": true
    },
    "sender": {
-    "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
-    "phone": "+15557025881501",
-    "username": "wire_host_8815",
+    "id": "c770b503-f309-4acc-8999-4b5fa2ab7ac9",
+    "phone": "+15557089839701",
+    "username": "wire_host_8397",
     "avatarUrl": null,
     "bio": null,
     "gender": null,
@@ -444,25 +444,25 @@
     "rank": {
      "level": 0,
      "name": "Newcomer",
-     "badge": "/badges/level-0.png",
+     "badge": "/badges/trace/level-0.png",
      "accent": "#9aa5b1",
      "minXp": 0
     },
     "nextRank": {
      "level": 1,
      "name": "Bronze I",
-     "badge": "/badges/level-1.png",
+     "badge": "/badges/trace/level-1.png",
      "accent": "#a9714b",
      "minXp": 300,
      "remainingXp": 298
     },
     "lastSeenAt": null,
-    "createdAt": "2026-10-28T06:50:59.187Z"
+    "createdAt": "2026-10-28T09:48:18.665Z"
    },
    "receiver": {
-    "id": "4abe31d5-f554-432f-a3c6-06fc4e7c1b2c",
-    "phone": "+15557025881503",
-    "username": "wire_aud_8815",
+    "id": "da6e0f12-4fdb-47ca-a3ba-ce3822100fc7",
+    "phone": "+15557089839703",
+    "username": "wire_aud_8397",
     "avatarUrl": null,
     "bio": null,
     "gender": null,
@@ -479,20 +479,20 @@
     "rank": {
      "level": 0,
      "name": "Newcomer",
-     "badge": "/badges/level-0.png",
+     "badge": "/badges/trace/level-0.png",
      "accent": "#9aa5b1",
      "minXp": 0
     },
     "nextRank": {
      "level": 1,
      "name": "Bronze I",
-     "badge": "/badges/level-1.png",
+     "badge": "/badges/trace/level-1.png",
      "accent": "#a9714b",
      "minXp": 300,
      "remainingXp": 300
     },
     "lastSeenAt": null,
-    "createdAt": "2026-10-28T06:50:59.518Z"
+    "createdAt": "2026-10-28T09:48:18.963Z"
    },
    "seatIndex": null,
    "quantity": 1,
@@ -511,15 +511,15 @@
  ],
  "room:theme_changed": [
   {
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
    "theme": "nebula",
    "wallpaper": "/themes/nebula/wallpaper.png"
   }
  ],
  "room:profile_updated": [
   {
-   "roomId": "289396cc-c09f-4ac9-9d32-95270f94efbb",
-   "title": "Wire Room Edited 0258815",
+   "roomId": "6b34f676-884d-412b-bbdf-58928f1d9c5c",
+   "title": "Wire Room Edited 0898397",
    "description": "captured profile",
    "category": "CHAT",
    "language": "en",

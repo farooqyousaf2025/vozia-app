@@ -13,6 +13,7 @@ import { RechargeOrderDto, toRechargeOrder } from '../utils/serialize';
 import { recordAudit } from './audit.service';
 import { emitToUser } from './socket.service';
 import { postLedgerMoves, settlePaymentOnClient } from './ledger.service';
+import { ensureRankRegistry } from './rank.service';
 import {
   accrueOrderCommissions,
   planOrderCommissions,
@@ -541,6 +542,8 @@ async function creditOrder(
   orderId: string,
   opts: { byAdmin: string | null; bySystem?: string; decisionNote?: string; feeCents?: number },
 ): Promise<{ order: RechargeOrderRow; credited: boolean; commissionCents: number; diamondBalance: number | null }> {
+  // Crediting an order returns a wallet, and a wallet resolves a rank — see ensureRankRegistry.
+  await ensureRankRegistry();
   const order = await lockOrder(client, orderId);
   if (order.status === 'CREDITED') return { order, credited: false, commissionCents: 0, diamondBalance: null };
   if (order.status !== 'AWAITING_VERIFICATION' && order.status !== 'AWAITING_PAYMENT') {

@@ -7,7 +7,8 @@
  *   backend/public/welcome.json           (room entry effect)
  *   backend/public/effects/*.json         (loopable room effects)
  *   backend/public/themes/<slug>/wallpaper.png  (room themes)
- *   backend/public/badges/level-<n>.png         (migration 0017's rank ladder)
+ *   backend/public/badges/level-<n>.png         (fallback art; migration 0018 re-points the
+ *                                                ladder at the imported seals in badges/trace/)
  *
  * Those rows store root-relative URLs (`/gifts/rose.png`), which `express.static`
  * serves from the API origin, so nothing 404s on a fresh VPS until real art lands.

@@ -4,7 +4,7 @@ import { many, one, withTransaction } from '../config/db';
 import { rateLimit, redis } from '../config/redis';
 import { GiftRow, TransactionRow, UserRow, WithdrawalRow } from '../types/db';
 import { ApiError } from '../utils/http';
-import { awardXp, xpForEarning, xpForSpend } from './rank.service';
+import { awardXp, ensureRankRegistry, xpForEarning, xpForSpend } from './rank.service';
 import { GiftDto, toGift, toTransaction, toUser, TransactionDto, UserDto } from '../utils/serialize';
 
 const TX_WITH_PARTIES = `
@@ -29,6 +29,7 @@ export async function sendGift(input: {
   quantity: number;
   roomId?: string;
 }): Promise<{ transaction: TransactionDto; sender: UserDto; receiver: UserDto; gift: GiftDto }> {
+  await ensureRankRegistry();
   if (input.senderId === input.receiverId) {
     throw ApiError.badRequest('You cannot send a gift to yourself', 'self_gift');
   }
@@ -173,6 +174,7 @@ export async function sendGift(input: {
 
 /** Simulated top-up: no PSP is wired, so this credits diamonds directly. */
 export async function recharge(userId: string, amountDiamonds: number): Promise<{ transaction: TransactionDto; user: UserDto }> {
+  await ensureRankRegistry();
   if (amountDiamonds < 1) throw ApiError.badRequest('Amount must be positive');
   if (amountDiamonds > 1_000_000) throw ApiError.badRequest('Amount too large; contact support for bulk top-ups');
 
@@ -217,6 +219,7 @@ export async function settlePayment(input: {
   amountCents: number;
   currency: string;
 }): Promise<{ credited: boolean; transaction?: TransactionDto; user?: UserDto }> {
+  await ensureRankRegistry();
   const result = await withTransaction(async (client) =>
     settlePaymentOnClient(client, input),
   );
@@ -293,6 +296,7 @@ export async function adjustBalance(
   deltas: { diamondDelta: number; rCoinDelta: number; note?: string },
   adminId: string,
 ): Promise<{ transaction: TransactionDto; user: UserDto }> {
+  await ensureRankRegistry();
   const { diamondDelta, rCoinDelta, note } = deltas;
   if (diamondDelta === 0 && rCoinDelta === 0) throw ApiError.badRequest('Nothing to adjust');
 
@@ -519,6 +523,7 @@ export async function requestWithdrawal(
   payoutMethod: string,
   payoutDetails: Record<string, unknown>,
 ): Promise<{ withdrawal: WithdrawalRow; user: UserDto }> {
+  await ensureRankRegistry();
   if (amountRCoins < env.economy.minWithdrawRCoins) {
     throw ApiError.badRequest(`Minimum withdrawal is ${env.economy.minWithdrawRCoins} R-coins`, 'below_minimum');
   }
@@ -597,6 +602,7 @@ export async function getWallet(userId: string, limit = 30): Promise<{
   transactions: TransactionDto[];
   stats: { diamondsSpent: number; rCoinsEarned: number; giftsSent: number };
 }> {
+  await ensureRankRegistry();
   const userRow = await one<UserRow>('SELECT * FROM users WHERE id = $1', [userId]);
   if (!userRow) throw ApiError.notFound('Account not found');
 
