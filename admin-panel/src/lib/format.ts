@@ -124,3 +124,10 @@ export function weekdayLabel(isoDate: string): string {
   if (Number.isNaN(date.getTime())) return isoDate.length >= 5 ? isoDate.slice(-5) : isoDate;
   return date.toLocaleDateString('en-US', { weekday: 'short' });
 }
+
+/** File size the way an operator reads it: 1.4 MB, not 1468006. */
+export function formatBytes(value: number): string {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(value < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(value / 1024 / 1024).toFixed(2)} MB`;
+}

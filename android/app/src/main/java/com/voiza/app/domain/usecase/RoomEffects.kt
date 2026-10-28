@@ -1,5 +1,6 @@
 package com.voiza.app.domain.usecase
 
+import com.voiza.app.domain.model.ChatMessage
 import com.voiza.app.domain.model.GiftAnimatedEvent
 
 /**
@@ -74,6 +75,24 @@ object RoomEffects {
     /** Add a ticker row; the column always shows the most recent [TICKER_MAX]. */
     fun appendTicker(current: List<GiftAnimatedEvent>, incoming: GiftAnimatedEvent): List<GiftAnimatedEvent> =
         (current + incoming).takeLast(TICKER_MAX)
+
+    /**
+     * Append a chat line unless that exact message is already on screen.
+     *
+     * Joining a room inserts an entry notice into `chat_messages` *and* emits it,
+     * so the history snapshot from `GET /api/rooms/:id` and the socket event can
+     * deliver the same row. The list is keyed by message id, so a second copy is
+     * not a cosmetic duplicate — it crashes the room. Ids come from the server and
+     * are unique per row, which makes the id the only correct deduplication key.
+     */
+    fun appendChat(
+        current: List<ChatMessage>,
+        incoming: ChatMessage,
+        limit: Int,
+    ): List<ChatMessage> {
+        if (current.any { it.id == incoming.id }) return current
+        return (current + incoming).takeLast(limit)
+    }
 
     /**
      * Size of a joiner's entry banner from their spend tier. Three steps because

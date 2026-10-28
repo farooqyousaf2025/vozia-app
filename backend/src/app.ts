@@ -6,6 +6,7 @@ import { env } from './config/env';
 import { ping } from './config/db';
 import { redis } from './config/redis';
 import routes from './routes';
+import { UPLOADS_DIR, UPLOAD_JSON_BODY_LIMIT, URL_PREFIX } from './services/media.service';
 import { errorHandler, notFound } from './middleware/error';
 
 // Augmenting IncomingMessage (what body-parser's `verify` receives, and what
@@ -41,6 +42,12 @@ export function createApp(): Express {
   // too. Same reasoning as the LiveKit route above.
   app.use('/api/payments/stripe/webhook', express.raw({ type: () => true, limit: '64kb' }));
 
+  // Uploaded media is the one body that is legitimately large: the panel sends a file as base64
+  // inside JSON, so this route gets its own parser with a cap that fits a few megabytes of art.
+  // Mounting it before the default below means every other route keeps the 64 kb limit, and
+  // body-parser skips a request whose body has already been read.
+  app.use('/api/admin/uploads', express.json({ limit: UPLOAD_JSON_BODY_LIMIT }));
+
   // Party payloads are tiny. `verify` also keeps the untouched bytes around, which
   // the LiveKit webhook signature check needs (re-serialised JSON would not match).
   app.use(
@@ -71,6 +78,19 @@ export function createApp(): Express {
     express.static(path.resolve(__dirname, '..', 'public'), {
       index: false,
       maxAge: '1h',
+    }),
+  );
+
+  // Operator uploads, written by media.service.ts. Same root-relative URL shape as
+  // above (`/uploads/<uuid>.png`), but a directory the server owns: it is not
+  // regenerated, and it is not in the repository. `immutable` is safe because the
+  // name is a UUID and nothing ever overwrites a stored file.
+  app.use(
+    URL_PREFIX,
+    express.static(UPLOADS_DIR, {
+      index: false,
+      maxAge: '1y',
+      immutable: true,
     }),
   );
 

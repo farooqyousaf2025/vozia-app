@@ -3,6 +3,7 @@ package com.voiza.app.data.remote
 import com.voiza.app.data.remote.dto.AuthResponse
 import com.voiza.app.data.remote.dto.CreateGameBody
 import com.voiza.app.data.remote.dto.CreateRoomBody
+import com.voiza.app.data.remote.dto.EmojiCatalogueDto
 import com.voiza.app.data.remote.dto.GameActionBody
 import com.voiza.app.data.remote.dto.GameCatalogResponse
 import com.voiza.app.data.remote.dto.GameDisputeEnvelope
@@ -30,6 +31,7 @@ import com.voiza.app.data.remote.dto.SeatStatusBody
 import com.voiza.app.data.remote.dto.SeatsResponse
 import com.voiza.app.data.remote.dto.SendGiftBody
 import com.voiza.app.data.remote.dto.SendGiftResponse
+import com.voiza.app.data.remote.dto.ThemeCatalogueDto
 import com.voiza.app.data.remote.dto.UpdateProfileBody
 import com.voiza.app.data.remote.dto.UpdateRoomBody
 import com.voiza.app.data.remote.dto.UserEnvelope
@@ -109,6 +111,20 @@ interface VoizaApiService {
     /** The administrator's seat bounds, so the create-room form never guesses a capacity. */
     @GET("api/rooms/capacity")
     suspend fun roomCapacity(): SeatPolicyResponse
+
+    /**
+     * Themes and effects an operator maintains in the database. Everything needed to restyle a room
+     * arrives as a URL, so a theme added after this APK was built still renders.
+     */
+    @GET("api/rooms/themes")
+    suspend fun themeCatalogue(): ThemeCatalogueDto
+
+    /**
+     * Chat emoji an operator maintains in the admin panel, and the pattern a message is scanned
+     * with. Loaded once per session rather than per room: a picker is not part of a room resource.
+     */
+    @GET("api/emoji")
+    suspend fun emojiCatalogue(): EmojiCatalogueDto
 
     @GET("api/rooms/{id}")
     suspend fun room(@Path("id") roomId: String): RoomDetailResponse

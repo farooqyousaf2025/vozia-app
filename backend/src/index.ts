@@ -7,6 +7,8 @@ import { bootstrapAdmin } from './controllers/auth.controller';
 import { setGameBroadcaster, sweepExpiredSessions } from './services/game.service';
 import { expireStaleOrders } from './services/seller-recharge.service';
 import { emitToRoom, initSocket } from './services/socket.service';
+import { loadRankRegistry } from './services/rank.service';
+import { loadThemeRegistry } from './services/theme.service';
 
 async function waitForDatabase(timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -21,6 +23,13 @@ async function waitForDatabase(timeoutMs = 30_000): Promise<void> {
 async function main(): Promise<void> {
   assertSecretsAreSafe();
   await waitForDatabase();
+  // The theme/effect snapshot is read once here because every room DTO is built synchronously
+  // from it. Failing to load is fatal on purpose: a half-populated decoration catalogue would
+  // silently render the wrong art on every device.
+  await loadThemeRegistry();
+  // Same reason for the level ladder: every user DTO resolves a rung synchronously, and half a
+  // ladder would put the wrong badge on every account.
+  await loadRankRegistry();
   await bootstrapAdmin();
 
   const app = createApp();

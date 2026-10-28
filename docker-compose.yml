@@ -136,6 +136,10 @@ services:
         condition: service_started
     ports:
       - "4000:4000"
+    volumes:
+      # Art, sounds and badges uploaded from the panel's Media library. Back this up
+      # alongside postgres_data: the database rows point at these bytes.
+      - uploads_data:/app/uploads
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 15s
@@ -159,3 +163,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  uploads_data:

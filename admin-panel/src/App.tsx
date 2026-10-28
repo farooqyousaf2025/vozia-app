@@ -7,12 +7,16 @@ import { IconShieldCheck } from './components/ui/Icons';
 import { useAuth } from './context/AuthContext';
 import AuditPage from './pages/AuditPage';
 import CommissionsPage from './pages/CommissionsPage';
+import DecorPage from './pages/DecorPage';
+import EmojiPage from './pages/EmojiPage';
 import FinancePage from './pages/FinancePage';
 import GamesPage from './pages/GamesPage';
 import GiftsPage from './pages/GiftsPage';
 import LoginPage from './pages/LoginPage';
+import MediaPage from './pages/MediaPage';
 import OverviewPage from './pages/OverviewPage';
 import PartnersPage from './pages/PartnersPage';
+import RanksPage from './pages/RanksPage';
 import RechargesPage from './pages/RechargesPage';
 import RoomConsolePage from './pages/RoomConsolePage';
 import RoomsPage from './pages/RoomsPage';
@@ -64,6 +68,10 @@ export default function App() {
         <Route path="rooms" element={<RequirePermission permission="room:read"><RoomsPage /></RequirePermission>} />
         <Route path="rooms/:id" element={<RequirePermission permission="room:read"><RoomConsolePage /></RequirePermission>} />
         <Route path="gifts" element={<RequirePermission permission="dashboard:read"><GiftsPage /></RequirePermission>} />
+        <Route path="media" element={<RequirePermission permission="media:manage"><MediaPage /></RequirePermission>} />
+        <Route path="decor" element={<RequirePermission permission="room:read"><DecorPage /></RequirePermission>} />
+        <Route path="emoji" element={<RequirePermission permission="room:read"><EmojiPage /></RequirePermission>} />
+        <Route path="ranks" element={<RequirePermission permission="user:read"><RanksPage /></RequirePermission>} />
         <Route path="withdrawals" element={<RequirePermission permission="withdrawal:review"><WithdrawalsPage /></RequirePermission>} />
         <Route path="games" element={<RequirePermission permission="game:read"><GamesPage /></RequirePermission>} />
         <Route path="partners" element={<RequirePermission permission="business:manage"><PartnersPage /></RequirePermission>} />

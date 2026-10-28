@@ -19,7 +19,8 @@ import {
   UserRow,
   WithdrawalRow,
 } from '../types/db';
-import { ambientEffectFor } from '../config/themes';
+import { ambientEffectFor, themeFor } from '../services/theme.service';
+import { nextRankFor, rankFor, RankDto } from '../services/rank.service';
 
 export type MiniUser = {
   id: string;
@@ -28,6 +29,12 @@ export type MiniUser = {
   diamondBalance?: number;
   /** Only where the client needs it: drives the size of a room entry effect. */
   vipLevel?: number;
+  /**
+   * Earned rung, resolved here. A client must never build the badge path from `vipLevel` or from
+   * a level it guessed: an operator's art lives at `/uploads/<uuid>.png`, and the rung a member
+   * holds comes from XP the phone is not allowed to know about.
+   */
+  rank?: RankDto;
 };
 
 export type SeatDto = {
@@ -45,6 +52,11 @@ export type RoomDto = {
   description: string | null;
   coverUrl: string | null;
   theme: string;
+  /**
+   * Wallpaper for the room's theme, resolved here. A client must never build this path from the
+   * slug: an operator's theme points at `/uploads/<uuid>.png`, so the derivation would 404.
+   */
+  themeWallpaper: string;
   category: RoomRow['category'];
   /** ISO 639-1 tag the host stated, or null when they never said. */
   language: string | null;
@@ -52,8 +64,8 @@ export type RoomDto = {
   region: string | null;
   /** Host-written house rules; the client shows them, it does not enforce them. */
   rules: string | null;
-  /** Ambient Lottie loop the client plays behind this room — chosen by the server. */
-  ambientEffect: string;
+  /** Ambient Lottie loop the client plays behind this room — null only if the catalogue has none. */
+  ambientEffect: string | null;
   type: RoomRow['type'];
   seatCapacity: number;
   status: RoomRow['status'];
@@ -122,6 +134,12 @@ export type UserDto = {
   isVerified: boolean;
   /** Spend tier compared against gifts.min_vip_level; ops-set, never self-service. */
   vipLevel: number;
+  /** Lifetime experience. Moves only through server-side activity, never a client field. */
+  xp: number;
+  /** The rung `xp` sits on: name, badge URL and colour, all resolved from the admin's ladder. */
+  rank: RankDto;
+  /** What the next rung costs, or null at the top of the ladder. */
+  nextRank: { level: number; name: string; remainingXp: number } | null;
   lastSeenAt: string | null;
   createdAt: string;
 };
@@ -231,14 +249,18 @@ export function toMiniUser(row: {
   avatar_url?: string | null;
   diamond_balance?: number;
   vip_level?: number;
+  xp?: string | number;
 }): MiniUser {
   const mini: MiniUser = { id: row.id, username: row.username, avatarUrl: row.avatar_url ?? null };
   if (row.diamond_balance !== undefined) mini.diamondBalance = row.diamond_balance;
   if (row.vip_level !== undefined) mini.vipLevel = row.vip_level;
+  // Only queries that bother to read `xp` get a rank, so a lean seat-list SELECT stays lean.
+  if (row.xp !== undefined) mini.rank = rankFor(Number(row.xp));
   return mini;
 }
 
 export function toUser(row: UserRow): UserDto {
+  const xp = Number(row.xp ?? 0);
   return {
     id: row.id,
     phone: row.phone,
@@ -255,6 +277,9 @@ export function toUser(row: UserRow): UserDto {
     status: row.status,
     isVerified: row.is_verified,
     vipLevel: row.vip_level,
+    xp,
+    rank: rankFor(xp),
+    nextRank: nextRankFor(xp),
     lastSeenAt: row.last_seen_at ? iso(row.last_seen_at) : null,
     createdAt: iso(row.created_at),
   };
@@ -281,6 +306,7 @@ export function toRoom(row: RoomRow): RoomDto {
     description: row.description,
     coverUrl: row.cover_url,
     theme: row.theme,
+    themeWallpaper: themeFor(row.theme).wallpaper,
     category: row.category,
     language: row.language ?? null,
     region: row.region ?? null,

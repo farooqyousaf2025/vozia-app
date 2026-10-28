@@ -1,8 +1,10 @@
 package com.voiza.app.data.mapper
 
 import com.google.gson.Gson
+import com.voiza.app.data.remote.dto.EmojiCatalogueDto
 import com.voiza.app.data.remote.dto.GiftDto
 import com.voiza.app.data.remote.dto.LeaderboardResponse
+import com.voiza.app.data.remote.dto.MiniUserDto
 import com.voiza.app.data.remote.dto.RoomDto
 import com.voiza.app.data.remote.dto.SeatDto
 import com.voiza.app.data.remote.dto.SeatPolicyResponse
@@ -11,8 +13,11 @@ import com.voiza.app.data.remote.dto.SocketHandRaiseDto
 import com.voiza.app.data.remote.dto.SocketLikeDto
 import com.voiza.app.data.remote.dto.SocketRoomProfileDto
 import com.voiza.app.data.remote.dto.SocketWalletUpdateDto
+import com.voiza.app.data.remote.dto.ThemeCatalogueDto
+import com.voiza.app.data.remote.dto.UserDto
 import com.voiza.app.domain.model.DEFAULT_AMBIENT_EFFECT
 import com.voiza.app.domain.model.DEFAULT_ROOM_THEME
+import com.voiza.app.domain.model.FALLBACK_EMOJI_CODE_PATTERN
 import com.voiza.app.domain.model.GiftEffectKind
 import com.voiza.app.domain.model.RankBoard
 import com.voiza.app.domain.model.RoomCategory
@@ -21,6 +26,7 @@ import com.voiza.app.domain.model.RoomSort
 import com.voiza.app.domain.model.RoomType
 import com.voiza.app.domain.model.SeatPolicy
 import com.voiza.app.domain.model.SeatStatus
+import com.voiza.app.domain.model.UserRank
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -223,6 +229,115 @@ class MappersTest {
     }
 
     @Test
+    fun `the room carries the wallpaper url the server resolved`() {
+        val room = gson.fromJson(
+            """{"id":"r1","roomNumber":7,"title":"T","host":$host,
+               "category":"PARTY","type":"PUBLIC","status":"ACTIVE",
+               "theme":"nebula","themeWallpaper":"/uploads/3f9c.png"}""",
+            RoomDto::class.java,
+        ).toDomain()
+
+        // Operator art lives in the upload store, so the only correct wallpaper the
+        // client can draw is the one the API named.
+        assertEquals("/uploads/3f9c.png", room.themeWallpaper)
+    }
+
+    @Test
+    fun `a room with no wallpaper key draws nothing instead of a guessed path`() {
+        val room = gson.fromJson(
+            roomJson(""""category":"CHAT","type":"PUBLIC","status":"ACTIVE","theme":"aurora""""),
+            RoomDto::class.java,
+        ).toDomain()
+
+        assertNull(room.themeWallpaper)
+        assertEquals("aurora", room.theme)
+    }
+
+    @Test
+    fun `the published theme catalogue keeps its urls and the welcome loop`() {
+        val catalogue = gson.fromJson(
+            """{"themes":[{"slug":"aurora","name":"Aurora","accent":"#3ddc97",
+                           "wallpaper":"/themes/aurora/wallpaper.png"},
+                          {"slug":"neon","name":"Neon","accent":"#ff00aa",
+                           "wallpaper":"/uploads/neon.png"}],
+               "defaultTheme":"neon","welcome":"/welcome.json","effects":["/effects/room-glow.json"]}""",
+            ThemeCatalogueDto::class.java,
+        ).toDomain()
+
+        assertEquals("neon", catalogue.defaultTheme)
+        assertEquals("/welcome.json", catalogue.welcome)
+        assertEquals(2, catalogue.themes.size)
+        assertEquals("/uploads/neon.png", catalogue.themes[1].wallpaper)
+        assertEquals("#ff00aa", catalogue.themes[1].accent)
+    }
+
+    @Test
+    fun `a catalogue from an older backend still names a default and no welcome`() {
+        val catalogue = gson.fromJson(
+            """{"themes":[{"slug":"aurora","name":"Aurora","accent":"#3ddc97",
+                           "wallpaper":"/themes/aurora/wallpaper.png"}]}""",
+            ThemeCatalogueDto::class.java,
+        ).toDomain()
+
+        // A blank default would make the room settings form open on nothing selected.
+        assertEquals(DEFAULT_ROOM_THEME, catalogue.defaultTheme)
+        assertNull(catalogue.welcome)
+    }
+
+    @Test
+    fun `the emoji catalogue keeps the server token and the art url`() {
+        val catalogue = gson.fromJson(
+            """{"codePattern":"\\[[a-z0-9][a-z0-9-]{0,31}\\]","emojis":[
+                 {"key":"smile","label":"Smile","code":"[smile]","url":"/emoji/smile.webp"},
+                 {"key":"heart_eyes","label":"Heart eyes","code":"[heart_eyes]","url":"https://cdn/heart.webp"}]}""",
+            EmojiCatalogueDto::class.java,
+        ).toDomain()
+
+        assertEquals(2, catalogue.emojis.size)
+        // A chat row stores the token, so the client must send and match the server's own spelling.
+        assertEquals("[heart_eyes]", catalogue.emojis[1].code)
+        assertEquals("https://cdn/heart.webp", catalogue.emojis[1].url)
+        assertEquals("\\[[a-z0-9][a-z0-9-]{0,31}\\]", catalogue.codePattern)
+        assertTrue(Regex(catalogue.codePattern).matches("[smile]"))
+    }
+
+    @Test
+    fun `an emoji row with no art is dropped rather than shown blank`() {
+        val catalogue = gson.fromJson(
+            """{"emojis":[{"key":"gone","label":"Gone","code":"[gone]","url":""},
+                          {"key":"ok","label":"Ok","code":"[ok]","url":"/emoji/ok.webp"}]}""",
+            EmojiCatalogueDto::class.java,
+        ).toDomain()
+
+        // The picker would offer a tile with nothing in it, and no message could ever match it.
+        assertEquals(1, catalogue.emojis.size)
+        assertEquals("[ok]", catalogue.emojis[0].code)
+    }
+
+    @Test
+    fun `a missing label falls back to the key and a missing code is spelled from it`() {
+        val option = gson.fromJson(
+            """{"emojis":[{"key":"tongue","url":"/emoji/tongue.webp"}]}""",
+            EmojiCatalogueDto::class.java,
+        ).toDomain().emojis.single()
+
+        assertEquals("[tongue]", option.code)
+        assertEquals("tongue", option.label)
+    }
+
+    @Test
+    fun `an unusable or absent code pattern falls back, never crashes a bubble`() {
+        val older = gson.fromJson("""{"emojis":[]}""", EmojiCatalogueDto::class.java).toDomain()
+        assertEquals(FALLBACK_EMOJI_CODE_PATTERN, older.codePattern)
+
+        // Regex() throws on a bad pattern, and every chat bubble builds one from this string.
+        val broken = gson.fromJson(
+            """{"codePattern":"[unclosed","emojis":[]}""", EmojiCatalogueDto::class.java,
+        ).toDomain()
+        assertEquals(FALLBACK_EMOJI_CODE_PATTERN, broken.codePattern)
+    }
+
+    @Test
     fun `a like batch keeps the server total and may name nobody`() {
         val withUser = gson.fromJson(
             """{"roomId":"r1","count":12,"total":980,
@@ -366,5 +481,88 @@ class MappersTest {
         assertEquals("trending", RoomSort.TRENDING.apiValue)
         assertEquals("recent", RoomSort.RECENT.apiValue)
         assertEquals("popular", RoomSort.POPULAR.apiValue)
+    }
+
+    @Test
+    fun `the rung the server resolved arrives as name art and colour`() {
+        // Exactly what toMiniUser() emits for room:user_joined, which does read users.xp.
+        val user = gson.fromJson(
+            """{"id":"u1","username":"ana","vipLevel":2,
+               "rank":{"level":9,"name":"Gold III","badge":"/badges/level-9.png","accent":"#ecbc58"}}""",
+            MiniUserDto::class.java,
+        ).toDomain()
+
+        assertEquals(9, user.rank?.level)
+        assertEquals("Gold III", user.rank?.name)
+        assertEquals("/badges/level-9.png", user.rank?.badge)
+        assertEquals("#ecbc58", user.rank?.accent)
+        // The spend tier is still its own thing: the ladder never replaces it.
+        assertEquals(2, user.vipLevel)
+    }
+
+    @Test
+    fun `a lean payload that ships no rank leaves it absent instead of inventing level zero`() {
+        // fetchAudience() and the seat list select neither xp nor rank.
+        val seat = gson.fromJson(
+            """{"seatIndex":3,"status":"OCCUPIED","isMuted":false,"isSpeaker":true,
+               "user":{"id":"u1","username":"ana"}}""",
+            SeatDto::class.java,
+        ).toDomain()
+
+        assertNull(seat.user?.rank)
+    }
+
+    @Test
+    fun `a rung with no name is dropped because the app must not label a ladder rung`() {
+        val user = gson.fromJson(
+            """{"id":"u1","username":"ana","rank":{"level":4,"badge":"/badges/level-4.png","accent":"#fff"}}""",
+            MiniUserDto::class.java,
+        ).toDomain()
+
+        assertNull(user.rank)
+    }
+
+    @Test
+    fun `the signed-in account carries its experience and rung from the server`() {
+        val account = gson.fromJson(
+            """{"id":"u1","phone":"+1","username":"ana","diamondBalance":10,"rCoinBalance":0,
+               "totalGiftsSent":0,"totalGiftsReceived":0,"userType":"USER","status":"ACTIVE",
+               "isVerified":false,"vipLevel":0,"xp":30500,
+               "rank":{"level":9,"name":"Gold III","badge":"/uploads/b.png","accent":"#ecbc58"},
+               "nextRank":{"level":10,"name":"Platinum I","remainingXp":9500}}""",
+            UserDto::class.java,
+        ).toDomain()
+
+        assertEquals(30500L, account.xp)
+        assertEquals(UserRank(9, "Gold III", "/uploads/b.png", "#ecbc58"), account.rank)
+    }
+
+    @Test
+    fun `an old server without the rank fields still deserialises the account`() {
+        // Gson writes a missing xp key as zero on the primitive, and null on the object.
+        val account = gson.fromJson(
+            """{"id":"u1","phone":"+1","username":"ana","diamondBalance":10,"rCoinBalance":0,
+               "totalGiftsSent":0,"totalGiftsReceived":0,"userType":"USER","status":"ACTIVE",
+               "isVerified":false,"vipLevel":0}""",
+            UserDto::class.java,
+        ).toDomain()
+
+        assertEquals(0L, account.xp)
+        assertNull(account.rank)
+    }
+
+    @Test
+    fun `a leaderboard row shows the rung each earner holds`() {
+        val board = gson.fromJson(
+            """{"window":"week","role":"senders","unit":"diamond",
+               "leaders":[{"id":"u1","username":"ana","avatarUrl":null,"earned":5000,
+                           "rank":{"level":12,"name":"Platinum III","badge":"/badges/level-12.png","accent":"#9fd8ff"}}]}""",
+            LeaderboardResponse::class.java,
+        ).toDomain()
+
+        val row = board.rows.single()
+        assertEquals("Platinum III", row.user.rank?.name)
+        assertEquals("/badges/level-12.png", row.user.rank?.badge)
+        assertEquals(5000L, row.earned)
     }
 }

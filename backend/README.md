@@ -69,20 +69,162 @@ It emits three kinds of file, all deterministic (re-running is byte-identical):
 | `welcome.json`              | Entry flourish, played once when a member joins a room                 |
 | `effects/<slug>.json`       | Ambient loops (`room-sparkle`, `-confetti`, `-hearts`, `-glow`)        |
 | `themes/<slug>/wallpaper.png` | Room background, one per theme slug                                  |
-| `themes/manifest.json`      | **The theme registry.** Read at boot by `src/config/themes.ts`         |
+| `themes/manifest.json`      | The generator's own record of what it drew. Not read at runtime — the theme registry is in the database. |
 
 Every animation is built by `scripts/lottie-kit.cjs` and passed through its
 `validate()` before being written, because a malformed Lottie renders as an
-invisible blank overlay rather than an error. `manifest.json` is the single
-source of truth for which themes exist: `GET /api/rooms/themes` publishes it,
-`rooms.theme` is validated against it, and a slug can never be listed without
-its wallpaper. Hosts set the theme with `POST /api/rooms/:id/theme`, ops with
-`POST /api/admin/rooms/:id/theme`; both emit `room:theme_changed` so everyone
-in the room swaps background at once.
+invisible blank overlay rather than an error.
+
+## Room decoration is data (`/api/admin/decor`)
+
+Which themes exist, what they are called, which one is the default, which Lottie
+loop breathes behind a PARTY room and which flourish plays on entry are rows in
+`room_themes`, `visual_effects` and `room_category_effects` (migration `0015`),
+not a file shipped with the build. The generated art in `public/` is only where
+those rows point by default; an operator can point a theme at
+`/uploads/<uuid>.png` instead and no client code changes.
+
+`src/services/theme.service.ts` owns the catalogue. It reads the rows into an
+immutable snapshot at boot, reloads after every admin write, and refreshes in the
+background once a snapshot is older than 30 s — because `toRoom()` in
+`utils/serialize.ts` runs on every room DTO (hundreds of times on a discovery
+page) and is synchronous, so no request path may await a catalogue query. A
+second backend process is therefore at most one refresh behind a write, which for
+a few dozen rows is not worth a pub/sub channel.
+
+| Route                                          | Permission      | What it does                                          |
+| ---------------------------------------------- | --------------- | ----------------------------------------------------- |
+| `GET /api/rooms/themes`                        | public          | the shape clients render: slugs, names, accents, **wallpaper URLs**, `welcome`, `effects` |
+| `GET /api/admin/decor`                         | `room:read`     | the same rows plus the fields a phone never sees (`isDefault`, `sortOrder`, `roomsUsing`, `usedByCategories`) |
+| `POST/PUT/DELETE /api/admin/themes[/:slug]`    | `config:manage` | add, rename, repoint, reorder, default or retire a theme |
+| `POST/PUT/DELETE /api/admin/effects[/:key]`    | `config:manage` | same for an `AMBIENT` or `WELCOME` Lottie scene          |
+| `PUT /api/admin/room-categories/:category/effect` | `config:manage` | which loop each `RoomCategory` plays                  |
+
+Three rules make that safe to expose to an operator:
+
+- **Clients get URLs, never a path to derive.** A theme's wallpaper arrives as
+  `themeWallpaper` on every room payload and as `wallpaper` on `room:theme_changed`,
+  so an app that guessed `/themes/<slug>/wallpaper.png` would 404 on uploaded art.
+- **`url` is pattern-checked twice** — a `CHECK` in `0015` and `URL_PATTERN` in
+  the service — because the string is handed to every device that joins a room;
+  `javascript:` and `file:` are not storable even by an admin.
+- **Deletes refuse or degrade, never orphan.** A theme still stored by rooms can
+  be retired (those rooms keep the slug and render the default art afterwards);
+  an effect mapped to a category answers `effect_in_use` until the mapping moves.
+
+Hosts set a theme with `POST /api/rooms/:id/theme`, ops with
+`POST /api/admin/rooms/:id/theme`; both emit `room:theme_changed` with the new
+slug *and* its wallpaper so everyone in the room swaps background at once.
 
 Ops actions that target one person — the `POST /api/admin/rooms/:id/warn`
 nudge — go out on the private `user:<id>` channel as `room:warning`, exactly
 like `room:kicked`, so the rest of the room never sees them.
+
+## Operator uploads (`/uploads/…`)
+
+`public/` is regenerable, so files an operator puts into a running system go to
+`backend/uploads/` instead — gitignored, outside the repository, and part of any backup.
+`src/services/media.service.ts` owns that directory: it decodes the base64 body, refuses
+anything whose magic bytes do not match the formats the kind accepts, names the stored file
+after a fresh UUID (the client's file name is kept only as a label), reads image dimensions
+from the header rather than trusting the client, and records the row in `media_assets`
+(migration `0014`). Identical bytes are deduplicated by sha256, so a re-upload returns the
+existing row with `duplicate: true` and writes no second copy.
+
+| Kind             | Accepted            | Cap    |
+| ---------------- | ------------------- | ------ |
+| `GIFT_ICON`      | PNG, GIF, WebP, JPEG | 2 MB   |
+| `GIFT_ANIMATION` | Lottie JSON         | 2 MB   |
+| `GIFT_SOUND`     | WAV, MP3, M4A       | 2 MB   |
+| `EFFECT`         | Lottie JSON         | 3 MB   |
+| `BADGE`          | PNG, GIF, WebP      | 512 KB |
+
+`GET`/`POST`/`DELETE /api/admin/uploads` are gated on `media:manage` — its own permission
+rather than `gift:manage`, because the same store holds room effects and rank badges and
+whoever maintains those should not thereby gain the right to price a gift. Uploads are the
+one request body allowed to be large: `app.ts` mounts a 5 MB `express.json` on that route
+*before* the global 64 kB parser, so every other endpoint keeps the tight default.
+
+`DELETE` answers `upload_in_use` (409) while a `gifts.icon_url`, `gifts.animation_url` or
+`gifts.sound_url` still equals the asset's URL — a catalogue row pointing at a deleted file
+is a broken image on someone's phone. Both writes and deletes are recorded in `admin_audit`
+as `MEDIA_UPLOAD` / `MEDIA_DELETE`. `app.ts` serves the directory at the same root-relative
+URL shape as `public/`, so the phone loads `/uploads/<uuid>.png` exactly as it loads
+`/gifts/rose.png`, and new art appears without an app update.
+
+`GET /emoji/manifest.json` remains a separate, static quick-react set under `public/emoji/`
+(regenerated by `scripts/build-emoji-manifest.cjs`, `--check` verifies it against the art on
+disk).
+
+## Chat emoji: the database is the catalogue
+
+A room message stores the **token**, not a picture: `[smile]` is what lands in
+`chat_messages.content` and what every client is expected to draw. The art belongs to the
+row, so retiring a code never rewrites history and adding one needs no app release.
+
+| Route | Who | What |
+| --- | --- | --- |
+| `GET /api/emoji` | anyone | `{codePattern, emojis: [{key, label, code, url}]}` — what a phone loads |
+| `GET /api/admin/emoji` | `room:read` | the same rows plus `sortOrder` |
+| `POST /api/admin/emoji` | `config:manage` | `{key, label, url, sortOrder}` |
+| `PUT /api/admin/emoji/:key` | `config:manage` | `key` is immutable, so a saved row's token cannot move sideways |
+| `DELETE /api/admin/emoji/:key` | `config:manage` | no guard: old messages keep their text and render it literally |
+
+Both lists hand out URLs, never a slug the client turns into a path: seeded art is
+`/emoji/<key>.webp` and an uploaded row is `/uploads/<uuid>.png`, both served by this origin.
+
+`EMOJI_CODE_PATTERN` is the one expression the server scans messages with and it is published
+as `codePattern`, which is what the Android client compiles. The key grammar
+(`/^[a-z0-9][a-z0-9-]{1,31}$/`) is exactly the set that pattern accepts, so a stored token
+cannot be spelled in a way the scanner would miss. Every write is recorded in `admin_audit` as
+`EMOJI_CREATE` / `EMOJI_UPDATE` / `EMOJI_DELETE`.
+
+The art itself was imported from two upstream sets (TUILiveKit, MIT; chat-uikit-android,
+Apache-2.0 — provenance in `NOTICE.md`) and is carried by the migration, not by a generator:
+62 rows in `database/migrations/0016_emoji_characters.sql`, each pointing at a
+`/emoji/<key>.webp` file that `scripts/build-emoji-manifest.cjs` writes into `public/emoji/`.
+A fresh database therefore gets the picker with `npm run db:migrate`:
+
+    node scripts/migrate.cjs               # schema, including 0016_emoji_characters.sql
+    npm run assets:generate                # regenerates public/emoji art + its manifest
+    npm run test:e2e                       # group H1b, the checks prefixed "emoji:"
+
+## The level ladder is data too (`/api/admin/ranks`)
+
+There are two numbers on a member and they answer different questions. `users.vip_level` is a
+**spend tier an operator assigns**; it is what `gifts.min_vip_level` is compared with. The ladder
+is what the member **earns**: `users.xp` resolves to a rung in `rank_levels`
+(migration `0017_rank_levels.sql`), and a phone never sees a threshold it would have to guess at.
+
+Experience moves only on server-side writes. `ledger.service.ts` calls `awardXp()` inside the
+same transaction that posts a gift, so XP cannot drift from the ledger: 1 per diamond spent,
+0.5 per R-coin earned (`Math.floor`, so a half never rounds up on its own). The rates and the
+rungs are both published, because an operator may change either without a release.
+
+| Route | Who | What |
+| --- | --- | --- |
+| `GET /api/ranks` | anyone | `{maxLevel, xpRules, levels: [{level, name, badge, accent, minXp}]}` — active rungs only, ascending |
+| `GET /api/admin/ranks` | `user:read` | every row, retired included, plus `membersOnRung` — counted with the same rule `rankFor()` uses, so the screen cannot disagree with a phone |
+| `POST /api/admin/ranks` | `config:manage` | `{level, name, badgeUrl, accent, minXp, isActive}` |
+| `PUT /api/admin/ranks/:level` | `config:manage` | `level` is immutable; renaming a rung is an update, renumbering is add-then-delete |
+| `DELETE /api/admin/ranks/:level` | `config:manage` | members keep their XP and re-resolve downward; level 0 is refused (`rank_last`), because a rung nobody can sit on is a room with no names |
+| `POST /api/admin/users/:id/xp` | `user:vip` | `{delta, reason}` — the only way a human moves experience; audited as `USER_XP_ADJUST` with the reason |
+
+Rules the server enforces, each with its own error code: a rung number is `0..20` (the `CHECK`
+in 0017), floors must strictly increase (`rank_xp_order` — a rung costing the same as the one
+below it can never be shown), level 0 costs 0 (`rank_floor`), `badgeUrl` must be `/…` or
+`https://…` (`rank_url_invalid`, because this string is handed to every device that joins a
+room), and `accent` must be `#rrggbb`. Writes land in `admin_audit` as `RANK_CREATE` /
+`RANK_UPDATE` / `RANK_DELETE`.
+
+Resolution is a boot-time snapshot with stale-while-revalidate after 30 s, the same shape
+`theme.service.ts` uses. It has to be synchronous: `toUser()` and `toMiniUser()` run on every
+DTO in a room fan-out and cannot await a query. Mini-users get `rank` only where the query
+bothered to select `xp` — the seat list stays lean and simply carries no rung.
+
+    node scripts/migrate.cjs               # schema, including 0017_rank_levels.sql
+    npm run assets:generate                # public/badges/level-0.png … level-20.png
+    npm run test:e2e                       # group H1d, the checks prefixed "rank:"
 
 ## How many seats a room gets is the administrator's call
 
@@ -146,8 +288,8 @@ served from `public/` plus a small enum, and the clients decide how to draw it.
 | ------------------------------------ | --------------------------------------- | --------------------------------------------------- |
 | `gifts.effect_kind` → `effectKind`   | `GET /api/gifts`, `room:gift_animated`  | `TICKER` scrolls the gift in a 3-row column; `FULLSCREEN` takes the screen over |
 | `rooms.like_count` → `likeCount`     | room detail / join / list               | the number under the like button, until the next batch |
-| `ambientEffect`                      | every room payload                      | which `public/effects/*.json` loop breathes behind the seats, chosen per category by `config/themes.ts` |
-| `themes/<slug>/wallpaper.png`        | `room.theme`                            | background, swapped live by `room:theme_changed`     |
+| `ambientEffect`                      | every room payload                      | which `public/effects/*.json` loop breathes behind the seats, chosen per category by the `room_category_effects` rows |
+| `themeWallpaper`                     | every room payload, `room:theme_changed` | the background to draw — a URL the server resolved from `room_themes`, never a path built from `room.theme` |
 
 `effectKind` is operator-set (`POST /api/admin/gifts`, `PUT /api/admin/gifts/:id`),
 never client-set, and an absent or unrecognised value reads as `TICKER` on both
@@ -204,7 +346,7 @@ Two behaviours worth knowing before pointing a test account at this:
 ## Tests
 
 `npm run test:e2e` drives a *running* stack (PostgreSQL + Redis + LiveKit + this API)
-through 128 checks: OTP auth, wallet ledger double-spend under concurrency, seat
+through 154 checks: OTP auth, wallet ledger double-spend under concurrency, seat
 row-lock contention, the seat policy (the published default, a room created with no
 capacity, a refused over-the-max request, an admin rewrite that lands in `admin_audit`,
 seats beyond the old hardcoded nine taken and refused, and a 64-seat room accepted by
@@ -216,7 +358,11 @@ database assertions, gift `effect_kind` and the SYSTEM chat lines it writes, lik
  batching (twelve taps must arrive as fewer than twelve broadcasts, and total exactly
 twelve), the two ranking boards against the same ledger aggregate, the entry notice and
 its dedupe, LiveKit webhook signature trust, VIP gift gating, and the Stripe webhook
-path (signature rejection, idempotent credit, replayed delivery). It exits non-zero on
+path (signature rejection, idempotent credit, replayed delivery) and the media store (an
+accepted PNG read back off `/uploads/` byte-for-byte, a script renamed `.png` refused by its
+magic bytes, an oversized file refused, identical bytes deduplicated instead of copied, a
+traversal-shaped file name stored as text only, a member token refused, and a delete refused
+until no gift row points at the file). It exits non-zero on
 any failure.
 
 `npm run test:games` (67) and `npm run test:business` (87) run against the same stack:

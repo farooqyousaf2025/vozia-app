@@ -78,6 +78,13 @@ export interface UserRow {
   isVerified: boolean;
   /** Gift spend tier; 0 is the default unranked account. */
   vipLevel: number;
+  /**
+   * Earned experience and the rung it resolves to (`rank_levels`, migration 0017). `rank` is what a
+   * phone paints; `nextRank` is null at the top of the ladder.
+   */
+  xp: number;
+  rank: RankRung;
+  nextRank: { level: number; name: string; remainingXp: number } | null;
   lastSeenAt: string | null;
   createdAt: string;
 }
@@ -260,8 +267,129 @@ export interface RoomTheme {
 export interface ThemeCatalogue {
   themes: RoomTheme[];
   defaultTheme: string;
-  welcome: string;
+  /** null when the operator has removed every welcome flourish; the app then plays nothing. */
+  welcome: string | null;
   effects: string[];
+}
+
+/** The operator view of one theme: what `/api/rooms/themes` publishes, plus the wiring. */
+export interface AdminRoomTheme extends RoomTheme {
+  isDefault: boolean;
+  sortOrder: number;
+  /** Rooms still carrying this slug. Deleting the theme leaves them on the default look. */
+  roomsUsing: number;
+}
+
+export type VisualEffectKind = 'AMBIENT' | 'WELCOME';
+
+export interface VisualEffect {
+  key: string;
+  kind: VisualEffectKind;
+  name: string;
+  url: string;
+  sortOrder: number;
+  /** Room categories that play this loop; empty for a welcome flourish. */
+  usedByCategories: string[];
+}
+
+export interface CategoryEffect {
+  category: string;
+  effectKey: string;
+  name: string | null;
+  url: string | null;
+}
+
+export interface DecorCatalogue {
+  themes: AdminRoomTheme[];
+  effects: VisualEffect[];
+  categoryEffects: CategoryEffect[];
+}
+
+/** Body of POST/PUT /api/admin/themes — `wallpaperUrl`, not `wallpaper`: the row's column name. */
+export interface ThemeInput {
+  slug?: string;
+  name?: string;
+  accent?: string;
+  wallpaperUrl?: string;
+  isDefault?: boolean;
+  sortOrder?: number;
+}
+
+export interface EffectInput {
+  key?: string;
+  kind?: VisualEffectKind;
+  name?: string;
+  url?: string;
+  sortOrder?: number;
+}
+
+/**
+ * One chat emoji (`emoji_characters`, migration 0016).
+ *
+ * `code` is derived by the server from `key` and is what a member types; a chat message stores that
+ * token, never this URL, so retiring a row cannot rewrite history.
+ */
+export interface EmojiOption {
+  key: string;
+  label: string;
+  code: string;
+  url: string;
+}
+
+export interface AdminEmoji extends EmojiOption {
+  sortOrder: number;
+}
+
+/** What `GET /api/emoji` hands to phones: the codes plus the expression a client matches with. */
+export interface PublishedEmojiCatalogue {
+  codePattern: string;
+  emojis: EmojiOption[];
+}
+
+/** Body of POST/PUT /api/admin/emoji. `key` is immutable once a message carries it. */
+export interface EmojiInput {
+  key?: string;
+  label?: string;
+  url?: string;
+  sortOrder?: number;
+}
+
+/**
+ * One rung of the earned-level ladder (`rank_levels`, migration 0017).
+ *
+ * `badge` is the URL a phone loads; `minXp` is the floor the rung is reached at. This ladder is
+ * separate from `vipLevel`, which an operator sets by hand and which gates gifts — a member earns
+ * a rung here by spending and receiving coins, and no client can write it.
+ */
+export interface RankRung {
+  level: number;
+  name: string;
+  badge: string;
+  accent: string;
+  minXp: number;
+}
+
+export interface AdminRank extends RankRung {
+  isActive: boolean;
+  /** Accounts resolving to this rung right now — what a delete or a move would shift. */
+  membersOnRung: number;
+}
+
+/** What `GET /api/ranks` hands to phones: only the live rungs, cheapest floor first. */
+export interface PublishedLadder {
+  maxLevel: number;
+  xpRules: { perDiamondSpent: number; perRCoinEarned: number };
+  levels: RankRung[];
+}
+
+/** Body of POST/PUT /api/admin/ranks. `level` is only accepted on create. */
+export interface RankInput {
+  level?: number;
+  name?: string;
+  badgeUrl?: string;
+  accent?: string;
+  minXp?: number;
+  isActive?: boolean;
 }
 
 /** Payloads the admin socket channel pushes to the console. */
@@ -748,4 +876,23 @@ export interface AuditEntry {
   createdAt: string;
   actor: string;
   actorKind: 'admin' | 'business' | 'system';
+}
+
+// ---- Uploaded media --------------------------------------------------------
+/** The five slots an operator can fill from the panel. Mirrors `MEDIA_KINDS` server-side. */
+export type MediaKind = 'GIFT_ICON' | 'GIFT_ANIMATION' | 'GIFT_SOUND' | 'EFFECT' | 'BADGE' | 'WALLPAPER' | 'EMOJI';
+
+export interface MediaAsset {
+  id: string;
+  kind: MediaKind;
+  /** The name the operator's file had, kept for the library listing only. */
+  fileName: string;
+  contentType: string;
+  byteSize: number;
+  /** Root-relative path stored on catalogue rows, e.g. `/uploads/3f2a….png`. */
+  url: string;
+  width: number | null;
+  height: number | null;
+  uploadedBy: string | null;
+  createdAt: string;
 }

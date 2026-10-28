@@ -21,24 +21,24 @@ import com.voiza.app.domain.model.DEFAULT_AMBIENT_EFFECT
 import com.voiza.app.ui.components.asAssetUrl
 
 // ---------------------------------------------------------------------------
-// Room look. The backend generates one wallpaper and a set of Lottie overlays
-// per theme slug (registry: backend/public/themes/manifest.json) and serves
-// them from its own origin, so the app derives paths instead of shipping art.
-// An unknown slug simply 404s and the plain gradient underneath shows through.
+// Room look. Every URL here is the server's: themes and Lottie loops are rows an
+// operator maintains in the database (room_themes / visual_effects, migration
+// 0015), and art added from the admin panel lives in the upload store at
+// /uploads/<uuid>.png. A client that turned a theme slug into a path would 404
+// on work that exists, so nothing in this file derives anything.
+// A null URL means there is nothing to draw and the gradient underneath shows.
 // ---------------------------------------------------------------------------
-
-private const val WELCOME_ANIMATION = "/welcome.json"
 
 /**
  * Theme wallpaper stretched over the room, with a scrim: every surface in the
  * room screen is translucent, so this has to stay readable at any brightness.
  */
 @Composable
-fun RoomWallpaper(theme: String?, modifier: Modifier = Modifier) {
-    val slug = theme?.trim()?.takeIf { it.isNotEmpty() } ?: return
+fun RoomWallpaper(wallpaperUrl: String?, modifier: Modifier = Modifier) {
+    val url = wallpaperUrl.asAssetUrl() ?: return
     Box(modifier = modifier.fillMaxSize()) {
         AsyncImage(
-            model = "/themes/$slug/wallpaper.png".asAssetUrl(),
+            model = url,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
@@ -55,10 +55,13 @@ fun RoomWallpaper(theme: String?, modifier: Modifier = Modifier) {
     }
 }
 
-/** Entry flourish, played once per join and drawn above the room content. */
+/**
+ * Entry flourish, played once per join and drawn above the room content. Named by
+ * `GET /api/rooms/themes`, so retiring it is an operator's decision rather than a release.
+ */
 @Composable
-fun WelcomeEffect(onFinished: () -> Unit, modifier: Modifier = Modifier) {
-    LottieOverlay(WELCOME_ANIMATION, iterations = 1, onFinished = onFinished, alpha = 1f, modifier = modifier)
+fun WelcomeEffect(welcomeUrl: String?, onFinished: () -> Unit, modifier: Modifier = Modifier) {
+    LottieOverlay(welcomeUrl, iterations = 1, onFinished = onFinished, alpha = 1f, modifier = modifier)
 }
 
 /**
@@ -78,7 +81,7 @@ fun AmbientRoomEffect(effectUrl: String?, modifier: Modifier = Modifier) {
 
 @Composable
 private fun LottieOverlay(
-    path: String,
+    path: String?,
     iterations: Int,
     onFinished: (() -> Unit)?,
     alpha: Float,

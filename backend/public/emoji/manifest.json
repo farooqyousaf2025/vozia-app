@@ -1,0 +1,378 @@
+{
+  "generatedBy": "scripts/build-emoji-manifest.cjs",
+  "codePattern": "\\[[a-z0-9][a-z0-9-]{0,31}\\]",
+  "emojis": [
+    {
+      "key": "smile",
+      "label": "Smile",
+      "code": "[smile]",
+      "url": "/emoji/smile.webp"
+    },
+    {
+      "key": "expect",
+      "label": "Expect",
+      "code": "[expect]",
+      "url": "/emoji/expect.webp"
+    },
+    {
+      "key": "blink",
+      "label": "Blink",
+      "code": "[blink]",
+      "url": "/emoji/blink.webp"
+    },
+    {
+      "key": "guffaw",
+      "label": "Guffaw",
+      "code": "[guffaw]",
+      "url": "/emoji/guffaw.webp"
+    },
+    {
+      "key": "kind-smile",
+      "label": "Kind smile",
+      "code": "[kind-smile]",
+      "url": "/emoji/kind-smile.webp"
+    },
+    {
+      "key": "haha",
+      "label": "Haha",
+      "code": "[haha]",
+      "url": "/emoji/haha.webp"
+    },
+    {
+      "key": "cheerful",
+      "label": "Cheerful",
+      "code": "[cheerful]",
+      "url": "/emoji/cheerful.webp"
+    },
+    {
+      "key": "speechless",
+      "label": "Speechless",
+      "code": "[speechless]",
+      "url": "/emoji/speechless.webp"
+    },
+    {
+      "key": "amazed",
+      "label": "Amazed",
+      "code": "[amazed]",
+      "url": "/emoji/amazed.webp"
+    },
+    {
+      "key": "sorrow",
+      "label": "Sorrow",
+      "code": "[sorrow]",
+      "url": "/emoji/sorrow.webp"
+    },
+    {
+      "key": "complacent",
+      "label": "Complacent",
+      "code": "[complacent]",
+      "url": "/emoji/complacent.webp"
+    },
+    {
+      "key": "silly",
+      "label": "Silly",
+      "code": "[silly]",
+      "url": "/emoji/silly.webp"
+    },
+    {
+      "key": "lustful",
+      "label": "Lustful",
+      "code": "[lustful]",
+      "url": "/emoji/lustful.webp"
+    },
+    {
+      "key": "giggle",
+      "label": "Giggle",
+      "code": "[giggle]",
+      "url": "/emoji/giggle.webp"
+    },
+    {
+      "key": "kiss",
+      "label": "Kiss",
+      "code": "[kiss]",
+      "url": "/emoji/kiss.webp"
+    },
+    {
+      "key": "wail",
+      "label": "Wail",
+      "code": "[wail]",
+      "url": "/emoji/wail.webp"
+    },
+    {
+      "key": "tears-laugh",
+      "label": "Tears of joy",
+      "code": "[tears-laugh]",
+      "url": "/emoji/tears-laugh.webp"
+    },
+    {
+      "key": "trapped",
+      "label": "Trapped",
+      "code": "[trapped]",
+      "url": "/emoji/trapped.webp"
+    },
+    {
+      "key": "mask",
+      "label": "Mask",
+      "code": "[mask]",
+      "url": "/emoji/mask.webp"
+    },
+    {
+      "key": "fear",
+      "label": "Fear",
+      "code": "[fear]",
+      "url": "/emoji/fear.webp"
+    },
+    {
+      "key": "bare-teeth",
+      "label": "Bare teeth",
+      "code": "[bare-teeth]",
+      "url": "/emoji/bare-teeth.webp"
+    },
+    {
+      "key": "flare-up",
+      "label": "Flare up",
+      "code": "[flare-up]",
+      "url": "/emoji/flare-up.webp"
+    },
+    {
+      "key": "yawn",
+      "label": "Yawn",
+      "code": "[yawn]",
+      "url": "/emoji/yawn.webp"
+    },
+    {
+      "key": "tact",
+      "label": "Tact",
+      "code": "[tact]",
+      "url": "/emoji/tact.webp"
+    },
+    {
+      "key": "star-eyes",
+      "label": "Star eyes",
+      "code": "[star-eyes]",
+      "url": "/emoji/star-eyes.webp"
+    },
+    {
+      "key": "shut-up",
+      "label": "Shut up",
+      "code": "[shut-up]",
+      "url": "/emoji/shut-up.webp"
+    },
+    {
+      "key": "sigh",
+      "label": "Sigh",
+      "code": "[sigh]",
+      "url": "/emoji/sigh.webp"
+    },
+    {
+      "key": "hehe",
+      "label": "Hehe",
+      "code": "[hehe]",
+      "url": "/emoji/hehe.webp"
+    },
+    {
+      "key": "silent",
+      "label": "Silent",
+      "code": "[silent]",
+      "url": "/emoji/silent.webp"
+    },
+    {
+      "key": "surprised",
+      "label": "Surprised",
+      "code": "[surprised]",
+      "url": "/emoji/surprised.webp"
+    },
+    {
+      "key": "askance",
+      "label": "Askance",
+      "code": "[askance]",
+      "url": "/emoji/askance.webp"
+    },
+    {
+      "key": "ok",
+      "label": "OK",
+      "code": "[ok]",
+      "url": "/emoji/ok.webp"
+    },
+    {
+      "key": "poop",
+      "label": "Poop",
+      "code": "[poop]",
+      "url": "/emoji/poop.webp"
+    },
+    {
+      "key": "monster",
+      "label": "Monster",
+      "code": "[monster]",
+      "url": "/emoji/monster.webp"
+    },
+    {
+      "key": "demon",
+      "label": "Demon",
+      "code": "[demon]",
+      "url": "/emoji/demon.webp"
+    },
+    {
+      "key": "rage",
+      "label": "Rage",
+      "code": "[rage]",
+      "url": "/emoji/rage.webp"
+    },
+    {
+      "key": "fool",
+      "label": "Fool",
+      "code": "[fool]",
+      "url": "/emoji/fool.webp"
+    },
+    {
+      "key": "pig",
+      "label": "Pig",
+      "code": "[pig]",
+      "url": "/emoji/pig.webp"
+    },
+    {
+      "key": "cow",
+      "label": "Cow",
+      "code": "[cow]",
+      "url": "/emoji/cow.webp"
+    },
+    {
+      "key": "love-you",
+      "label": "Love you",
+      "code": "[love-you]",
+      "url": "/emoji/love-you.webp"
+    },
+    {
+      "key": "skull",
+      "label": "Skull",
+      "code": "[skull]",
+      "url": "/emoji/skull.webp"
+    },
+    {
+      "key": "bomb",
+      "label": "Bomb",
+      "code": "[bomb]",
+      "url": "/emoji/bomb.webp"
+    },
+    {
+      "key": "coffee",
+      "label": "Coffee",
+      "code": "[coffee]",
+      "url": "/emoji/coffee.webp"
+    },
+    {
+      "key": "cake",
+      "label": "Cake",
+      "code": "[cake]",
+      "url": "/emoji/cake.webp"
+    },
+    {
+      "key": "beer",
+      "label": "Beer",
+      "code": "[beer]",
+      "url": "/emoji/beer.webp"
+    },
+    {
+      "key": "flower",
+      "label": "Flower",
+      "code": "[flower]",
+      "url": "/emoji/flower.webp"
+    },
+    {
+      "key": "watermelon",
+      "label": "Watermelon",
+      "code": "[watermelon]",
+      "url": "/emoji/watermelon.webp"
+    },
+    {
+      "key": "rich",
+      "label": "Rich",
+      "code": "[rich]",
+      "url": "/emoji/rich.webp"
+    },
+    {
+      "key": "heart",
+      "label": "Heart",
+      "code": "[heart]",
+      "url": "/emoji/heart.webp"
+    },
+    {
+      "key": "moon",
+      "label": "Moon",
+      "code": "[moon]",
+      "url": "/emoji/moon.webp"
+    },
+    {
+      "key": "sun",
+      "label": "Sun",
+      "code": "[sun]",
+      "url": "/emoji/sun.webp"
+    },
+    {
+      "key": "star",
+      "label": "Star",
+      "code": "[star]",
+      "url": "/emoji/star.webp"
+    },
+    {
+      "key": "red-packet",
+      "label": "Red packet",
+      "code": "[red-packet]",
+      "url": "/emoji/red-packet.webp"
+    },
+    {
+      "key": "celebrate",
+      "label": "Celebrate",
+      "code": "[celebrate]",
+      "url": "/emoji/celebrate.webp"
+    },
+    {
+      "key": "bless",
+      "label": "Bless",
+      "code": "[bless]",
+      "url": "/emoji/bless.webp"
+    },
+    {
+      "key": "fortune",
+      "label": "Fortune",
+      "code": "[fortune]",
+      "url": "/emoji/fortune.webp"
+    },
+    {
+      "key": "convinced",
+      "label": "Convinced",
+      "code": "[convinced]",
+      "url": "/emoji/convinced.webp"
+    },
+    {
+      "key": "prohibit",
+      "label": "Prohibit",
+      "code": "[prohibit]",
+      "url": "/emoji/prohibit.webp"
+    },
+    {
+      "key": "666",
+      "label": "666",
+      "code": "[666]",
+      "url": "/emoji/666.webp"
+    },
+    {
+      "key": "857",
+      "label": "857",
+      "code": "[857]",
+      "url": "/emoji/857.webp"
+    },
+    {
+      "key": "knife",
+      "label": "Knife",
+      "code": "[knife]",
+      "url": "/emoji/knife.webp"
+    },
+    {
+      "key": "like",
+      "label": "Like",
+      "code": "[like]",
+      "url": "/emoji/like.webp"
+    }
+  ]
+}

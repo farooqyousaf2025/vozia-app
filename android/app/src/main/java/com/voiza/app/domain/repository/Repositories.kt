@@ -2,6 +2,7 @@ package com.voiza.app.domain.repository
 
 import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.domain.model.ChatMessage
+import com.voiza.app.domain.model.EmojiCatalogue
 import com.voiza.app.domain.model.GameDefinition
 import com.voiza.app.domain.model.GameHistoryRow
 import com.voiza.app.domain.model.GameSession
@@ -14,6 +15,7 @@ import com.voiza.app.domain.model.RoomJoinResult
 import com.voiza.app.domain.model.RoomSummary
 import com.voiza.app.domain.model.Seat
 import com.voiza.app.domain.model.SeatPolicy
+import com.voiza.app.domain.model.ThemeCatalogue
 import com.voiza.app.domain.model.Transaction
 import com.voiza.app.domain.model.User
 import com.voiza.app.domain.model.WalletSnapshot
@@ -63,6 +65,20 @@ interface RoomRepository {
      * see: the form then sends no capacity and the server applies its own default.
      */
     suspend fun seatPolicy(): ApiResult<SeatPolicy>
+
+    /**
+     * The decoration catalogue the operator owns: theme wallpapers, and the Lottie flourish a room
+     * plays when someone joins. A failure is not worth showing the member either — the room simply
+     * wears the wallpaper the server already named for it and plays no flourish.
+     */
+    suspend fun themeCatalogue(): ApiResult<ThemeCatalogue>
+
+    /**
+     * The chat emoji an operator maintains in the admin panel, plus the expression a message is
+     * scanned with. Again not an error worth showing: with no catalogue the picker is empty and
+     * a typed `[code]` simply stays text.
+     */
+    suspend fun emojiCatalogue(): ApiResult<EmojiCatalogue>
 
     /** Quick Join: one open public room the caller is allowed to enter, chosen by the server. */
     suspend fun quickJoin(): ApiResult<Room>

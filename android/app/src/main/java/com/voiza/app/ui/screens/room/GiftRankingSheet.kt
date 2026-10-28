@@ -32,6 +32,7 @@ import com.voiza.app.domain.model.RankBoard
 import com.voiza.app.domain.model.RankRow
 import com.voiza.app.ui.components.Avatar
 import com.voiza.app.ui.components.LoadingProgress
+import com.voiza.app.ui.components.RankBadge
 import com.voiza.app.ui.components.VoizaSheet
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.OnDarkHigh
@@ -151,6 +152,11 @@ private fun RankRowItem(rank: Int, row: RankRow, glyph: String) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        val rung = row.user.rank
+        if (rung != null) {
+            RankBadge(rank = rung, size = 18.dp)
+            Spacer(Modifier.width(6.dp))
+        }
         Text(
             text = "$glyph ${row.earned}",
             color = Cyan,

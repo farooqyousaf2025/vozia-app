@@ -1,8 +1,10 @@
 package com.voiza.app.domain.usecase
 
+import com.voiza.app.domain.model.ChatMessage
 import com.voiza.app.domain.model.Gift
 import com.voiza.app.domain.model.GiftAnimatedEvent
 import com.voiza.app.domain.model.GiftEffectKind
+import com.voiza.app.domain.model.MessageType
 import com.voiza.app.domain.model.MiniUser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -91,5 +93,31 @@ class RoomEffectsTest {
     fun `a panel page is four tiles wide and two tall`() {
         assertEquals(8, RoomEffects.PANEL_PAGE_SIZE)
         assertEquals(RoomEffects.PANEL_COLUMNS * RoomEffects.PANEL_ROWS, RoomEffects.PANEL_PAGE_SIZE)
+    }
+
+    @Test
+    fun `a chat line already on screen is not appended twice`() {
+        val entry = ChatMessage(id = "m1", user = null, content = "ana entered the room", type = MessageType.SYSTEM, createdAt = "2026-01-01T00:00:00Z")
+        val hello = ChatMessage(id = "m2", user = null, content = "hi", type = MessageType.TEXT, createdAt = "2026-01-01T00:00:01Z")
+
+        // The join path: history snapshot brings the entry notice, then the socket delivers it.
+        val afterSnapshot = RoomEffects.appendChat(emptyList(), entry, limit = 50)
+        val afterSocket = RoomEffects.appendChat(afterSnapshot, entry, limit = 50)
+
+        // The list is keyed by id, so a second copy would crash the room rather than look odd.
+        assertEquals(listOf(entry), afterSocket)
+        assertEquals(1, afterSocket.count { it.id == "m1" })
+
+        assertEquals(2, RoomEffects.appendChat(afterSocket, hello, limit = 50).size)
+    }
+
+    @Test
+    fun `the chat window keeps the newest lines when it overflows`() {
+        val lines = (1..5).map { ChatMessage(id = "m$it", user = null, content = "c$it", type = MessageType.TEXT, createdAt = "") }
+        val sixth = ChatMessage(id = "m6", user = null, content = "c6", type = MessageType.TEXT, createdAt = "")
+
+        val kept = RoomEffects.appendChat(lines, sixth, limit = 3)
+
+        assertEquals(listOf("m4", "m5", "m6"), kept.map { it.id })
     }
 }

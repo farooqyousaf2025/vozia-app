@@ -14,6 +14,8 @@ export type UserRow = {
   status: 'ACTIVE' | 'BANNED';
   is_verified: boolean;
   vip_level: number;
+  /** Lifetime experience (migration 0017). BIGINT, so `pg` hands back a string. */
+  xp?: string | number;
   device_token: string | null;
   last_seen_at: Date | null;
   created_at: Date;
@@ -470,6 +472,73 @@ export type RechargePackageRow = {
   amount_cents: string | number;
   currency: string;
   fee_bps: number;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+};
+
+export type MediaAssetRow = {
+  id: string;
+  kind: string;
+  file_name: string;
+  stored_name: string;
+  content_type: string;
+  byte_size: number;
+  sha256: string;
+  url: string;
+  width: number | null;
+  height: number | null;
+  uploaded_by: string | null;
+  created_at: Date;
+};
+
+export type VisualEffectRow = {
+  key: string;
+  kind: 'AMBIENT' | 'WELCOME';
+  name: string;
+  url: string;
+  sort_order: number;
+  created_at: Date;
+  updated_at: Date;
+};
+
+export type RoomThemeRow = {
+  slug: string;
+  name: string;
+  /** CHAR(7) arrives padded, so read it through `trim()` wherever it is compared or rendered. */
+  accent: string;
+  wallpaper_url: string;
+  is_default: boolean;
+  sort_order: number;
+  created_at: Date;
+  updated_at: Date;
+};
+
+/** `emoji_characters` (migration 0016) — one glyph the chat picker offers. */
+export type EmojiRow = {
+  key: string;
+  label: string;
+  url: string;
+  sort_order: number;
+  created_at: Date;
+  updated_at: Date;
+};
+
+export type RoomCategoryEffectRow = {
+  category: string;
+  effect_key: string;
+  updated_at: Date;
+};
+
+/** `rank_levels` (migration 0017) — one rung of the earned-level ladder. */
+export type RankLevelRow = {
+  level: number;
+  name: string;
+  badge_url: string;
+  /** CHAR(7) arrives padded; read it through `trim()` wherever it is compared or rendered. */
+  accent: string;
+  /** BIGINT, so `pg` hands back a string. */
+  min_xp: string | number;
   is_active: boolean;
   created_at: Date;
   updated_at: Date;

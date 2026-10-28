@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { many, one } from '../config/db';
+import { rankFor } from '../services/rank.service';
 import { RoomRow, UserRow } from '../types/db';
 import { ApiError, asyncHandler, requireInt, requireString } from '../utils/http';
 import { toRoom, toUser } from '../utils/serialize';
@@ -56,14 +57,15 @@ export const leaderboard = asyncHandler(async (req: Request, res: Response) => {
     avatar_url: string | null;
     user_type: string;
     is_verified: boolean;
+    xp: string | number;
     earned: string;
   }>(
-    `SELECT u.id, u.username, u.avatar_url, u.user_type, u.is_verified,
+    `SELECT u.id, u.username, u.avatar_url, u.user_type, u.is_verified, u.xp,
             ${board.sum} AS earned
        FROM transactions t
        JOIN users u ON u.id = ${board.column}
       WHERE t.type = 'GIFT_SENT' AND t.created_at >= now() - $1::interval
-      GROUP BY u.id, u.username, u.avatar_url, u.user_type, u.is_verified
+      GROUP BY u.id, u.username, u.avatar_url, u.user_type, u.is_verified, u.xp
       ORDER BY earned DESC LIMIT $2`,
     [interval, limit],
   );
@@ -78,6 +80,9 @@ export const leaderboard = asyncHandler(async (req: Request, res: Response) => {
       avatarUrl: row.avatar_url,
       userType: row.user_type,
       isVerified: row.is_verified,
+      // Resolved from the ladder here: the sheet shows a name and a badge, never a raw number a
+      // phone would have to compare against thresholds it guessed.
+      rank: rankFor(Number(row.xp)),
       earned: Number(row.earned),
     })),
   });

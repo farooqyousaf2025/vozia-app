@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,11 +23,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.voiza.app.domain.model.ChatMessage
+import com.voiza.app.domain.model.EmojiOption
+import com.voiza.app.domain.model.FALLBACK_EMOJI_CODE_PATTERN
 import com.voiza.app.domain.model.MessageType
 import com.voiza.app.ui.theme.OnDarkHigh
 
@@ -41,6 +44,8 @@ fun BarrageOverlay(
     messages: List<ChatMessage>,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    emojis: List<EmojiOption> = emptyList(),
+    codePattern: String = FALLBACK_EMOJI_CODE_PATTERN,
 ) {
     val lines = remember { mutableStateListOf<BarrageLine>() }
     // Id-keyed rather than size-keyed: the chat list is capped, so a size
@@ -70,7 +75,7 @@ fun BarrageOverlay(
 
     Column(modifier = modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 6.dp)) {
         lines.forEach { line ->
-            FlyingLine(line = line, onFinished = { lines.remove(line) })
+            FlyingLine(line = line, emojis = emojis, codePattern = codePattern, onFinished = { lines.remove(line) })
         }
     }
 }
@@ -106,10 +111,16 @@ private fun ChatMessage.toBarrageLine(): BarrageLine? {
 }
 
 @Composable
-private fun FlyingLine(line: BarrageLine, onFinished: () -> Unit) {
+private fun FlyingLine(
+    line: BarrageLine,
+    emojis: List<EmojiOption>,
+    codePattern: String,
+    onFinished: () -> Unit,
+) {
     val progress = remember(line.id) { Animatable(0f) }
     var trackWidth by remember(line.id) { mutableFloatStateOf(0f) }
     var textWidth by remember(line.id) { mutableFloatStateOf(0f) }
+    val rendered = rememberEmojiMessage(line.text, emojis, codePattern)
 
     LaunchedEffect(trackWidth, line.id) {
         if (trackWidth <= 0f) return@LaunchedEffect
@@ -124,11 +135,14 @@ private fun FlyingLine(line: BarrageLine, onFinished: () -> Unit) {
             .fillMaxWidth()
             .onSizeChanged { trackWidth = it.width.toFloat() },
     ) {
-        Text(
-            text = line.text,
-            color = line.textColor,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
+        BasicText(
+            text = rendered.text,
+            inlineContent = rendered.inlineContent,
+            style = TextStyle(
+                color = line.textColor,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+            ),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier

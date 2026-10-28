@@ -246,7 +246,9 @@ class VoizaSocketClient(
             parse<SocketHandRaiseDto>(args)?.toDomainOrNull()?.let { _handRaises.tryEmit(it) }
         }
         bindHandler(newSocket, EVENT_THEME_CHANGED) { args ->
-            parse<SocketThemeChangedDto>(args)?.let { _themeChanges.tryEmit(ThemeChangedEvent(it.roomId, it.theme)) }
+            parse<SocketThemeChangedDto>(args)?.let {
+                _themeChanges.tryEmit(ThemeChangedEvent(it.roomId, it.theme, it.wallpaper))
+            }
         }
         bindHandler(newSocket, EVENT_PROFILE_UPDATED) { args ->
             parse<SocketRoomProfileDto>(args)?.let { _profileUpdates.tryEmit(it.toDomain()) }

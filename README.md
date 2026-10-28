@@ -10,7 +10,7 @@ vozia/
 ├── livekit.yaml            SFU tuned for low-latency audio
 ├── backend/                Node.js + TypeScript (Express, Socket.IO, LiveKit SDK, pg, ioredis)
 │   ├── src/{config,controllers,services,routes,middleware,utils,types}
-│   └── database/{schema.sql,seed.sql}
+│   └── database/{schema.sql,seed.sql,migrations/}
 ├── admin-panel/            React + Vite + Tailwind CSS dashboard
 └── android/                Native Android app (Kotlin, Jetpack Compose, Material 3, MVVM)
 ```
@@ -19,7 +19,7 @@ vozia/
 
 ```bash
 cp .env.example .env          # then edit the secrets
-docker compose up --build     # schema applies itself on first boot
+docker compose up --build     # schema + pending migrations apply themselves on boot
 ```
 
 | Service       | URL / port                          |
@@ -32,8 +32,11 @@ docker compose up --build     # schema applies itself on first boot
 | Redis         | `localhost:6379`                    |
 
 Demo content (agency, hosts, three live rooms) lives in `backend/database/seed.sql`.
-The backend container applies `schema.sql` on every boot (it is idempotent) and loads
-the seed as well while `SEED_DEMO_DATA=1`, which is the compose default. Set it to `0`
+On every boot the backend container runs `scripts/migrate.cjs`, which applies the
+idempotent `schema.sql` baseline and then any file in `database/migrations/` this
+database has not already recorded — so re-deploying onto a volume that has users in it
+brings the schema forward instead of leaving it behind. It loads the seed as well while
+`SEED_DEMO_DATA=1`, which is the compose default. Set it to `0`
 for a clean stack, or apply the seed by hand later:
 
 ```bash
@@ -192,6 +195,34 @@ same ledger (`role=receivers` for r-coins earned, `role=senders` for diamonds sp
 and says which in `unit`. See `backend/README.md` → *Room effects are the server's
 call*.
 
+What a room looks like is the operator's call too, and it is data rather than a build
+artefact: `room_themes`, `visual_effects` and `room_category_effects` (migration `0015`)
+hold the themes a host may pick, the loops an AMBIENT or WELCOME slot may play and which
+loop each category wears, all editable from the panel's **Decoration** screen. Every room
+payload therefore carries a resolved `themeWallpaper` URL next to its `theme` slug — an
+operator's art can live at `/uploads/<uuid>.png`, so a client that derived
+`/themes/<slug>/wallpaper.png` from the slug would 404 on a file that exists. See
+`backend/README.md` → *Room decoration is data*.
+
+The chat emoji picker follows the same rule, one step further: a message stores the **token**
+(`[smile]`) and never the picture, so `chat_messages` survives an operator retiring a code or
+replacing its art. `emoji_characters` (migration `0016`, art imported from TUILiveKit and
+chat-uikit-android under their MIT/Apache-2.0 licences — see `NOTICE.md`) is edited from the
+panel's **Chat emoji** screen, `GET /api/emoji` publishes the rows plus the `codePattern` the
+server itself scans with, and the phone compiles that pattern instead of a copy that could
+drift. A code with no row stays as written text. See `backend/README.md` → *Chat emoji: the
+database is the catalogue*.
+
+Levels are data as well, and they are the one number a member cannot talk themselves into.
+`rank_levels` (migration `0017`) holds 21 rungs — a floor in XP, a name, a badge URL and an
+accent colour — edited from the panel's **Level ladder** screen, and `users.xp` only moves
+inside the ledger write that posts a gift: 1 experience per diamond spent, 0.5 per R-coin
+earned. `GET /api/ranks` publishes the ladder and every user payload carries the rung it
+resolves to, so a phone paints `rank.name` and `rank.badge` and holds no threshold of its own.
+The spend tier is a separate, deliberately unearned thing: `users.vip_level` is what
+`gifts.min_vip_level` gates on and what sizes an entry banner, an operator assigns it, and no
+amount of XP moves it. See `backend/README.md` → *The level ladder is data too*.
+
 ## Finding a room
 
 A room carries a host-editable profile — title, description, category, `language`
@@ -208,7 +239,7 @@ has moved through — see `backend/README.md` → *Room profile and discovery*.
 
 ## Verification
 
-* `cd backend && npm run test:e2e` — 128 checks against a running stack (real Postgres,
+* `cd backend && npm run test:e2e` — 154 checks against a running stack (real Postgres,
   Redis, LiveKit and this API): OTP auth, ledger double-spend under concurrency, seat
   row-lock contention, the seat policy (a new room gets the administrator's default, a
   rewrite is audited, and a guest can take a seat far beyond the old hardcoded nine),
@@ -229,7 +260,7 @@ has moved through — see `backend/README.md` → *Room profile and discovery*.
 * `cd backend && npm run test:sms` and `npm run test:payments` — 16 and 29 checks with
   `fetch` replaced by a recorder, so no account is needed: the exact Twilio form POST
   and Basic header, Vonage's `200`-with-`status:"1"` trap, the Stripe intent body, and
-  every webhook-signature rejection. Together with the e2e suite that is 173 checks.
+  every webhook-signature rejection. Together with the e2e suite that is 199 checks.
 * `cd backend && npm run test:wire-fixtures` and `npm run test:game-wire-fixtures`,
   then `cd android && ./scripts/run-dto-harness.sh`
   replays the captured live payloads through the mobile client's own Gson DTOs — 44
@@ -255,7 +286,8 @@ has moved through — see `backend/README.md` → *Room profile and discovery*.
 ## Components
 
 * [Backend](backend/README.md) — API, ledger, realtime, LiveKit integration
-* [Admin panel](admin-panel/README.md) — moderation and virtual-store management
+* [Admin panel](admin-panel/README.md) — moderation, virtual-store management and the media
+  library operators upload gift art, sounds, room effects and rank badges through
 * [Android app](android/README.md) — native Kotlin/Compose client
 
 ## License

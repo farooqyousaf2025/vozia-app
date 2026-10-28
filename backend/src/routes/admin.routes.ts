@@ -32,6 +32,9 @@ router.get('/users', requirePermission('user:read'), admin.users);
 router.post('/users/:id/balance', requirePermission('user:wallet'), admin.adjustUserBalance);
 router.post('/users/:id/ban', requirePermission('user:moderate'), admin.ban);
 router.post('/users/:id/vip', requirePermission('user:vip'), admin.setVipLevel);
+// Experience is the same "levels and VIP" concern as the spend tier, under the same permission,
+// and it exists only to correct what the ladder scored — a client can never reach it.
+router.post('/users/:id/xp', requirePermission('user:vip'), admin.adjustUserXpEndpoint);
 
 router.get('/rooms', requirePermission('room:read'), admin.rooms);
 // Before '/rooms/:id', which would otherwise read 'seat-policy' as a room id.
@@ -53,6 +56,40 @@ router.get('/gifts', requirePermission('dashboard:read'), admin.gifts);
 router.post('/gifts', requirePermission('gift:manage'), admin.createGiftEndpoint);
 router.put('/gifts/:id', requirePermission('gift:manage'), admin.updateGiftEndpoint);
 router.delete('/gifts/:id', requirePermission('gift:manage'), admin.removeGiftEndpoint);
+
+// Operator-uploaded gift art, effect scenes and badges. `media:manage` rather than
+// `gift:manage`: the same store backs effects and ranks, and maintaining those must not
+// quietly grant the right to price a gift.
+router.get('/uploads', requirePermission('media:manage'), admin.uploads);
+router.post('/uploads', requirePermission('media:manage'), admin.createUploadEndpoint);
+router.delete('/uploads/:id', requirePermission('media:manage'), admin.removeUploadEndpoint);
+
+// Room themes and ambient loops (migration 0015). Reading is a room concern — a moderator who can
+// restyle one room has to know which looks exist — while changing what every room on the platform
+// can wear is `config:manage`, the same permission that holds the seat policy.
+router.get('/decor', requirePermission('room:read'), admin.decorCatalogue);
+router.post('/themes', requirePermission('config:manage'), admin.createThemeEndpoint);
+router.put('/themes/:slug', requirePermission('config:manage'), admin.updateThemeEndpoint);
+router.delete('/themes/:slug', requirePermission('config:manage'), admin.deleteThemeEndpoint);
+router.post('/effects', requirePermission('config:manage'), admin.createEffectEndpoint);
+router.put('/effects/:key', requirePermission('config:manage'), admin.updateEffectEndpoint);
+router.delete('/effects/:key', requirePermission('config:manage'), admin.deleteEffectEndpoint);
+router.put('/room-categories/:category/effect', requirePermission('config:manage'), admin.mapCategoryEffect);
+
+// Chat emoji. Reading the catalogue is public (`GET /api/emoji`); this is the operator's view of
+// the same rows, and the only way to change what codes members may type.
+router.get('/emoji', requirePermission('room:read'), admin.emojiCatalogueEndpoint);
+router.post('/emoji', requirePermission('config:manage'), admin.createEmojiEndpoint);
+router.put('/emoji/:key', requirePermission('config:manage'), admin.updateEmojiEndpoint);
+router.delete('/emoji/:key', requirePermission('config:manage'), admin.deleteEmojiEndpoint);
+
+// The earned-level ladder (migration 0017). Reading it is a `user:read` concern — an operator who
+// can see accounts has to know what a badge on one means — while moving a threshold or retiring a
+// rung changes what every device shows, which is `config:manage`.
+router.get('/ranks', requirePermission('user:read'), admin.rankLadderEndpoint);
+router.post('/ranks', requirePermission('config:manage'), admin.createRankEndpoint);
+router.put('/ranks/:level', requirePermission('config:manage'), admin.updateRankEndpoint);
+router.delete('/ranks/:level', requirePermission('config:manage'), admin.deleteRankEndpoint);
 
 router.get('/withdrawals', requirePermission('withdrawal:review'), admin.withdrawals);
 router.post('/withdrawals/:id/review', requirePermission('withdrawal:review'), admin.reviewWithdrawalEndpoint);

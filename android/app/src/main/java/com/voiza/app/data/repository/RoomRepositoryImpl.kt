@@ -12,12 +12,14 @@ import com.voiza.app.data.remote.dto.SeatStatusBody
 import com.voiza.app.data.remote.dto.UpdateRoomBody
 import com.voiza.app.data.socket.VoizaSocketClient
 import com.voiza.app.domain.model.LiveKitCredentials
+import com.voiza.app.domain.model.EmojiCatalogue
 import com.voiza.app.domain.model.Room
 import com.voiza.app.domain.repository.RoomDetailBundle
 import com.voiza.app.domain.model.RoomJoinResult
 import com.voiza.app.domain.model.RoomSummary
 import com.voiza.app.domain.model.Seat
 import com.voiza.app.domain.model.SeatPolicy
+import com.voiza.app.domain.model.ThemeCatalogue
 import com.voiza.app.domain.repository.RoomRepository
 
 class RoomRepositoryImpl(
@@ -38,6 +40,12 @@ class RoomRepositoryImpl(
 
     override suspend fun seatPolicy(): ApiResult<SeatPolicy> =
         apiCall { api.roomCapacity() }.mapSuccess { it.seatCapacity.toDomain() }
+
+    override suspend fun themeCatalogue(): ApiResult<ThemeCatalogue> =
+        apiCall { api.themeCatalogue() }.mapSuccess { it.toDomain() }
+
+    override suspend fun emojiCatalogue(): ApiResult<EmojiCatalogue> =
+        apiCall { api.emojiCatalogue() }.mapSuccess { it.toDomain() }
 
     override suspend fun quickJoin(): ApiResult<Room> =
         apiCall { api.roomQuickJoin() }.mapSuccess { it.room.toDomain() }

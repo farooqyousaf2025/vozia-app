@@ -129,7 +129,7 @@ fun PartyRoomScreen(
             .background(VoizaHeroGradient),
     ) {
         // Theme wallpaper from the backend, then the ambient loop it pairs with.
-        RoomWallpaper(theme = state.room?.theme)
+        RoomWallpaper(wallpaperUrl = state.room?.themeWallpaper)
         if (state.joined) {
             // The server picks the loop from the room category.
             AmbientRoomEffect(effectUrl = state.room?.ambientEffect)
@@ -213,6 +213,8 @@ fun PartyRoomScreen(
                     BarrageOverlay(
                         messages = state.chat,
                         enabled = barrageOn,
+                        emojis = state.emojis,
+                        codePattern = state.emojiCodePattern,
                         modifier = Modifier.align(Alignment.TopStart),
                     )
                     // Small gifts scroll here; big ones take the whole screen via
@@ -248,6 +250,8 @@ fun PartyRoomScreen(
                 ChatOverlay(
                     messages = state.chat,
                     onSend = viewModel::sendChat,
+                    emojis = state.emojis,
+                    codePattern = state.emojiCodePattern,
                     modifier = Modifier.padding(bottom = 4.dp),
                 )
 
@@ -302,8 +306,13 @@ fun PartyRoomScreen(
                 .size(width = 92.dp, height = 200.dp),
         )
 
-        if (welcomeVisible) {
-            WelcomeEffect(onFinished = { welcomeVisible = false })
+        // Null until the catalogue answers, and null forever if the operator has no
+        // welcome animation — then the room simply opens without a flourish.
+        if (welcomeVisible && state.welcomeEffect != null) {
+            WelcomeEffect(
+                welcomeUrl = state.welcomeEffect,
+                onFinished = { welcomeVisible = false },
+            )
         }
     }
 

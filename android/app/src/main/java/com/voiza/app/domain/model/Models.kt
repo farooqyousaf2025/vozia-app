@@ -5,6 +5,20 @@ package com.voiza.app.domain.model
 // backend JSON (camelCase) which in turn follows backend/database/schema.sql.
 // ---------------------------------------------------------------------------
 
+/**
+ * One rung of the earned ladder (`rank_levels`, migration 0017) as the server resolves it for a
+ * member. Every field is data an operator edits in the admin panel, so the app must paint these
+ * values and never derive a level, a badge path or a threshold itself.
+ */
+data class UserRank(
+    val level: Int,
+    val name: String,
+    /** Root-relative art (`/badges/level-3.png`) or an uploaded `/uploads/<uuid>.png`. */
+    val badge: String?,
+    /** `#rrggbb` used to tint the rung's name next to the badge. */
+    val accent: String?,
+)
+
 /** `MiniUser` in the contract: trimmed user reference embedded in rooms/seats/chat. */
 data class MiniUser(
     val id: String,
@@ -13,6 +27,12 @@ data class MiniUser(
     val diamondBalance: Int? = null,
     /** Only on `room:user_joined`; sizes that user's entry banner. */
     val vipLevel: Int? = null,
+    /**
+     * The rung this member has earned, already resolved by the server from their XP. Null on the
+     * lean payloads (seat lists, audience) that do not read XP at all — the absence is the server
+     * choosing not to ship it, never a hint that the app should compute one.
+     */
+    val rank: UserRank? = null,
 )
 
 /** Full `users` row as returned by /api/auth/me and auth responses. */
@@ -35,6 +55,10 @@ data class User(
     val isVerified: Boolean,
     /** Spend tier; ops-assigned server-side and compared with Gift.minVipLevel. */
     val vipLevel: Int = 0,
+    /** Lifetime experience (`users.xp`). Read-only here: only the server's ledger moves it. */
+    val xp: Long = 0,
+    /** The rung [xp] sits on. */
+    val rank: UserRank? = null,
 )
 
 enum class SeatStatus { EMPTY, OCCUPIED, LOCKED }
@@ -74,6 +98,15 @@ const val DEFAULT_ROOM_THEME = "aurora"
 /** Ambient loop for a room whose API is too old to name one. */
 const val DEFAULT_AMBIENT_EFFECT = "/effects/room-sparkle.json"
 
+/**
+ * Regex used to find emoji codes inside a message when the API does not publish its own.
+ *
+ * `GET /api/emoji` normally supplies `codePattern` and this client matches with exactly that
+ * string; this constant only covers a backend predating migration 0016, and mirrors the
+ * expression such a server ships for its seeded codes.
+ */
+const val FALLBACK_EMOJI_CODE_PATTERN = "\\[[a-z0-9][a-z0-9-]{0,31}\\]"
+
 /** List item from GET /api/rooms. */
 data class RoomSummary(
     val id: String,
@@ -98,6 +131,49 @@ data class RoomSummary(
     val host: MiniUser,
 )
 
+/**
+ * A room look an operator maintains in the database, published by `GET /api/rooms/themes`.
+ *
+ * The wallpaper is a URL rather than something derived from the slug because a theme added from
+ * the admin panel points at `/uploads/<uuid>.png`; a client that built `/themes/<slug>/…` would
+ * 404 on art that exists.
+ */
+data class ThemeCatalogue(
+    val themes: List<RoomThemeOption> = emptyList(),
+    val defaultTheme: String = DEFAULT_ROOM_THEME,
+    /** Entry flourish for every room, or null when the operator retired all of them. */
+    val welcome: String? = null,
+)
+
+data class RoomThemeOption(
+    val slug: String,
+    val name: String,
+    val accent: String,
+    val wallpaper: String,
+)
+
+/**
+ * One chat emoji, published by `GET /api/emoji` from the `emoji_characters` rows an operator
+ * maintains in the admin panel.
+ *
+ * [code] is the token a message actually contains (`[smile]`), and [url] is where its art is
+ * served. A sent message stores only the token — never this URL — so a code whose row was deleted
+ * stays readable as plain text instead of breaking history, and the client decides per render
+ * whether it has art for a token it is looking at.
+ */
+data class EmojiOption(
+    val key: String,
+    val label: String,
+    val code: String,
+    val url: String,
+)
+
+/** The picker grid plus the expression to scan messages with. */
+data class EmojiCatalogue(
+    val emojis: List<EmojiOption> = emptyList(),
+    val codePattern: String = FALLBACK_EMOJI_CODE_PATTERN,
+)
+
 /** Full room object (POST /api/rooms, join responses). */
 data class Room(
     val id: String,
@@ -112,6 +188,12 @@ data class Room(
     val rules: String? = null,
     /** Root-relative Lottie URL the server picked for this room's category. */
     val ambientEffect: String = DEFAULT_AMBIENT_EFFECT,
+    /**
+     * Wallpaper for this room's theme, resolved by the server. Null only against a backend that
+     * predates the decoration catalogue; the room then shows its plain gradient rather than a
+     * guessed path.
+     */
+    val themeWallpaper: String? = null,
     val type: RoomType,
     val seatCapacity: Int,
     val status: RoomStatus,
@@ -261,8 +343,15 @@ data class MicToggleEvent(val roomId: String, val seatIndex: Int, val muted: Boo
 
 data class RoomClosedEvent(val roomId: String)
 
-/** `room:theme_changed`: the room's wallpaper/accent was swapped under our feet. */
-data class ThemeChangedEvent(val roomId: String, val theme: String)
+/**
+ * `room:theme_changed`: the room's wallpaper/accent was swapped under our feet.
+ * The wallpaper URL comes along because the client must not rebuild it from the slug.
+ */
+data class ThemeChangedEvent(
+    val roomId: String,
+    val theme: String,
+    val wallpaper: String? = null,
+)
 
 /**
  * `room:profile_updated`: the host edited title, description, category or the profile text.

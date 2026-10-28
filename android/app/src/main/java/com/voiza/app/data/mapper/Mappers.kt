@@ -1,13 +1,16 @@
 package com.voiza.app.data.mapper
 
 import com.voiza.app.data.remote.dto.ChatMessageDto
+import com.voiza.app.data.remote.dto.EmojiCatalogueDto
 import com.voiza.app.data.remote.dto.GiftDto
 import com.voiza.app.data.remote.dto.LeaderEntryDto
 import com.voiza.app.data.remote.dto.LeaderboardResponse
 import com.voiza.app.data.remote.dto.LiveKitTokenDto
 import com.voiza.app.data.remote.dto.MiniUserDto
+import com.voiza.app.data.remote.dto.RankDto
 import com.voiza.app.data.remote.dto.RoomDto
 import com.voiza.app.data.remote.dto.RoomSummaryDto
+import com.voiza.app.data.remote.dto.RoomThemeDto
 import com.voiza.app.data.remote.dto.SeatCapacityDto
 import com.voiza.app.data.remote.dto.SeatDto
 import com.voiza.app.data.remote.dto.SocketChatDto
@@ -18,13 +21,17 @@ import com.voiza.app.data.remote.dto.SocketMicToggleDto
 import com.voiza.app.data.remote.dto.SocketRoomProfileDto
 import com.voiza.app.data.remote.dto.SocketSeatUpdateDto
 import com.voiza.app.data.remote.dto.SocketUserJoinedDto
+import com.voiza.app.data.remote.dto.ThemeCatalogueDto
 import com.voiza.app.data.remote.dto.TransactionDto
 import com.voiza.app.data.remote.dto.UserDto
 import com.voiza.app.data.remote.dto.WalletResponse
 import com.voiza.app.data.remote.dto.WithdrawalDto
 import com.voiza.app.domain.model.DEFAULT_AMBIENT_EFFECT
 import com.voiza.app.domain.model.DEFAULT_ROOM_THEME
+import com.voiza.app.domain.model.FALLBACK_EMOJI_CODE_PATTERN
 import com.voiza.app.domain.model.ChatMessage
+import com.voiza.app.domain.model.EmojiCatalogue
+import com.voiza.app.domain.model.EmojiOption
 import com.voiza.app.domain.model.Gift
 import com.voiza.app.domain.model.GiftAnimatedEvent
 import com.voiza.app.domain.model.GiftEffectKind
@@ -43,14 +50,17 @@ import com.voiza.app.domain.model.RoomLikeEvent
 import com.voiza.app.domain.model.RoomProfileEvent
 import com.voiza.app.domain.model.RoomStatus
 import com.voiza.app.domain.model.RoomSummary
+import com.voiza.app.domain.model.RoomThemeOption
 import com.voiza.app.domain.model.RoomType
 import com.voiza.app.domain.model.Seat
 import com.voiza.app.domain.model.SeatPolicy
 import com.voiza.app.domain.model.SeatStatus
 import com.voiza.app.domain.model.SeatUpdateEvent
+import com.voiza.app.domain.model.ThemeCatalogue
 import com.voiza.app.domain.model.Transaction
 import com.voiza.app.domain.model.User
 import com.voiza.app.domain.model.UserJoinedEvent
+import com.voiza.app.domain.model.UserRank
 import com.voiza.app.domain.model.WalletSnapshot
 
 // ---------------------------------------------------------------------------
@@ -58,7 +68,24 @@ import com.voiza.app.domain.model.WalletSnapshot
 // instead of throwing, so a backend enum addition cannot crash the client.
 // ---------------------------------------------------------------------------
 
-fun MiniUserDto.toDomain(): MiniUser = MiniUser(id, username, avatarUrl, diamondBalance, vipLevel)
+/**
+ * The rung the server resolved for this member. A rung with no name is dropped rather than
+ * invented: the labels are operator-edited text, so a fallback would put words in their mouth.
+ */
+fun RankDto?.toDomain(): UserRank? {
+    val rung = this ?: return null
+    val name = rung.name?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return UserRank(level = rung.level, name = name, badge = rung.badge, accent = rung.accent)
+}
+
+fun MiniUserDto.toDomain(): MiniUser = MiniUser(
+    id = id,
+    username = username,
+    avatarUrl = avatarUrl,
+    diamondBalance = diamondBalance,
+    vipLevel = vipLevel,
+    rank = rank.toDomain(),
+)
 
 fun UserDto.toDomain(): User = User(
     id = id,
@@ -76,6 +103,8 @@ fun UserDto.toDomain(): User = User(
     status = status,
     isVerified = isVerified,
     vipLevel = vipLevel,
+    xp = xp,
+    rank = rank.toDomain(),
 )
 
 fun SeatDto.toDomain(): Seat = Seat(
@@ -118,6 +147,7 @@ fun RoomDto.toDomain(): Room = Room(
     region = region,
     rules = rules,
     ambientEffect = ambientEffect ?: DEFAULT_AMBIENT_EFFECT,
+    themeWallpaper = themeWallpaper,
     type = enumOrDefault(type, RoomType.PUBLIC),
     seatCapacity = seatCapacity,
     status = enumOrDefault(status, RoomStatus.ACTIVE),
@@ -132,6 +162,52 @@ fun RoomDto.toDomain(): Room = Room(
 
 fun LiveKitTokenDto.toDomain(): LiveKitCredentials =
     LiveKitCredentials(url, token, roomName, identity, canPublish)
+
+fun RoomThemeDto.toDomain(): RoomThemeOption = RoomThemeOption(
+    slug = slug,
+    name = name,
+    accent = accent,
+    wallpaper = wallpaper,
+)
+
+/**
+ * `GET /api/rooms/themes` -> domain. `welcome` is passed through as-is, null included: an operator
+ * who removed every entry flourish means the room plays nothing, and this client has no opinion of
+ * its own about which file that should be.
+ */
+fun ThemeCatalogueDto.toDomain(): ThemeCatalogue = ThemeCatalogue(
+    themes = themes.map { it.toDomain() },
+    defaultTheme = defaultTheme?.takeIf { it.isNotBlank() } ?: DEFAULT_ROOM_THEME,
+    welcome = welcome,
+)
+
+/**
+ * `GET /api/emoji` -> domain.
+ *
+ * A row with no key or no art is dropped rather than guessed at: the picker would show an empty
+ * tile and no message could ever match it. `code` is only derived from the key when the server
+ * omitted it — the token itself is the server's, because that is what sent messages contain.
+ */
+fun EmojiCatalogueDto.toDomain(): EmojiCatalogue = EmojiCatalogue(
+    emojis = emojis.orEmpty().mapNotNull { option ->
+        val key = option.key
+        val url = option.url
+        if (key.isNullOrBlank() || url.isNullOrBlank()) return@mapNotNull null
+        EmojiOption(
+            key = key,
+            label = option.label?.takeIf { it.isNotBlank() } ?: key,
+            code = option.code?.takeIf { it.isNotBlank() } ?: "[$key]",
+            url = url,
+        )
+    },
+    codePattern = usableEmojiPattern(codePattern),
+)
+
+/** A pattern the server cannot compile would crash every chat bubble, so an unusable one is discarded. */
+private fun usableEmojiPattern(candidate: String?): String {
+    if (candidate.isNullOrBlank()) return FALLBACK_EMOJI_CODE_PATTERN
+    return if (runCatching { Regex(candidate) }.isSuccess) candidate else FALLBACK_EMOJI_CODE_PATTERN
+}
 
 fun SeatCapacityDto.toDomain(): SeatPolicy =
     SeatPolicy(minSeats = min, defaultSeats = defaultCapacity, maxSeats = max)
@@ -184,7 +260,7 @@ fun WalletResponse.toDomain(): WalletSnapshot = WalletSnapshot(
 fun WithdrawalDto.toDomain() = com.voiza.app.domain.model.Withdrawal(id, amountRCoins, status, payoutMethod)
 
 fun LeaderEntryDto.toDomain(): RankRow = RankRow(
-    user = MiniUser(id = id, username = username, avatarUrl = avatarUrl),
+    user = MiniUser(id = id, username = username, avatarUrl = avatarUrl, rank = rank.toDomain()),
     earned = earned ?: 0,
 )
 

@@ -1,6 +1,23 @@
 package com.voiza.app.ui.components
 
+import androidx.compose.ui.graphics.Color
 import com.voiza.app.BuildConfig
+
+/**
+ * A rank's accent from the ladder (`#ecbc58`) as a Compose colour.
+ *
+ * Hand-parsed rather than `android.graphics.Color.parseColor` so it is a pure
+ * function a JVM test can run, and so an operator typing a malformed value in
+ * the admin panel degrades to [fallback] instead of crashing the room.
+ */
+fun accentColor(hex: String?, fallback: Color): Color {
+    val digits = hex?.trim()?.removePrefix("#") ?: return fallback
+    if (digits.length != 6) return fallback
+    val rgb = digits.toIntOrNull(16) ?: return fallback
+    // The Int constructor packs sRGB ARGB itself; Color(ULong) would need a colour-space tag
+    // in its high bits and throws when it reads one that is not there.
+    return Color(rgb or (0xFF shl 24))
+}
 
 /**
  * Gift icons, avatars and room covers are stored as root-relative paths

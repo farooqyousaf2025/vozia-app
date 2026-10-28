@@ -109,7 +109,11 @@ valid cert, or `adb reverse` for local testing).
   whenever a gift has no animation or the URL fails, and a 6 s watchdog pops the
   queue slot either way so a dead URL cannot stall the gift queue.
   `RoomVisuals.kt` adds the matching theme wallpaper, a once-per-join welcome
-  flourish and a quiet ambient loop; unknown theme slugs degrade to the gradient.
+  flourish and a quiet ambient loop. All three are **URLs the API named** —
+  `room.themeWallpaper`, the catalogue's `welcome` and `room.ambientEffect` —
+  never a path built from a slug, because an operator's wallpaper lives at
+  `/uploads/<uuid>.png`. A room whose payload carries no wallpaper just shows the
+  gradient underneath.
 - **Gift sound.** `gifts.sound_url` is served from the backend's generated asset
   set (`chime.wav` / `whoosh.wav` / `fanfare.wav`) and played by
   `ui/components/GiftSoundPlayer.kt`, which the overlay remembers per dialog and
@@ -130,10 +134,29 @@ valid cert, or `adb reverse` for local testing).
   the other kit's; the counting is ours — the client draws the server's `total`
   from `room:liked`, never its own tap count, and the ranking sheet renders
   whatever `GET /api/users/top` returns rather than a local tally. The ambient
-  loop behind the seats is `room.ambientEffect` (server-chosen per category), the
+  loop behind the seats is `room.ambientEffect` (the server's per-category choice,
+  which an operator remaps from the panel's Decoration screen), the
   entry banner is tiered by `user_joined.user.vipLevel`, and the heart sprites are
   a `Canvas` bezier path, not a Lottie, so a hundred concurrent hearts cost one
   recomposition of one layer.
+- **A member's level is painted, never computed.** `UserRank` is the rung the
+  server resolved from `users.xp` against `rank_levels`, and it arrives already
+  shaped: `rank.name`, `rank.badge` (a URL, so an operator's upload at
+  `/uploads/<uuid>.png` works the same as seeded `/badges/level-9.png`) and
+  `rank.accent`. `ui/components/RankBadge.kt` draws that art through
+  `asAssetUrl()`, `accentColor()` turns the rung's `#rrggbb` into a Compose
+  colour, and neither one holds a threshold — the app has no ladder table, no
+  `level = xp / 300` shortcut and no `/badges/level-<n>.png` guess. Where the
+  payload carries no `rank` (a lean seat list, the audience roster) the badge is
+  simply absent; the client never reads a missing rung as level 0. The rung sits
+  beside the spend tier it must not be confused with: `EntryBanner` is still
+  sized by `vipLevel`, an operator's gift-spend tier, while the badge and name
+  next to it are what the member earned.
+- **Chat lines are deduplicated by id.** Joining a room inserts an entry notice
+  into `chat_messages` *and* emits it, so `GET /api/rooms/:id` and
+  `room:chat_message` can bring the same row. The message list is keyed by id,
+  which means a second copy is a crash rather than a doubled line, so
+  `RoomEffects.appendChat` drops an id already on screen.
 - **Gift panel is a paged 4×2 grid with two-tap send.** `GiftDialog` shows eight
   tiles per page (`HorizontalPager`, dot indicator, fixed `PANEL_HEIGHT` so the
   pager cannot resize while the second tap lands): first tap selects, second sends.
@@ -224,7 +247,14 @@ valid cert, or `adb reverse` for local testing).
   only messages that arrive while you watch, toggle in the strip); audience
   strip with a live hand-raise badge that opens `AudienceListSheet` (on the mic
   / waiting to speak / pure listeners); auto-scrolling chat overlay (gift lines
-  highlighted, plus the SYSTEM `"<name> entered the room"` notices); action bar
+  highlighted, plus the SYSTEM `"<name> entered the room"` notices). The overlay's smiley
+  icon opens an emoji strip loaded from `GET /api/emoji`: tapping a tile inserts the token
+  (`[smile]`) rather than a picture, because the token is what the message stores and what
+  the room's other clients draw art for. `ChatEmoji.rememberEmojiMessage` scans a line with
+  the `codePattern` that same response published — never a copy of it that could drift — and
+  renders the row with `BasicText(inlineContent = …)`, since Material 3's `Text` has no
+  inline-content parameter and would show the raw token. A code with no row (retired, or
+  typed by hand) is left exactly as written, and `BarrageOverlay` flies the same rendering; action bar
   (mic / raise-hand / like / gifts / leave) where the like button reports a
   debounced total and paints hearts from the server's `room:liked` batch in a
   corner `HeartLayer`; small gifts scroll in a right-edge `GiftTickerColumn`,

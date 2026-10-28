@@ -434,6 +434,466 @@ function loadLivekitService() {
   await api('DELETE', `/api/admin/gifts/${vipGiftId}`, { token: adminToken });
   check('admin: the throwaway VIP gift is removed again', await sql(`select count(*) from gifts where id='${vipGiftId}'`) === '0');
 
+  // ---- H1b. uploaded media -------------------------------------------------
+  // "Add and remove gifts from the admin panel" needs somewhere for the art to come
+  // from. These drive the real upload path: bytes in, file on disk, row in the
+  // database, URL served back out — and the refusals that keep a hostile or merely
+  // careless operator from putting a script where a gift icon belongs.
+  const PNG_1PX = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const LOTTIE = Buffer.from(JSON.stringify({ v: '5.7.4', fr: 30, ip: 0, op: 10, w: 100, h: 100, layers: [{ ty: 4 }] }));
+  const b64 = (buf) => buf.toString('base64');
+  const upload = (body) => api('POST', '/api/admin/uploads', { token: adminToken, body });
+
+  const icon = await upload({ kind: 'GIFT_ICON', fileName: 'e2e-rose.png', data: b64(PNG_1PX) });
+  const iconUrl = icon.json && icon.json.asset && icon.json.asset.url;
+  check('upload: a PNG is accepted as a gift icon', icon.status === 201 && !!iconUrl && icon.json.duplicate === false, { status: icon.status, body: icon.json });
+  check('upload: the stored name is server-chosen, not the file name sent', !!(iconUrl && /^[0-9a-f-]{36}\.png$/.test(iconUrl.split('/').pop())), iconUrl);
+  check('upload: the image header was parsed, not trusted from the client', !!(icon.json && icon.json.asset.width === 1 && icon.json.asset.height === 1 && icon.json.asset.byteSize === PNG_1PX.length), icon.json && icon.json.asset);
+
+  const served = await fetch(`${API}${iconUrl}`);
+  const servedBytes = Buffer.from(await served.arrayBuffer());
+  check('upload: the API serves the bytes back, unchanged and typed', served.status === 200 && served.headers.get('content-type').startsWith('image/png') && servedBytes.equals(PNG_1PX), { status: served.status, type: served.headers.get('content-type'), bytes: servedBytes.length });
+  check('upload: the file really exists on disk under backend/uploads', fs.existsSync(path.join(BE_ROOT, 'uploads', path.basename(iconUrl))));
+
+  const again = await upload({ kind: 'GIFT_ICON', fileName: 'e2e-rose-copy.png', data: b64(PNG_1PX) });
+  check('upload: identical bytes return the existing row instead of a second file', again.status === 200 && again.json.duplicate === true && again.json.asset.id === icon.json.asset.id, { status: again.status, dup: again.json && again.json.duplicate });
+  check('upload: the duplicate wrote no extra row', await sql(`select count(*) from media_assets where url='${iconUrl}'`) === '1');
+
+  const disguised = await upload({ kind: 'GIFT_ICON', fileName: 'payload.png', data: Buffer.from('<?php system($_GET["c"]); ?>').toString('base64') });
+  check('upload: a script named .png is refused by its magic bytes', disguised.status === 400 && disguised.json.error.code === 'upload_format_unsupported', { status: disguised.status, code: disguised.json && disguised.json.error && disguised.json.error.code });
+
+  const wrongSlot = await upload({ kind: 'GIFT_SOUND', fileName: 'not-a-sound.png', data: b64(PNG_1PX) });
+  check('upload: a PNG is refused in a sound slot', wrongSlot.status === 400 && wrongSlot.json.error.code === 'upload_format_unsupported', wrongSlot.json && wrongSlot.json.error && wrongSlot.json.error.message);
+
+  const scene = await upload({ kind: 'GIFT_ANIMATION', fileName: 'e2e-scene.json', data: b64(LOTTIE) });
+  check('upload: a Lottie scene is accepted as a gift animation', scene.status === 201 && scene.json.asset.contentType === 'application/json', { status: scene.status, body: scene.json });
+
+  const notLottie = await upload({ kind: 'GIFT_ANIMATION', fileName: 'config.json', data: Buffer.from(JSON.stringify({ hello: 'world' })).toString('base64') });
+  check('upload: JSON that is not a Lottie scene is refused', notLottie.status === 400 && notLottie.json.error.code === 'upload_format_unsupported', notLottie.json && notLottie.json.error && notLottie.json.error.message);
+
+  const notBase64 = await upload({ kind: 'GIFT_ICON', fileName: 'broken.png', data: 'not base64 at all!!' });
+  check('upload: a body that is not base64 is refused before anything is written', notBase64.status === 400 && notBase64.json.error.code === 'upload_not_base64', { status: notBase64.status, code: notBase64.json && notBase64.json.error && notBase64.json.error.code });
+
+  const oversized = await upload({ kind: 'BADGE', fileName: 'big.png', data: b64(Buffer.concat([PNG_1PX, Buffer.alloc(600 * 1024, 0x41)])) });
+  check('upload: a file over the cap for its kind is refused', oversized.status === 400 && oversized.json.error.code === 'upload_too_large', { status: oversized.status, code: oversized.json && oversized.json.error && oversized.json.error.code });
+
+  const traversal = await upload({ kind: 'GIFT_ICON', fileName: '../../../../etc/evil.png', data: b64(Buffer.concat([PNG_1PX, Buffer.from('e2e-distinct-bytes')])) });
+  check('upload: a traversal-shaped file name is stored as text only', traversal.status === 201 && traversal.json.asset.fileName.includes('..') && !traversal.json.asset.url.includes('..'), traversal.json && traversal.json.asset);
+  check('upload: nothing was written outside the uploads directory', fs.existsSync(path.join(BE_ROOT, 'uploads', path.basename(traversal.json.asset.url))) && !fs.existsSync(path.resolve(BE_ROOT, '..', '..', 'etc')));
+
+  const userDenied = await api('POST', '/api/admin/uploads', { token: d.token, body: { kind: 'GIFT_ICON', fileName: 'nope.png', data: b64(PNG_1PX) } });
+  check('upload: a member token cannot reach the upload route', userDenied.status === 403, { status: userDenied.status, code: userDenied.json && userDenied.json.error && userDenied.json.error.code });
+
+  const listed = await api('GET', '/api/admin/uploads?kind=GIFT_ICON&limit=10', { token: adminToken });
+  check('upload: the library lists what was stored', listed.status === 200 && listed.json.assets.some((asset) => asset.id === icon.json.asset.id) && listed.json.total >= 1, { status: listed.status, n: listed.json && listed.json.assets && listed.json.assets.length });
+
+  const usedGift = await api('POST', '/api/admin/gifts', {
+    token: adminToken,
+    body: { name: `E2E Uploaded ${stamp}`, iconUrl, diamondPrice: 7, rCoinValue: 5, category: 'E2E', minVipLevel: 0, sortOrder: 901, animationUrl: scene.json.asset.url },
+  });
+  const usedGiftId = usedGift.json && usedGift.json.gift && usedGift.json.gift.id;
+  check('upload: a catalogue row can point at uploaded art', usedGift.status === 201 && usedGift.json.gift.iconUrl === iconUrl, { status: usedGift.status });
+
+  const blocked = await api('DELETE', `/api/admin/uploads/${icon.json.asset.id}`, { token: adminToken });
+  check('upload: deleting art a gift still points at is refused', blocked.status === 409 && blocked.json.error.code === 'upload_in_use', { status: blocked.status, msg: blocked.json && blocked.json.error && blocked.json.error.message });
+  check('upload: the refusal survives the gift being removed', (await api('DELETE', `/api/admin/gifts/${usedGiftId}`, { token: adminToken })).status === 200);
+
+  const freed = await api('DELETE', `/api/admin/uploads/${icon.json.asset.id}`, { token: adminToken });
+  check('upload: once unreferenced the asset can be deleted', freed.status === 200 && freed.json.ok === true, { status: freed.status });
+  check('upload: the row is gone from PostgreSQL', await sql(`select count(*) from media_assets where id='${icon.json.asset.id}'`) === '0');
+  check('upload: the bytes are gone from disk', !fs.existsSync(path.join(BE_ROOT, 'uploads', path.basename(iconUrl))));
+  check('upload: the served URL now 404s rather than falling back to a directory listing', (await fetch(`${API}${iconUrl}`)).status === 404);
+
+  await api('DELETE', `/api/admin/uploads/${scene.json.asset.id}`, { token: adminToken });
+  await api('DELETE', `/api/admin/uploads/${traversal.json.asset.id}`, { token: adminToken });
+  const auditUploads = await sql(`select count(*) from admin_audit where action in ('MEDIA_UPLOAD','MEDIA_DELETE') and target_id in ('${icon.json.asset.id}','${scene.json.asset.id}','${traversal.json.asset.id}')`);
+  check('upload: every write and delete is in the audit log', Number(auditUploads) >= 5, auditUploads);
+  check('upload: no e2e upload is left behind', await sql(`select count(*) from media_assets where file_name like 'e2e-%' or file_name like '%evil%'`) === '0');
+
+  // ---- H1c. room decoration: themes, effects, category mapping --------------
+  // The look of a room used to be a file in the repository. These checks drive the
+  // database-backed catalogue instead: an operator adds a theme whose wallpaper is
+  // an upload, points a room category at an uploaded loop, and every room DTO then
+  // carries the URL rather than a slug the client would have to guess a path from.
+  const publicCatalog = await api('GET', '/api/rooms/themes');
+  const seededThemes = publicCatalog.json && publicCatalog.json.themes || [];
+  check('decor: the published catalogue is the database rows, seeded and non-empty',
+    publicCatalog.status === 200 && seededThemes.length >= 4 && !!publicCatalog.json.defaultTheme &&
+    seededThemes.some((theme) => theme.slug === publicCatalog.json.defaultTheme) &&
+    seededThemes.every((theme) => typeof theme.wallpaper === 'string' && theme.wallpaper.startsWith('/')),
+    { themes: seededThemes.length, defaultTheme: publicCatalog.json && publicCatalog.json.defaultTheme });
+
+  const adminDecor = await api('GET', '/api/admin/decor', { token: adminToken });
+  check('decor: the admin view adds the fields a phone does not need',
+    adminDecor.status === 200 && Array.isArray(adminDecor.json.themes) &&
+    adminDecor.json.themes.every((theme) => 'isDefault' in theme && 'sortOrder' in theme && 'roomsUsing' in theme) &&
+    adminDecor.json.categoryEffects.length >= 5,
+    adminDecor.json && { themes: adminDecor.json.themes.length, mappings: adminDecor.json.categoryEffects.length });
+
+  const deniedDecor = await api('GET', '/api/admin/decor', { token: d.token });
+  check('decor: a member token cannot read the operator view', deniedDecor.status === 403, { status: deniedDecor.status });
+
+  const wallpaper = await upload({ kind: 'WALLPAPER', fileName: 'e2e-wallpaper.png', data: b64(Buffer.concat([PNG_1PX, Buffer.from('e2e-wallpaper-bytes')])) });
+  const wallpaperUrl = wallpaper.json && wallpaper.json.asset && wallpaper.json.asset.url;
+  check('decor: a wallpaper is a supported upload kind', wallpaper.status === 201 && !!wallpaperUrl, { status: wallpaper.status, url: wallpaperUrl });
+
+  const themeSlug = `e2e-theme-${stamp}`.toLowerCase().slice(0, 39);
+  const madeTheme = await api('POST', '/api/admin/themes', {
+    token: adminToken,
+    body: { slug: themeSlug, name: `E2E Theme ${stamp}`, accent: '#ff8800', wallpaperUrl, sortOrder: 900 },
+  });
+  check('decor: an operator can add a theme pointing at uploaded art',
+    madeTheme.status === 201 && madeTheme.json.theme.slug === themeSlug && madeTheme.json.theme.wallpaper === wallpaperUrl,
+    { status: madeTheme.status, body: madeTheme.json });
+
+  const republished = await api('GET', '/api/rooms/themes');
+  check('decor: the new theme is published to clients without a restart',
+    (republished.json.themes || []).some((theme) => theme.slug === themeSlug),
+    { themes: (republished.json.themes || []).map((theme) => theme.slug).join(',') });
+
+  const dupTheme = await api('POST', '/api/admin/themes', { token: adminToken, body: { slug: themeSlug, name: 'clash', accent: '#ff8800', wallpaperUrl } });
+  check('decor: a second theme cannot reuse a slug', dupTheme.status === 409 && dupTheme.json.error.code === 'theme_exists', { status: dupTheme.status, code: dupTheme.json && dupTheme.json.error && dupTheme.json.error.code });
+
+  const badAccent = await api('POST', '/api/admin/themes', { token: adminToken, body: { slug: 'e2e-bad-accent', name: 'x', accent: '#fff', wallpaperUrl } });
+  check('decor: a malformed accent is refused, not stored', badAccent.status === 400 && badAccent.json.error.code === 'accent_invalid', badAccent.json && badAccent.json.error && badAccent.json.error.message);
+
+  const jsUrl = await api('POST', '/api/admin/themes', { token: adminToken, body: { slug: 'e2e-js-url', name: 'x', accent: '#ffffff', wallpaperUrl: 'javascript:alert(1)' } });
+  check('decor: a wallpaper URL that is not http(s) or root-relative is refused',
+    jsUrl.status === 400 && jsUrl.json.error.code === 'wallpaperUrl_invalid', { status: jsUrl.status, msg: jsUrl.json && jsUrl.json.error && jsUrl.json.error.message });
+
+  const themedRoom = await api('POST', '/api/rooms', { token: a.token, body: { title: `E2E Themed ${stamp}`, category: 'CHAT', type: 'PUBLIC', seatCapacity: 2, theme: themeSlug } });
+  const themedRoomId = themedRoom.json && themedRoom.json.room && themedRoom.json.room.id;
+  check('decor: a room can be created with the new theme', themedRoom.status < 300 && !!themedRoomId, { status: themedRoom.status });
+  check('decor: the room DTO carries the wallpaper URL, so no client derives a path',
+    themedRoom.json.room.theme === themeSlug && themedRoom.json.room.themeWallpaper === wallpaperUrl,
+    { theme: themedRoom.json.room.theme, wallpaper: themedRoom.json.room.themeWallpaper });
+  check('decor: that wallpaper is actually served over HTTP', (await fetch(`${API}${wallpaperUrl}`)).status === 200);
+
+  const rename = await api('PUT', `/api/admin/themes/${themeSlug}`, { token: adminToken, body: { slug: 'e2e-renamed' } });
+  check('decor: a slug cannot be renamed — rooms store it as their identity',
+    rename.status === 400 && rename.json.error.code === 'theme_slug_immutable', rename.json && rename.json.error && rename.json.error.message);
+
+  const renameDefault = await api('PUT', '/api/admin/themes/aurora', { token: adminToken, body: { isDefault: false } });
+  check('decor: demoting the only default is not allowed, so the flag is one-way',
+    renameDefault.status === 200 && renameDefault.json.theme.isDefault === true, { status: renameDefault.status, isDefault: renameDefault.json && renameDefault.json.theme && renameDefault.json.theme.isDefault });
+
+  const deleteDefault = await api('DELETE', '/api/admin/themes/aurora', { token: adminToken });
+  check('decor: the default theme cannot be deleted out from under every room',
+    deleteDefault.status === 409 && deleteDefault.json.error.code === 'theme_is_default', { status: deleteDefault.status, msg: deleteDefault.json && deleteDefault.json.error && deleteDefault.json.error.message });
+
+  const makeDefault = await api('PUT', `/api/admin/themes/${themeSlug}`, { token: adminToken, body: { isDefault: true } });
+  const defaultRows = await sql('select count(*) from room_themes where is_default');
+  check('decor: making a theme the default leaves exactly one default row',
+    makeDefault.status === 200 && makeDefault.json.theme.isDefault === true && defaultRows === '1',
+    { status: makeDefault.status, defaults: defaultRows });
+
+  const blockedWallpaper = await api('DELETE', `/api/admin/uploads/${wallpaper.json.asset.id}`, { token: adminToken });
+  check('decor: a wallpaper a theme points at cannot be deleted',
+    blockedWallpaper.status === 409 && blockedWallpaper.json.error.code === 'upload_in_use',
+    { status: blockedWallpaper.status, msg: blockedWallpaper.json && blockedWallpaper.json.error && blockedWallpaper.json.error.message });
+
+  // A Lottie scene is parsed as JSON, so unlike a PNG it cannot carry identifying
+  // bytes after the document — this is a second scene, not the first with a tail.
+  const LOOP_SCENE = Buffer.from(JSON.stringify({ v: '5.7.4', fr: 24, ip: 0, op: 12, w: 80, h: 80, layers: [{ ty: 4 }], nm: `e2e-loop-${stamp}` }));
+  const loop = await upload({ kind: 'EFFECT', fileName: 'e2e-loop.json', data: b64(LOOP_SCENE) });
+  const loopUrl = loop.json && loop.json.asset && loop.json.asset.url;
+  const madeEffect = await api('POST', '/api/admin/effects', { token: adminToken, body: { key: `e2e-loop-${stamp}`.toLowerCase().slice(0, 39), kind: 'AMBIENT', name: `E2E Loop ${stamp}`, url: loopUrl, sortOrder: 900 } });
+  const effectKey = madeEffect.json && madeEffect.json.effect && madeEffect.json.effect.key;
+  check('decor: an ambient loop can be added from an uploaded Lottie',
+    madeEffect.status === 201 && !!effectKey && madeEffect.json.effect.url === loopUrl &&
+    (await api('GET', '/api/rooms/themes')).json.effects.includes(loopUrl),
+    { status: madeEffect.status, key: effectKey });
+
+  const mappedAway = await api('PUT', `/api/admin/room-categories/GAME/effect`, { token: adminToken, body: { effectKey } });
+  const gameRoom = await api('POST', '/api/rooms', { token: a.token, body: { title: `E2E Game ${stamp}`, category: 'GAME', type: 'PUBLIC', seatCapacity: 2 } });
+  check('decor: which loop a category plays is data — remapping it changes the next room',
+    mappedAway.status === 200 && gameRoom.json.room.ambientEffect === loopUrl,
+    { status: mappedAway.status, ambient: gameRoom.json.room && gameRoom.json.room.ambientEffect });
+  check('decor: the remapped loop is served, not just named', !!loopUrl && (await fetch(`${API}${loopUrl}`)).status === 200, { url: loopUrl });
+
+  const deleteMapped = await api('DELETE', `/api/admin/effects/${effectKey}`, { token: adminToken });
+  check('decor: an effect a category still plays cannot be deleted',
+    deleteMapped.status === 409 && deleteMapped.json.error.code === 'effect_in_use',
+    { status: deleteMapped.status, msg: deleteMapped.json && deleteMapped.json.error && deleteMapped.json.error.message });
+
+  const unknownCategory = await api('PUT', '/api/admin/room-categories/DATING/effect', { token: adminToken, body: { effectKey } });
+  check('decor: a category outside the room_category enum is refused',
+    unknownCategory.status === 400 && unknownCategory.json.error.code === 'room_category_invalid',
+    { status: unknownCategory.status, msg: unknownCategory.json && unknownCategory.json.error && unknownCategory.json.error.message });
+
+  const welcomeAsAmbient = await api('PUT', '/api/admin/room-categories/GAME/effect', { token: adminToken, body: { effectKey: 'welcome' } });
+  check('decor: a welcome flourish cannot be assigned as the loop behind a room',
+    welcomeAsAmbient.status === 400 && welcomeAsAmbient.json.error.code === 'effect_kind_mismatch',
+    { status: welcomeAsAmbient.status, msg: welcomeAsAmbient.json && welcomeAsAmbient.json.error && welcomeAsAmbient.json.error.message });
+
+  // Put GAME back on the seeded loop, then take the e2e rows out again.
+  const restoredMapping = await api('PUT', '/api/admin/room-categories/GAME/effect', { token: adminToken, body: { effectKey: 'room-glow' } });
+  check('decor: the category mapping restores to the seeded loop',
+    restoredMapping.status === 200 && (await api('POST', '/api/rooms', { token: a.token, body: { title: `E2E Game2 ${stamp}`, category: 'GAME', type: 'PUBLIC', seatCapacity: 2 } })).json.room.ambientEffect === '/effects/room-glow.json',
+    { status: restoredMapping.status });
+
+  const backToAurora = await api('PUT', '/api/admin/themes/aurora', { token: adminToken, body: { isDefault: true } });
+  const droppedTheme = await api('DELETE', `/api/admin/themes/${themeSlug}`, { token: adminToken });
+  check('decor: a retired theme deletes, and the rooms that used it keep rendering',
+    backToAurora.status === 200 && droppedTheme.status === 200 && droppedTheme.json.roomsLeftOnDefault >= 1 &&
+    (await api('GET', `/api/rooms/${themedRoomId}`)).json.room.themeWallpaper === '/themes/aurora/wallpaper.png',
+    { status: droppedTheme.status, rooms: droppedTheme.json && droppedTheme.json.roomsLeftOnDefault });
+
+  const freedWallpaper = await api('DELETE', `/api/admin/uploads/${wallpaper.json.asset.id}`, { token: adminToken });
+  const droppedEffect = await api('DELETE', `/api/admin/effects/${effectKey}`, { token: adminToken });
+  const freedLoop = await api('DELETE', `/api/admin/uploads/${loop.json.asset.id}`, { token: adminToken });
+  check('decor: once nothing points at them, the rows and the bytes go',
+    freedWallpaper.status === 200 && droppedEffect.status === 200 && freedLoop.status === 200 &&
+    !(await api('GET', '/api/rooms/themes')).json.themes.some((theme) => theme.slug === themeSlug) &&
+    await sql(`select count(*) from room_themes where slug='${themeSlug}'`) === '0' &&
+    await sql(`select count(*) from visual_effects where key='${effectKey}'`) === '0' &&
+    !fs.existsSync(path.join(BE_ROOT, 'uploads', path.basename(loopUrl))),
+    { wallpaper: freedWallpaper.status, effect: droppedEffect.status, loop: freedLoop.status });
+
+  const decorAudit = await sql(`select count(*) from admin_audit where action in ('THEME_CREATE','THEME_UPDATE','THEME_DELETE','EFFECT_CREATE','EFFECT_DELETE','EFFECT_CATEGORY_MAP')`);
+  check('decor: every catalogue write is attributable in the audit log', Number(decorAudit) >= 7, decorAudit);
+  check('decor: no e2e theme or effect row is left behind',
+    await sql(`select count(*) from room_themes where slug like 'e2e-%'`) === '0' &&
+    await sql(`select count(*) from visual_effects where key like 'e2e-%'`) === '0' &&
+    await sql(`select count(*) from media_assets where file_name like 'e2e-%'`) === '0');
+
+  // ---- H1b. chat emoji catalogue ------------------------------------------
+  // A message stores the token `[key]`, never a URL, so the contract worth testing is that the
+  // published codes all match the published pattern — that is what lets a client delete its own
+  // emoji table and still render history.
+  const shippedEmoji = await api('GET', '/api/emoji');
+  const emojiPattern = new RegExp(`^${shippedEmoji.json.codePattern}$`);
+  check('emoji: the public catalogue publishes codes a client can match with its own pattern',
+    shippedEmoji.status === 200 && Array.isArray(shippedEmoji.json.emojis) && shippedEmoji.json.emojis.length >= 60 &&
+    shippedEmoji.json.emojis.every((e) => emojiPattern.test(e.code) && e.url.startsWith('/') && e.key === e.code.slice(1, -1)),
+    { status: shippedEmoji.status, count: shippedEmoji.json && shippedEmoji.json.emojis.length });
+
+  const emojiArt = await upload({ kind: 'EMOJI', fileName: 'e2e-emoji.png', data: b64(PNG_1PX) });
+  check('emoji: a glyph is a media upload of its own kind',
+    emojiArt.status === 201 && emojiArt.json.asset.kind === 'EMOJI' &&
+    fs.existsSync(path.join(BE_ROOT, 'uploads', path.basename(emojiArt.json.asset.url))),
+    { status: emojiArt.status, kind: emojiArt.json && emojiArt.json.asset && emojiArt.json.asset.kind });
+
+  const emojiKey = `e2e-grin-${stamp}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 32);
+  const madeEmoji = await api('POST', '/api/admin/emoji', {
+    token: adminToken, body: { key: emojiKey, label: 'E2E Grin', url: emojiArt.json.asset.url, sortOrder: 7 },
+  });
+  const publishedEmoji = (await api('GET', '/api/emoji')).json.emojis.find((e) => e.key === emojiKey);
+  check('emoji: an added code is published to clients on the next read, with its art served',
+    madeEmoji.status === 201 && !!publishedEmoji && publishedEmoji.code === `[${emojiKey}]` &&
+    publishedEmoji.url === emojiArt.json.asset.url &&
+    (await fetch(`${API}${emojiArt.json.asset.url}`)).status === 200,
+    { status: madeEmoji.status, published: publishedEmoji });
+
+  const dupeEmoji = await api('POST', '/api/admin/emoji', {
+    token: adminToken, body: { key: emojiKey, label: 'Twice', url: emojiArt.json.asset.url },
+  });
+  check('emoji: a second row cannot reuse a code',
+    dupeEmoji.status === 409 && dupeEmoji.json.error.code === 'emoji_exists',
+    { status: dupeEmoji.status, code: dupeEmoji.json && dupeEmoji.json.error && dupeEmoji.json.error.code });
+
+  const scriptedEmoji = await api('POST', '/api/admin/emoji', {
+    token: adminToken, body: { key: `e2e-evil-${stamp}`.toLowerCase().replace(/[^a-z0-9-]/g, '-'), label: 'Evil', url: 'javascript:alert(1)' },
+  });
+  check('emoji: a script URL is not storable, because this string renders in everyone\'s chat',
+    scriptedEmoji.status === 400 && scriptedEmoji.json.error.code === 'emoji_url_invalid',
+    { status: scriptedEmoji.status, code: scriptedEmoji.json && scriptedEmoji.json.error && scriptedEmoji.json.error.code });
+
+  const unmatchable = await api('POST', '/api/admin/emoji', {
+    token: adminToken, body: { key: 'a'.repeat(33), label: 'Too Long', url: emojiArt.json.asset.url },
+  });
+  check('emoji: a key the token pattern could never match is refused',
+    unmatchable.status === 400 && unmatchable.json.error.code === 'emoji_key_invalid',
+    { status: unmatchable.status, code: unmatchable.json && unmatchable.json.error && unmatchable.json.error.code });
+
+  const renamedEmoji = await api('PUT', `/api/admin/emoji/${emojiKey}`, { token: adminToken, body: { key: 'e2e-other' } });
+  check('emoji: a code already typed into messages cannot be renamed',
+    renamedEmoji.status === 400 && renamedEmoji.json.error.code === 'emoji_key_immutable',
+    { status: renamedEmoji.status, code: renamedEmoji.json && renamedEmoji.json.error && renamedEmoji.json.error.code });
+
+  const relabelled = await api('PUT', `/api/admin/emoji/${emojiKey}`, { token: adminToken, body: { label: 'E2E Grin Renamed', sortOrder: 3 } });
+  check('emoji: label and picker position do change',
+    relabelled.status === 200 && relabelled.json.emoji.label === 'E2E Grin Renamed' && relabelled.json.emoji.sortOrder === 3,
+    { status: relabelled.status, body: relabelled.json && relabelled.json.emoji });
+
+  const blockedGlyph = await api('DELETE', `/api/admin/uploads/${emojiArt.json.asset.id}`, { token: adminToken });
+  check('emoji: the art cannot be deleted while a code points at it',
+    blockedGlyph.status === 409 && blockedGlyph.json.error.code === 'upload_in_use',
+    { status: blockedGlyph.status, msg: blockedGlyph.json && blockedGlyph.json.error && blockedGlyph.json.error.message });
+
+  const droppedEmoji = await api('DELETE', `/api/admin/emoji/${emojiKey}`, { token: adminToken });
+  const freedGlyph = await api('DELETE', `/api/admin/uploads/${emojiArt.json.asset.id}`, { token: adminToken });
+  check('emoji: retiring a code leaves no row, and the bytes go once nothing points at them',
+    droppedEmoji.status === 200 && freedGlyph.status === 200 &&
+    await sql(`select count(*) from emoji_characters where key='${emojiKey}'`) === '0' &&
+    !(await api('GET', '/api/emoji')).json.emojis.some((e) => e.key === emojiKey) &&
+    !fs.existsSync(path.join(BE_ROOT, 'uploads', path.basename(emojiArt.json.asset.url))),
+    { emoji: droppedEmoji.status, upload: freedGlyph.status });
+
+  const emojiAudit = await sql(`select count(*) from admin_audit where action in ('EMOJI_CREATE','EMOJI_UPDATE','EMOJI_DELETE')`);
+  check('emoji: every catalogue write is attributable in the audit log', Number(emojiAudit) >= 3, emojiAudit);
+  check('emoji: no e2e emoji row is left behind',
+    await sql(`select count(*) from emoji_characters where key like 'e2e-%'`) === '0');
+
+  // ---- H1d. level ladder ----------------------------------------------------
+  // §5 asks for "user experience and levels" beside "VIP membership", and this repository had
+  // neither: no experience counter, no names for the rungs, no badge art. The ladder is the rule
+  // that turns a number into something a member can see, so the contract worth testing is that the
+  // number only moves from server-side activity, the rung always resolves from the operator's rows,
+  // and an operator can retune it — a threshold, a name, a badge — without shipping a backend.
+  const ladderStart = await api('GET', '/api/ranks', {});
+  const rungs = (ladderStart.json && ladderStart.json.levels) || [];
+  const rankLevelAt = (list, xp) => list.filter((rung) => rung.minXp <= xp).slice(-1)[0].level;
+  check('rank: the public ladder is one strictly ascending floor per rung, starting at zero',
+    ladderStart.status === 200 && rungs.length >= 20 && rungs[0].level === 0 && rungs[0].minXp === 0 &&
+    rungs.every((rung, i) => i === 0 || (rung.level > rungs[i - 1].level && rung.minXp > rungs[i - 1].minXp)),
+    { status: ladderStart.status, rungs: rungs.length });
+  check('rank: every rung publishes a name, a colour and art as a URL a device loads as-is',
+    rungs.every((rung) => !!rung.name && /^#[0-9a-f]{6}$/i.test(rung.accent) && typeof rung.badge === 'string' && rung.badge.startsWith('/')),
+    rungs[0]);
+  const badgeServed = await fetch(`${API}${rungs[rungs.length - 1].badge}`);
+  check('rank: a published badge URL is really served, not just named',
+    badgeServed.status === 200 && (badgeServed.headers.get('content-type') || '').includes('image'),
+    { status: badgeServed.status, type: badgeServed.headers.get('content-type') });
+  check('rank: the rate the number grows at is published, so a member can see how they climbed',
+    !!ladderStart.json.xpRules && ladderStart.json.xpRules.perDiamondSpent === 1 && ladderStart.json.xpRules.perRCoinEarned === 0.5,
+    ladderStart.json.xpRules);
+
+  const xpSender = await login(`+15559${stamp}11`, `e2e_xp_sender_${stamp.slice(-4)}`);
+  const xpHost = await login(`+15559${stamp}12`, `e2e_xp_host_${stamp.slice(-4)}`);
+  const atFloor = (await api('GET', '/api/auth/me', { token: xpSender.token })).json.user;
+  check('rank: a new account sits on the floor rung, with the next one already priced out',
+    atFloor.xp === 0 && atFloor.rank.level === rungs[0].level && atFloor.rank.name === rungs[0].name &&
+    atFloor.rank.badge === rungs[0].badge && !!atFloor.nextRank && atFloor.nextRank.remainingXp === rungs[1].minXp,
+    { xp: atFloor.xp, rank: atFloor.rank, nextRank: atFloor.nextRank });
+
+  await api('POST', '/api/wallet/recharge', { token: xpSender.token, body: { amountDiamonds: 5000 } });
+  const cheapGift = (((await api('GET', '/api/gifts', {})).json || {}).gifts || [])
+    .filter((g) => (g.minVipLevel || 0) === 0 && g.diamondPrice > 0)
+    .sort((a, b) => a.diamondPrice - b.diamondPrice)[0];
+  const xpGift = await api('POST', '/api/gifts/send', {
+    token: xpSender.token, body: { giftId: cheapGift.id, receiverId: xpHost.user.id, quantity: 3 },
+  });
+  const senderXp = cheapGift.diamondPrice * 3;
+  const hostXp = Math.floor((cheapGift.rCoinValue * 3) / 2);
+  check('rank: the ledger awards experience to both sides of a gift at the published rates',
+    xpGift.status === 201 && xpGift.json.sender.xp === senderXp && xpGift.json.receiver.xp === hostXp,
+    { status: xpGift.status, sent: xpGift.json && xpGift.json.sender && xpGift.json.sender.xp, hosted: xpGift.json && xpGift.json.receiver && xpGift.json.receiver.xp });
+  check('rank: the rung in the same response is the one the ladder says that number sits on',
+    xpGift.json.sender.rank.level === rankLevelAt(rungs, senderXp) &&
+    xpGift.json.sender.rank.name === rungs.find((rung) => rung.level === rankLevelAt(rungs, senderXp)).name,
+    { xp: senderXp, rank: xpGift.json && xpGift.json.sender && xpGift.json.sender.rank });
+  check('rank: experience persisted, so a restart cannot hand the member a fresh low badge',
+    await sql(`select xp from users where id='${xpSender.user.id}'`) === String(senderXp),
+    await sql(`select xp::text from users where id='${xpSender.user.id}'`));
+
+  const selfWrite = await api('PATCH', '/api/auth/me', { token: xpSender.token, body: { xp: 9_999_999, bio: 'e2e ladder' } });
+  const afterSelfWrite = (await api('GET', '/api/auth/me', { token: xpSender.token })).json.user;
+  check('rank: a member cannot write their own experience — the profile route ignores the field',
+    selfWrite.status === 200 && afterSelfWrite.xp === senderXp && afterSelfWrite.bio === 'e2e ladder',
+    { status: selfWrite.status, xp: afterSelfWrite.xp });
+
+  const topRung = rungs[rungs.length - 1];
+  const hostXpAfterGrant = hostXp + topRung.minXp + 5;
+  const granted = await api('POST', `/api/admin/users/${xpHost.user.id}/xp`, {
+    token: adminToken, body: { delta: topRung.minXp + 5, reason: 'e2e ladder probe' },
+  });
+  check('rank: an operator correction re-resolves the badge on the same response',
+    granted.status === 200 && granted.json.user.rank.level === topRung.level && granted.json.user.nextRank === null,
+    { status: granted.status, rank: granted.json && granted.json.user && granted.json.user.rank });
+  const tooDeep = await api('POST', `/api/admin/users/${xpHost.user.id}/xp`, { token: adminToken, body: { delta: -999_999_999 } });
+  check('rank: a correction cannot take a member below zero experience',
+    tooDeep.status === 400 && tooDeep.json.error.code === 'xp_would_go_negative',
+    { status: tooDeep.status, code: tooDeep.json && tooDeep.json.error && tooDeep.json.error.code });
+  const memberTried = await api('POST', `/api/admin/users/${xpHost.user.id}/xp`, { token: xpSender.token, body: { delta: 1 } });
+  check('rank: the experience route is unreachable with a member credential',
+    memberTried.status === 401 || memberTried.status === 403, { status: memberTried.status });
+
+  const offScale = await api('POST', '/api/admin/ranks', {
+    token: adminToken, body: { level: 21, name: 'Beyond', badgeUrl: rungs[0].badge, accent: '#ffffff', minXp: 99 },
+  });
+  check('rank: a rung outside the scale the schema allows is refused', offScale.status === 400, { status: offScale.status });
+  const dupeRung = await api('POST', '/api/admin/ranks', {
+    token: adminToken, body: { level: rungs[1].level, name: 'Twice', badgeUrl: rungs[0].badge, accent: '#ffffff', minXp: 99 },
+  });
+  check('rank: two rungs cannot share a level',
+    dupeRung.status === 409 && dupeRung.json.error.code === 'rank_exists',
+    { status: dupeRung.status, code: dupeRung.json && dupeRung.json.error && dupeRung.json.error.code });
+  const scriptedBadge = await api('PUT', '/api/admin/ranks/5', { token: adminToken, body: { badgeUrl: 'javascript:alert(1)' } });
+  check('rank: a badge is a URL every device loads, so a script is not storable',
+    scriptedBadge.status === 400 && scriptedBadge.json.error.code === 'rank_url_invalid',
+    { status: scriptedBadge.status, code: scriptedBadge.json && scriptedBadge.json.error && scriptedBadge.json.error.code });
+  const badRungAccent = await api('PUT', '/api/admin/ranks/5', { token: adminToken, body: { accent: 'hot pink' } });
+  check('rank: a colour the client cannot parse is refused rather than stored',
+    badRungAccent.status === 400 && badRungAccent.json.error.code === 'rank_accent_invalid', { status: badRungAccent.status });
+  const movedIdentity = await api('PUT', '/api/admin/ranks/5', { token: adminToken, body: { level: 6 } });
+  check('rank: a level already held by accounts cannot be renumbered',
+    movedIdentity.status === 400 && movedIdentity.json.error.code === 'rank_level_immutable', { status: movedIdentity.status });
+  const folded = await api('PUT', '/api/admin/ranks/5', { token: adminToken, body: { minXp: 100 } });
+  check('rank: a rung cannot be folded onto the floor of the rung under it',
+    folded.status === 409 && folded.json.error.code === 'rank_xp_order',
+    { status: folded.status, code: folded.json && folded.json.error && folded.json.error.code });
+  const movedFloor = await api('PUT', '/api/admin/ranks/0', { token: adminToken, body: { minXp: 10 } });
+  check('rank: the floor rung stays free, because every account has to stand somewhere',
+    movedFloor.status === 400 && movedFloor.json.error.code === 'rank_floor_immutable', { status: movedFloor.status });
+  const notALevel = await api('PUT', '/api/admin/ranks/abc', { token: adminToken, body: { name: 'x' } });
+  check('rank: a rung path parameter that is not a level says so',
+    notALevel.status === 400 && notALevel.json.error.code === 'rank_level_invalid', { status: notALevel.status });
+  const deleteFloor = await api('DELETE', '/api/admin/ranks/0', { token: adminToken });
+  check('rank: the floor rung cannot be deleted',
+    deleteFloor.status === 409 && deleteFloor.json.error.code === 'rank_floor', { status: deleteFloor.status });
+
+  const retired = await api('PUT', `/api/admin/ranks/${topRung.level}`, { token: adminToken, body: { isActive: false } });
+  const hiddenTop = (await api('GET', '/api/ranks', {})).json.levels.some((rung) => rung.level === topRung.level);
+  const demotedMember = (await api('GET', '/api/auth/me', { token: xpHost.token })).json.user;
+  check('rank: retiring a rung hides it and drops its members one rung, without touching their XP',
+    retired.status === 200 && !hiddenTop && demotedMember.rank.level === topRung.level - 1 && demotedMember.xp === hostXpAfterGrant,
+    { status: retired.status, rank: demotedMember.rank, xp: demotedMember.xp });
+  await api('PUT', `/api/admin/ranks/${topRung.level}`, { token: adminToken, body: { isActive: true } });
+
+  const renamedRung = await api('PUT', `/api/admin/ranks/${topRung.level}`, {
+    token: adminToken, body: { name: 'E2E Renamed Rung', accent: '#123456', badgeUrl: rungs[0].badge },
+  });
+  const publishedRename = (await api('GET', '/api/ranks', {})).json.levels.find((rung) => rung.level === topRung.level);
+  check('rank: renaming a rung, its colour and its art reaches every device on the next read',
+    renamedRung.status === 200 && publishedRename.name === 'E2E Renamed Rung' && publishedRename.accent === '#123456' &&
+    publishedRename.badge === rungs[0].badge && (await fetch(`${API}${rungs[0].badge}`)).status === 200,
+    { status: renamedRung.status, published: publishedRename });
+
+  const droppedTop = await api('DELETE', `/api/admin/ranks/${topRung.level}`, { token: adminToken });
+  const outOfOrderAgain = await api('POST', '/api/admin/ranks', {
+    token: adminToken, body: { level: topRung.level, name: topRung.name, badgeUrl: topRung.badge, accent: topRung.accent, minXp: 10 },
+  });
+  const reAdded = await api('POST', '/api/admin/ranks', {
+    token: adminToken, body: { level: topRung.level, name: topRung.name, badgeUrl: topRung.badge, accent: topRung.accent, minXp: topRung.minXp },
+  });
+  check('rank: a rung can be deleted and re-added, and the refusal in between explains the order',
+    droppedTop.status === 200 && droppedTop.json.membersMoved >= 1 && outOfOrderAgain.status === 409 &&
+    outOfOrderAgain.json.error.code === 'rank_xp_order' && reAdded.status === 201,
+    { dropped: droppedTop.status, moved: droppedTop.json && droppedTop.json.membersMoved, order: outOfOrderAgain.status, added: reAdded.status });
+  await api('PUT', `/api/admin/ranks/${topRung.level}`, {
+    token: adminToken, body: { name: topRung.name, accent: topRung.accent, badgeUrl: topRung.badge, minXp: topRung.minXp },
+  });
+
+  const board = await api('GET', '/api/users/top?window=month&role=senders&limit=20', {});
+  check('rank: the ranking board carries the rung of each row, so the sheet draws badges without a second call',
+    board.status === 200 && board.json.leaders.length > 0 &&
+    board.json.leaders.every((row) => row.rank && typeof row.rank.name === 'string' && row.rank.badge.startsWith('/')),
+    { status: board.status, rows: board.json && board.json.leaders.length, first: board.json && board.json.leaders[0] });
+
+  const ladderEnd = await api('GET', '/api/ranks', {});
+  check('rank: the ladder is left exactly as this run found it',
+    JSON.stringify(ladderEnd.json.levels) === JSON.stringify(rungs),
+    { before: rungs.length, after: ladderEnd.json.levels.length });
+  const rankAudit = await sql(`select count(*) from admin_audit where action in ('RANK_CREATE','RANK_UPDATE','RANK_DELETE','USER_XP_ADJUST')`);
+  check('rank: every ladder and experience write is attributable in the audit log',
+    Number(rankAudit) >= 6, rankAudit);
+  check('rank: no e2e rung was left on the ladder',
+    await sql(`select count(*) from rank_levels where name like 'E2E %'`) === '0');
+
   // ---- H2. seat policy ------------------------------------------------------
   // "A default of 15 speaker seats, configurable by the administrator" is only true if the
   // number comes from the database rather than a constant, so this drives the policy itself:

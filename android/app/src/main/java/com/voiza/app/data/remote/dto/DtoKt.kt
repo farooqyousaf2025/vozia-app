@@ -29,6 +29,16 @@ data class MiniUserDto(
     @SerializedName("diamondBalance") val diamondBalance: Int? = null,
     // Only present on the payloads that size an effect from it (room:user_joined).
     @SerializedName("vipLevel") val vipLevel: Int? = null,
+    // Only present where the query read `users.xp`; absent means "not shipped", never "level 0".
+    @SerializedName("rank") val rank: RankDto? = null,
+)
+
+/** A rung of the earned ladder, resolved server-side from the member's XP. */
+data class RankDto(
+    @SerializedName("level") val level: Int = 0,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("badge") val badge: String? = null,
+    @SerializedName("accent") val accent: String? = null,
 )
 
 data class UserDto(
@@ -47,6 +57,8 @@ data class UserDto(
     @SerializedName("status") val status: String = "ACTIVE",
     @SerializedName("isVerified") val isVerified: Boolean = false,
     @SerializedName("vipLevel") val vipLevel: Int = 0,
+    @SerializedName("xp") val xp: Long = 0,
+    @SerializedName("rank") val rank: RankDto? = null,
 )
 
 data class AuthResponse(
@@ -101,6 +113,9 @@ data class RoomDto(
     // Which ambient loop breathes behind this room. Sent by the API so the look is
     // the server's call; null on an older backend means "use the shipped default".
     @SerializedName("ambientEffect") val ambientEffect: String? = null,
+    // …and the wallpaper for its theme, for the same reason: an operator's theme is art in the
+    // upload store, so the path is published rather than derived from the slug here.
+    @SerializedName("themeWallpaper") val themeWallpaper: String? = null,
     @SerializedName("type") val type: String,
     // Required: the count is the server's policy, never a number this file may guess.
     @SerializedName("seatCapacity") val seatCapacity: Int,
@@ -180,6 +195,48 @@ data class SeatPolicyResponse(
     @SerializedName("seatCapacity") val seatCapacity: SeatCapacityDto,
     @SerializedName("speakerSeats") val speakerSeats: Int,
     @SerializedName("maxSpeakerSeats") val maxSpeakerSeats: Int,
+)
+
+/**
+ * `GET /api/rooms/themes` — the decoration catalogue, i.e. the rows an operator maintains in
+ * `room_themes` / `visual_effects` (migration 0015).
+ *
+ * Nothing here is a slug the client turns into a path: `wallpaper` and `welcome` are the exact
+ * URLs the API serves, which is what lets a theme added from the admin panel work on a phone that
+ * was built before it existed.
+ */
+data class RoomThemeDto(
+    @SerializedName("slug") val slug: String,
+    @SerializedName("name") val name: String,
+    @SerializedName("accent") val accent: String,
+    @SerializedName("wallpaper") val wallpaper: String,
+)
+
+data class ThemeCatalogueDto(
+    @SerializedName("themes") val themes: List<RoomThemeDto> = emptyList(),
+    @SerializedName("defaultTheme") val defaultTheme: String? = null,
+    @SerializedName("welcome") val welcome: String? = null,
+    @SerializedName("effects") val effects: List<String> = emptyList(),
+)
+
+/**
+ * `GET /api/emoji` — the chat emoji rows (`emoji_characters`, migration 0016).
+ *
+ * `codePattern` is the regular expression the server expects a client to scan messages with, so
+ * the set of recognisable codes has one owner. Every field is nullable because Gson allocates
+ * these data classes without running the constructor, which means a default here would never fire
+ * and an absent key arrives as null — the mapper, not the type, decides what a missing field means.
+ */
+data class EmojiOptionDto(
+    @SerializedName("key") val key: String?,
+    @SerializedName("label") val label: String?,
+    @SerializedName("code") val code: String?,
+    @SerializedName("url") val url: String?,
+)
+
+data class EmojiCatalogueDto(
+    @SerializedName("codePattern") val codePattern: String? = null,
+    @SerializedName("emojis") val emojis: List<EmojiOptionDto>? = null,
 )
 
 data class LiveKitTokenDto(
@@ -308,6 +365,7 @@ data class LeaderEntryDto(
     @SerializedName("username") val username: String,
     @SerializedName("avatarUrl") val avatarUrl: String? = null,
     @SerializedName("earned") val earned: Long? = null,
+    @SerializedName("rank") val rank: RankDto? = null,
 )
 
 data class LeaderboardResponse(

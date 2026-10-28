@@ -1,6 +1,6 @@
 import { PoolClient } from 'pg';
 import { many, one, query, withTransaction } from '../config/db';
-import { DEFAULT_THEME, isTheme, THEME_SLUGS } from '../config/themes';
+import { defaultThemeSlug, isTheme, themeSlugs } from './theme.service';
 import { presenceKeys, redis } from '../config/redis';
 import { ChatRow, ParticipantRow, RoomRow, SeatRow, UserRow } from '../types/db';
 import { hashSecret, randomRoomNumber, verifySecret } from '../utils/crypto';
@@ -142,10 +142,13 @@ export async function fetchParticipants(roomId: string, client?: PoolClient): Pr
 }
 
 export async function fetchMiniUser(userId: string): Promise<MiniUser | null> {
-  const row = await one<{ id: string; username: string; avatar_url: string | null; vip_level: number }>(
-    'SELECT id, username, avatar_url, vip_level FROM users WHERE id = $1',
-    [userId],
-  );
+  const row = await one<{
+    id: string;
+    username: string;
+    avatar_url: string | null;
+    vip_level: number;
+    xp: string | number;
+  }>('SELECT id, username, avatar_url, vip_level, xp FROM users WHERE id = $1', [userId]);
   return row ? toMiniUser(row) : null;
 }
 
@@ -420,7 +423,7 @@ export async function createRoom(hostUserId: string, input: CreateRoomInput): Pr
             // context makes PostgreSQL refuse the statement ("inconsistent types
             // deduced for parameter $1").
             `voiza-room-${roomNumber}`,
-            input.theme && isTheme(input.theme) ? input.theme : DEFAULT_THEME,
+            input.theme && isTheme(input.theme) ? input.theme : defaultThemeSlug(),
             normalizeLanguage(input.language),
             normalizeRegion(input.region),
             normalizeRules(input.rules),
@@ -912,7 +915,7 @@ export async function setRoomTheme(
   opts: { asAdmin?: boolean } = {},
 ): Promise<{ room: RoomDto }> {
   if (!isTheme(theme)) {
-    throw ApiError.badRequest(`theme must be one of: ${THEME_SLUGS.join(', ')}`, 'theme_unknown');
+    throw ApiError.badRequest(`theme must be one of: ${themeSlugs().join(', ')}`, 'theme_unknown');
   }
   const room = await loadRoom(roomId);
   if (!opts.asAdmin && (!actorId || room.host_id !== actorId)) {

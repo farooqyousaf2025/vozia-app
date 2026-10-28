@@ -47,10 +47,14 @@ data class SocketRoomClosedDto(
     @SerializedName("roomId") val roomId: String,
 )
 
-/** `room:theme_changed`: host or ops restyled the room; swap the wallpaper. */
+/**
+ * `room:theme_changed`: host or ops restyled the room, so swap the wallpaper.
+ * The server sends the URL with the slug because this client must not build one from it.
+ */
 data class SocketThemeChangedDto(
     @SerializedName("roomId") val roomId: String,
     @SerializedName("theme") val theme: String,
+    @SerializedName("wallpaper") val wallpaper: String? = null,
 )
 
 /**

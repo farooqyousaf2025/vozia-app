@@ -10,6 +10,8 @@ import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.data.socket.VoizaSocketClient
 import com.voiza.app.di.ServiceLocator
 import com.voiza.app.domain.model.ChatMessage
+import com.voiza.app.domain.model.EmojiOption
+import com.voiza.app.domain.model.FALLBACK_EMOJI_CODE_PATTERN
 import com.voiza.app.domain.model.Gift
 import com.voiza.app.domain.model.GiftAnimatedEvent
 import com.voiza.app.domain.model.HeartSignal
@@ -106,6 +108,27 @@ class PartyRoomViewModel(
         val giftTicker: List<GiftAnimatedEvent> = emptyList(),
         /** Whose entry is currently announced, or null when nothing is showing. */
         val entryBanner: UserJoinedEvent? = null,
+
+        /**
+         * Lottie URL for the flourish played once per visit, read from `GET /api/rooms/themes`.
+         * Null until that arrives — and stays null if the operator retired every welcome effect,
+         * because this file has no path of its own to fall back on.
+         */
+        val welcomeEffect: String? = null,
+
+        /**
+         * Chat emoji from `GET /api/emoji`, in the picker order the operator set. Empty until that
+         * arrives, and empty forever if the panel has no rows — then the picker shows nothing and a
+         * typed `[code]` stays the plain text it always was.
+         */
+        val emojis: List<EmojiOption> = emptyList(),
+
+        /**
+         * The expression the server publishes for finding codes inside a message. Used as-is
+         * rather than reimplemented here, so a change to what a valid code looks like is one
+         * operator-side decision and not a client release.
+         */
+        val emojiCodePattern: String = FALLBACK_EMOJI_CODE_PATTERN,
 
         /** Room likes as the server counts them, plus the next heart request. */
         val likeTotal: Long = 0,
@@ -252,12 +275,41 @@ class PartyRoomViewModel(
         }
         // Static chat history from the snapshot endpoint (join omits chat).
         viewModelScope.launch { loadChatHistory() }
+        // The entry flourish is the operator's choice, so it is read once per visit.
+        viewModelScope.launch { loadWelcomeEffect() }
+        // Same for the chat emoji: a catalogue of rows, not a list this file may hardcode.
+        viewModelScope.launch { loadEmojiCatalogue() }
         val lkUrl = lk.url.ifBlank { BuildConfig.VOIZA_LIVEKIT_URL }
         liveKit.connect(lkUrl, lk.token, lk.roomName, it_publishCan(lk, mySeat))
     }
 
     private fun it_publishCan(lk: LiveKitCredentials, mySeat: Seat?): Boolean =
         lk.canPublish || (mySeat?.isSpeaker == true)
+
+    /**
+     * The entry flourish, asked of the catalogue an operator maintains in the database. Failure
+     * leaves it null and the room plays nothing on entry: a missing flourish is not worth an error
+     * banner over a party someone just walked into.
+     */
+    private suspend fun loadWelcomeEffect() {
+        val result = roomRepository.themeCatalogue()
+        if (result is ApiResult.Success) {
+            _state.update { it.copy(welcomeEffect = result.data.welcome) }
+        }
+    }
+
+    /**
+     * The picker catalogue. Like the flourish, a failure is silent: chat still works, it simply
+     * has no art to offer and no codes to draw.
+     */
+    private suspend fun loadEmojiCatalogue() {
+        val result = roomRepository.emojiCatalogue()
+        if (result is ApiResult.Success) {
+            _state.update {
+                it.copy(emojis = result.data.emojis, emojiCodePattern = result.data.codePattern)
+            }
+        }
+    }
 
     /** Static snapshot from the detail endpoint (join omits chat and the queue). */
     private suspend fun loadChatHistory() {
@@ -278,7 +330,7 @@ class PartyRoomViewModel(
         viewModelScope.launch {
             socket.chatMessages.collect { ev ->
                 if (ev.roomId != roomId) return@collect
-                _state.update { it.copy(chat = (it.chat + ev.message).takeLast(MAX_CHAT)) }
+                _state.update { it.copy(chat = RoomEffects.appendChat(it.chat, ev.message, MAX_CHAT)) }
             }
         }
         viewModelScope.launch {
@@ -376,7 +428,12 @@ class PartyRoomViewModel(
         viewModelScope.launch {
             socket.themeChanges.collect { ev ->
                 if (ev.roomId != roomId) return@collect
-                _state.update { it.copy(room = it.room?.copy(theme = ev.theme)) }
+                _state.update { state ->
+                    val room = state.room ?: return@update state
+                    // The server names the wallpaper with the slug. An older broadcast carried only
+                    // the slug, so the wallpaper already on screen is kept rather than blanked.
+                    state.copy(room = room.copy(theme = ev.theme, themeWallpaper = ev.wallpaper ?: room.themeWallpaper))
+                }
             }
         }
         viewModelScope.launch {

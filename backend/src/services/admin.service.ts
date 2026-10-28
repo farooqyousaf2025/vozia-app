@@ -133,6 +133,30 @@ export async function setUserVipLevel(userId: string, level: number): Promise<Us
 }
 
 /**
+ * Experience is a record of what a member already did, so an operator touches it only to correct
+ * what the ladder mis-scored — a refund of a wrongly-awarded gift, a cheat's history. It is a
+ * delta, not an absolute set, so a concurrent gift cannot be overwritten by a stale form value,
+ * and the endpoint is audited like the VIP setter.
+ *
+ * `users.xp` is what the badge is resolved from; there is no stored level to keep in step.
+ */
+export async function adjustUserXp(userId: string, delta: number): Promise<UserRow> {
+  if (!Number.isInteger(delta) || delta === 0 || Math.abs(delta) > 1_000_000_000) {
+    throw ApiError.badRequest('delta must be a whole number other than zero, up to 1,000,000,000', 'xp_delta_invalid');
+  }
+  const row = await one<UserRow>(
+    'UPDATE users SET xp = xp + $2, updated_at = now() WHERE id = $1 AND xp + $2 >= 0 RETURNING *',
+    [userId, delta],
+  );
+  if (row) return row;
+  if (!(await one<{ id: string }>('SELECT id FROM users WHERE id = $1', [userId]))) throw ApiError.notFound('User not found');
+  throw ApiError.badRequest(
+    'That would take this account below zero experience — their history cannot be negative',
+    'xp_would_go_negative',
+  );
+}
+
+/**
  * Flat occupant row for the Room Monitor drawer: moderation needs role and
  * hand-raise state, which the app's seat grid does not care about.
  */

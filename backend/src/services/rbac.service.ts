@@ -24,6 +24,10 @@ export const PERMISSIONS = [
   'room:read',
   'room:moderate',
   'gift:manage',
+  // Uploading the art a gift, effect or badge points at. Separate from `gift:manage` on
+  // purpose: whoever maintains room effects and rank badges should not thereby gain the
+  // right to set what a gift costs.
+  'media:manage',
   'withdrawal:review',
   'game:read',
   'game:manage',
@@ -57,6 +61,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, readonly Permission[]> = {
     'user:read',
     'user:wallet',
     'gift:manage',
+    'media:manage',
     'withdrawal:review',
     'game:read',
     'game:dispute',
@@ -75,6 +80,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, readonly Permission[]> = {
     'game:read',
     'game:manage',
     'gift:manage',
+    'media:manage',
     'business:manage',
     'finance:read',
   ],

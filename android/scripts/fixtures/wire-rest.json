@@ -10,6 +10,7 @@
      "description": null,
      "coverUrl": null,
      "theme": "nebula",
+     "themeWallpaper": "/themes/nebula/wallpaper.png",
      "category": "CHAT",
      "language": null,
      "region": null,
@@ -18,7 +19,7 @@
      "type": "PUBLIC",
      "seatCapacity": 4,
      "status": "ACTIVE",
-     "listenerCount": 3,
+     "listenerCount": 4,
      "likeCount": 15,
      "totalGiftValue": 2,
      "livekitRoomName": "voiza-room-735466",
@@ -75,6 +76,7 @@
      "description": null,
      "coverUrl": null,
      "theme": "nebula",
+     "themeWallpaper": "/themes/nebula/wallpaper.png",
      "category": "PARTY",
      "language": null,
      "region": null,
@@ -83,7 +85,7 @@
      "type": "PUBLIC",
      "seatCapacity": 4,
      "status": "ACTIVE",
-     "listenerCount": 2,
+     "listenerCount": 3,
      "likeCount": 0,
      "totalGiftValue": 4050,
      "livekitRoomName": "voiza-room-764862",
@@ -134,12 +136,13 @@
      ]
     },
     {
-     "id": "5876236a-6a0c-42d7-a666-ad3546dc43ab",
-     "roomNumber": 688756,
-     "title": "Diag Probe",
+     "id": "70a58214-0321-4a72-9b22-64b3e4fabe5f",
+     "roomNumber": 914639,
+     "title": "DBG 9759189",
      "description": null,
      "coverUrl": null,
      "theme": "aurora",
+     "themeWallpaper": "/themes/aurora/wallpaper.png",
      "category": "CHAT",
      "language": null,
      "region": null,
@@ -148,15 +151,15 @@
      "type": "PUBLIC",
      "seatCapacity": 4,
      "status": "ACTIVE",
-     "listenerCount": 1,
+     "listenerCount": 3,
      "likeCount": 0,
      "totalGiftValue": 0,
-     "livekitRoomName": "voiza-room-688756",
-     "createdAt": "2026-10-18T07:36:41.921Z",
+     "livekitRoomName": "voiza-room-914639",
+     "createdAt": "2026-10-17T17:56:04.330Z",
      "closedAt": null,
      "host": {
-      "id": "dc673726-ee55-4a66-815c-e85fa7872410",
-      "username": "diag_00604",
+      "id": "486f2991-3216-429c-a08a-6d68d9f5e96f",
+      "username": "dbg_a_9189",
       "avatarUrl": null
      },
      "seats": [
@@ -166,8 +169,8 @@
        "isMuted": false,
        "isSpeaker": true,
        "user": {
-        "id": "dc673726-ee55-4a66-815c-e85fa7872410",
-        "username": "diag_00604",
+        "id": "486f2991-3216-429c-a08a-6d68d9f5e96f",
+        "username": "dbg_a_9189",
         "avatarUrl": null
        }
       },
@@ -208,12 +211,13 @@
   "body": {
    "rooms": [
     {
-     "id": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
-     "roomNumber": 167836,
-     "title": "Wire Room 7985806",
+     "id": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+     "roomNumber": 478765,
+     "title": "Wire Room 0258815",
      "description": null,
      "coverUrl": null,
      "theme": "aurora",
+     "themeWallpaper": "/themes/aurora/wallpaper.png",
      "category": "CHAT",
      "language": null,
      "region": null,
@@ -225,12 +229,12 @@
      "listenerCount": 3,
      "likeCount": 0,
      "totalGiftValue": 0,
-     "livekitRoomName": "voiza-room-167836",
-     "createdAt": "2026-10-27T10:46:26.277Z",
+     "livekitRoomName": "voiza-room-478765",
+     "createdAt": "2026-10-28T06:50:59.617Z",
      "closedAt": null,
      "host": {
-      "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
-      "username": "wire_host_5806",
+      "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
+      "username": "wire_host_8815",
       "avatarUrl": null
      }
     }
@@ -247,6 +251,7 @@
     "description": null,
     "coverUrl": null,
     "theme": "nebula",
+    "themeWallpaper": "/themes/nebula/wallpaper.png",
     "category": "CHAT",
     "language": null,
     "region": null,
@@ -255,7 +260,7 @@
     "type": "PUBLIC",
     "seatCapacity": 4,
     "status": "ACTIVE",
-    "listenerCount": 3,
+    "listenerCount": 4,
     "likeCount": 15,
     "totalGiftValue": 2,
     "livekitRoomName": "voiza-room-735466",
@@ -285,12 +290,13 @@
   "status": 201,
   "body": {
    "room": {
-    "id": "1416d508-144d-4830-b45c-0c1e6ca67359",
-    "roomNumber": 799461,
-    "title": "Wire Seats 7985806",
+    "id": "123c6624-387e-46da-bbdb-e20eb3531dae",
+    "roomNumber": 425464,
+    "title": "Wire Seats 0258815",
     "description": null,
     "coverUrl": null,
     "theme": "aurora",
+    "themeWallpaper": "/themes/aurora/wallpaper.png",
     "category": "CHAT",
     "language": null,
     "region": null,
@@ -302,12 +308,12 @@
     "listenerCount": 0,
     "likeCount": 0,
     "totalGiftValue": 0,
-    "livekitRoomName": "voiza-room-799461",
-    "createdAt": "2026-10-27T10:46:26.423Z",
+    "livekitRoomName": "voiza-room-425464",
+    "createdAt": "2026-10-28T06:50:59.863Z",
     "closedAt": null,
     "host": {
-     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
-     "username": "wire_host_5806",
+     "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
+     "username": "wire_host_8815",
      "avatarUrl": null
     },
     "seats": [
@@ -317,8 +323,8 @@
       "isMuted": false,
       "isSpeaker": true,
       "user": {
-       "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
-       "username": "wire_host_5806",
+       "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
+       "username": "wire_host_8815",
        "avatarUrl": null
       }
      },
@@ -435,12 +441,13 @@
   "status": 200,
   "body": {
    "room": {
-    "id": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
-    "roomNumber": 167836,
-    "title": "Wire Room 7985806",
+    "id": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+    "roomNumber": 478765,
+    "title": "Wire Room 0258815",
     "description": null,
     "coverUrl": null,
     "theme": "aurora",
+    "themeWallpaper": "/themes/aurora/wallpaper.png",
     "category": "CHAT",
     "language": null,
     "region": null,
@@ -452,12 +459,12 @@
     "listenerCount": 3,
     "likeCount": 0,
     "totalGiftValue": 0,
-    "livekitRoomName": "voiza-room-167836",
-    "createdAt": "2026-10-27T10:46:26.277Z",
+    "livekitRoomName": "voiza-room-478765",
+    "createdAt": "2026-10-28T06:50:59.617Z",
     "closedAt": null,
     "host": {
-     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
-     "username": "wire_host_5806",
+     "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
+     "username": "wire_host_8815",
      "avatarUrl": null
     }
    },
@@ -468,8 +475,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
-      "username": "wire_host_5806",
+      "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
+      "username": "wire_host_8815",
       "avatarUrl": null
      }
     },
@@ -479,8 +486,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "8b3b38d4-3ef5-4427-9256-dd67214bed59",
-      "username": "wire_seat_5806",
+      "id": "89a22558-556d-47f3-aef5-ad75f1bec027",
+      "username": "wire_seat_8815",
       "avatarUrl": null
      }
     },
@@ -501,18 +508,18 @@
    ],
    "audience": [
     {
-     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
-     "username": "wire_host_5806",
+     "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
+     "username": "wire_host_8815",
      "avatarUrl": null
     },
     {
-     "id": "8b3b38d4-3ef5-4427-9256-dd67214bed59",
-     "username": "wire_seat_5806",
+     "id": "89a22558-556d-47f3-aef5-ad75f1bec027",
+     "username": "wire_seat_8815",
      "avatarUrl": null
     },
     {
-     "id": "b2384525-103c-4bbe-a7c1-b6025a99e6fc",
-     "username": "wire_aud_5806",
+     "id": "4abe31d5-f554-432f-a3c6-06fc4e7c1b2c",
+     "username": "wire_aud_8815",
      "avatarUrl": null
     }
    ],
@@ -525,12 +532,13 @@
   "status": 200,
   "body": {
    "room": {
-    "id": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
-    "roomNumber": 167836,
-    "title": "Wire Room 7985806",
+    "id": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+    "roomNumber": 478765,
+    "title": "Wire Room 0258815",
     "description": null,
     "coverUrl": null,
     "theme": "aurora",
+    "themeWallpaper": "/themes/aurora/wallpaper.png",
     "category": "CHAT",
     "language": null,
     "region": null,
@@ -542,12 +550,12 @@
     "listenerCount": 3,
     "likeCount": 0,
     "totalGiftValue": 0,
-    "livekitRoomName": "voiza-room-167836",
-    "createdAt": "2026-10-27T10:46:26.277Z",
+    "livekitRoomName": "voiza-room-478765",
+    "createdAt": "2026-10-28T06:50:59.617Z",
     "closedAt": null,
     "host": {
-     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
-     "username": "wire_host_5806",
+     "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
+     "username": "wire_host_8815",
      "avatarUrl": null
     }
    },
@@ -558,8 +566,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
-      "username": "wire_host_5806",
+      "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
+      "username": "wire_host_8815",
       "avatarUrl": null
      }
     },
@@ -569,8 +577,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "8b3b38d4-3ef5-4427-9256-dd67214bed59",
-      "username": "wire_seat_5806",
+      "id": "89a22558-556d-47f3-aef5-ad75f1bec027",
+      "username": "wire_seat_8815",
       "avatarUrl": null
      }
     },
@@ -591,16 +599,16 @@
    ],
    "audience": [
     {
-     "id": "b2384525-103c-4bbe-a7c1-b6025a99e6fc",
-     "username": "wire_aud_5806",
+     "id": "4abe31d5-f554-432f-a3c6-06fc4e7c1b2c",
+     "username": "wire_aud_8815",
      "avatarUrl": null
     }
    ],
    "livekit": {
     "url": "ws://127.0.0.1:7880",
     "token": "redacted-token",
-    "roomName": "voiza-room-167836",
-    "identity": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
+    "roomName": "voiza-room-478765",
+    "identity": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
     "canPublish": true
    }
   }
@@ -609,12 +617,13 @@
   "status": 201,
   "body": {
    "room": {
-    "id": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
-    "roomNumber": 167836,
-    "title": "Wire Room 7985806",
+    "id": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+    "roomNumber": 478765,
+    "title": "Wire Room 0258815",
     "description": null,
     "coverUrl": null,
     "theme": "aurora",
+    "themeWallpaper": "/themes/aurora/wallpaper.png",
     "category": "CHAT",
     "language": null,
     "region": null,
@@ -626,12 +635,12 @@
     "listenerCount": 0,
     "likeCount": 0,
     "totalGiftValue": 0,
-    "livekitRoomName": "voiza-room-167836",
-    "createdAt": "2026-10-27T10:46:26.277Z",
+    "livekitRoomName": "voiza-room-478765",
+    "createdAt": "2026-10-28T06:50:59.617Z",
     "closedAt": null,
     "host": {
-     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
-     "username": "wire_host_5806",
+     "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
+     "username": "wire_host_8815",
      "avatarUrl": null
     },
     "seats": [
@@ -641,8 +650,8 @@
       "isMuted": false,
       "isSpeaker": true,
       "user": {
-       "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
-       "username": "wire_host_5806",
+       "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
+       "username": "wire_host_8815",
        "avatarUrl": null
       }
      },
@@ -675,9 +684,9 @@
   "status": 200,
   "body": {
    "user": {
-    "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
-    "phone": "+15557798580601",
-    "username": "wire_host_5806",
+    "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
+    "phone": "+15557025881501",
+    "username": "wire_host_8815",
     "avatarUrl": null,
     "bio": null,
     "gender": null,
@@ -690,12 +699,28 @@
     "status": "ACTIVE",
     "isVerified": false,
     "vipLevel": 0,
+    "xp": 0,
+    "rank": {
+     "level": 0,
+     "name": "Newcomer",
+     "badge": "/badges/level-0.png",
+     "accent": "#9aa5b1",
+     "minXp": 0
+    },
+    "nextRank": {
+     "level": 1,
+     "name": "Bronze I",
+     "badge": "/badges/level-1.png",
+     "accent": "#a9714b",
+     "minXp": 300,
+     "remainingXp": 300
+    },
     "lastSeenAt": null,
-    "createdAt": "2026-10-27T10:46:26.005Z"
+    "createdAt": "2026-10-28T06:50:59.187Z"
    },
    "transactions": [
     {
-     "id": "4e75b5f0-2ea0-4370-9e35-8b764931acf3",
+     "id": "c22eacec-0930-4ef9-8cbe-90afa9ad2439",
      "type": "RECHARGE",
      "status": "COMPLETED",
      "quantity": 1,
@@ -704,12 +729,12 @@
      "giftName": null,
      "sender": null,
      "receiver": {
-      "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
-      "username": "wire_host_5806",
+      "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
+      "username": "wire_host_8815",
       "avatarUrl": null
      },
      "note": null,
-     "createdAt": "2026-10-27T10:46:26.259Z"
+     "createdAt": "2026-10-28T06:50:59.522Z"
     }
    ],
    "stats": {
@@ -969,6 +994,13 @@
      "avatarUrl": null,
      "userType": "HOST",
      "isVerified": false,
+     "rank": {
+      "level": 0,
+      "name": "Newcomer",
+      "badge": "/badges/level-0.png",
+      "accent": "#9aa5b1",
+      "minXp": 0
+     },
      "earned": 4050
     },
     {
@@ -977,6 +1009,13 @@
      "avatarUrl": null,
      "userType": "USER",
      "isVerified": false,
+     "rank": {
+      "level": 0,
+      "name": "Newcomer",
+      "badge": "/badges/level-0.png",
+      "accent": "#9aa5b1",
+      "minXp": 0
+     },
      "earned": 1080
     },
     {
@@ -985,6 +1024,13 @@
      "avatarUrl": null,
      "userType": "USER",
      "isVerified": false,
+     "rank": {
+      "level": 0,
+      "name": "Newcomer",
+      "badge": "/badges/level-0.png",
+      "accent": "#9aa5b1",
+      "minXp": 0
+     },
      "earned": 1080
     },
     {
@@ -993,6 +1039,13 @@
      "avatarUrl": null,
      "userType": "USER",
      "isVerified": false,
+     "rank": {
+      "level": 0,
+      "name": "Newcomer",
+      "badge": "/badges/level-0.png",
+      "accent": "#9aa5b1",
+      "minXp": 0
+     },
      "earned": 1080
     },
     {
@@ -1001,6 +1054,13 @@
      "avatarUrl": null,
      "userType": "USER",
      "isVerified": false,
+     "rank": {
+      "level": 0,
+      "name": "Newcomer",
+      "badge": "/badges/level-0.png",
+      "accent": "#9aa5b1",
+      "minXp": 0
+     },
      "earned": 1080
     }
    ]
@@ -1019,6 +1079,13 @@
      "avatarUrl": null,
      "userType": "USER",
      "isVerified": false,
+     "rank": {
+      "level": 0,
+      "name": "Newcomer",
+      "badge": "/badges/level-0.png",
+      "accent": "#9aa5b1",
+      "minXp": 0
+     },
      "earned": 4500
     },
     {
@@ -1027,6 +1094,13 @@
      "avatarUrl": null,
      "userType": "HOST",
      "isVerified": false,
+     "rank": {
+      "level": 0,
+      "name": "Newcomer",
+      "badge": "/badges/level-0.png",
+      "accent": "#9aa5b1",
+      "minXp": 0
+     },
      "earned": 1200
     },
     {
@@ -1035,6 +1109,13 @@
      "avatarUrl": null,
      "userType": "HOST",
      "isVerified": false,
+     "rank": {
+      "level": 0,
+      "name": "Newcomer",
+      "badge": "/badges/level-0.png",
+      "accent": "#9aa5b1",
+      "minXp": 0
+     },
      "earned": 1200
     },
     {
@@ -1043,6 +1124,13 @@
      "avatarUrl": null,
      "userType": "HOST",
      "isVerified": false,
+     "rank": {
+      "level": 0,
+      "name": "Newcomer",
+      "badge": "/badges/level-0.png",
+      "accent": "#9aa5b1",
+      "minXp": 0
+     },
      "earned": 1200
     },
     {
@@ -1051,6 +1139,13 @@
      "avatarUrl": null,
      "userType": "HOST",
      "isVerified": false,
+     "rank": {
+      "level": 0,
+      "name": "Newcomer",
+      "badge": "/badges/level-0.png",
+      "accent": "#9aa5b1",
+      "minXp": 0
+     },
      "earned": 1200
     }
    ]
@@ -1060,12 +1155,13 @@
   "status": 200,
   "body": {
    "room": {
-    "id": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
-    "roomNumber": 167836,
-    "title": "Wire Room 7985806",
+    "id": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+    "roomNumber": 478765,
+    "title": "Wire Room 0258815",
     "description": null,
     "coverUrl": null,
     "theme": "nebula",
+    "themeWallpaper": "/themes/nebula/wallpaper.png",
     "category": "CHAT",
     "language": null,
     "region": null,
@@ -1077,12 +1173,12 @@
     "listenerCount": 3,
     "likeCount": 15,
     "totalGiftValue": 2,
-    "livekitRoomName": "voiza-room-167836",
-    "createdAt": "2026-10-27T10:46:26.277Z",
+    "livekitRoomName": "voiza-room-478765",
+    "createdAt": "2026-10-28T06:50:59.617Z",
     "closedAt": null,
     "host": {
-     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
-     "username": "wire_host_5806",
+     "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
+     "username": "wire_host_8815",
      "avatarUrl": null
     }
    }
@@ -1127,16 +1223,397 @@
    ]
   }
  },
+ "emojis": {
+  "status": 200,
+  "body": {
+   "codePattern": "\\[[a-z0-9][a-z0-9-]{0,31}\\]",
+   "emojis": [
+    {
+     "key": "smile",
+     "label": "Smile",
+     "code": "[smile]",
+     "url": "/emoji/smile.webp"
+    },
+    {
+     "key": "expect",
+     "label": "Expect",
+     "code": "[expect]",
+     "url": "/emoji/expect.webp"
+    },
+    {
+     "key": "blink",
+     "label": "Blink",
+     "code": "[blink]",
+     "url": "/emoji/blink.webp"
+    },
+    {
+     "key": "guffaw",
+     "label": "Guffaw",
+     "code": "[guffaw]",
+     "url": "/emoji/guffaw.webp"
+    },
+    {
+     "key": "kind-smile",
+     "label": "Kind smile",
+     "code": "[kind-smile]",
+     "url": "/emoji/kind-smile.webp"
+    },
+    {
+     "key": "haha",
+     "label": "Haha",
+     "code": "[haha]",
+     "url": "/emoji/haha.webp"
+    },
+    {
+     "key": "cheerful",
+     "label": "Cheerful",
+     "code": "[cheerful]",
+     "url": "/emoji/cheerful.webp"
+    },
+    {
+     "key": "speechless",
+     "label": "Speechless",
+     "code": "[speechless]",
+     "url": "/emoji/speechless.webp"
+    },
+    {
+     "key": "amazed",
+     "label": "Amazed",
+     "code": "[amazed]",
+     "url": "/emoji/amazed.webp"
+    },
+    {
+     "key": "sorrow",
+     "label": "Sorrow",
+     "code": "[sorrow]",
+     "url": "/emoji/sorrow.webp"
+    },
+    {
+     "key": "complacent",
+     "label": "Complacent",
+     "code": "[complacent]",
+     "url": "/emoji/complacent.webp"
+    },
+    {
+     "key": "silly",
+     "label": "Silly",
+     "code": "[silly]",
+     "url": "/emoji/silly.webp"
+    },
+    {
+     "key": "lustful",
+     "label": "Lustful",
+     "code": "[lustful]",
+     "url": "/emoji/lustful.webp"
+    },
+    {
+     "key": "giggle",
+     "label": "Giggle",
+     "code": "[giggle]",
+     "url": "/emoji/giggle.webp"
+    },
+    {
+     "key": "kiss",
+     "label": "Kiss",
+     "code": "[kiss]",
+     "url": "/emoji/kiss.webp"
+    },
+    {
+     "key": "wail",
+     "label": "Wail",
+     "code": "[wail]",
+     "url": "/emoji/wail.webp"
+    },
+    {
+     "key": "tears-laugh",
+     "label": "Tears of joy",
+     "code": "[tears-laugh]",
+     "url": "/emoji/tears-laugh.webp"
+    },
+    {
+     "key": "trapped",
+     "label": "Trapped",
+     "code": "[trapped]",
+     "url": "/emoji/trapped.webp"
+    },
+    {
+     "key": "mask",
+     "label": "Mask",
+     "code": "[mask]",
+     "url": "/emoji/mask.webp"
+    },
+    {
+     "key": "fear",
+     "label": "Fear",
+     "code": "[fear]",
+     "url": "/emoji/fear.webp"
+    },
+    {
+     "key": "bare-teeth",
+     "label": "Bare teeth",
+     "code": "[bare-teeth]",
+     "url": "/emoji/bare-teeth.webp"
+    },
+    {
+     "key": "flare-up",
+     "label": "Flare up",
+     "code": "[flare-up]",
+     "url": "/emoji/flare-up.webp"
+    },
+    {
+     "key": "yawn",
+     "label": "Yawn",
+     "code": "[yawn]",
+     "url": "/emoji/yawn.webp"
+    },
+    {
+     "key": "tact",
+     "label": "Tact",
+     "code": "[tact]",
+     "url": "/emoji/tact.webp"
+    },
+    {
+     "key": "star-eyes",
+     "label": "Star eyes",
+     "code": "[star-eyes]",
+     "url": "/emoji/star-eyes.webp"
+    },
+    {
+     "key": "shut-up",
+     "label": "Shut up",
+     "code": "[shut-up]",
+     "url": "/emoji/shut-up.webp"
+    },
+    {
+     "key": "sigh",
+     "label": "Sigh",
+     "code": "[sigh]",
+     "url": "/emoji/sigh.webp"
+    },
+    {
+     "key": "hehe",
+     "label": "Hehe",
+     "code": "[hehe]",
+     "url": "/emoji/hehe.webp"
+    },
+    {
+     "key": "silent",
+     "label": "Silent",
+     "code": "[silent]",
+     "url": "/emoji/silent.webp"
+    },
+    {
+     "key": "surprised",
+     "label": "Surprised",
+     "code": "[surprised]",
+     "url": "/emoji/surprised.webp"
+    },
+    {
+     "key": "askance",
+     "label": "Askance",
+     "code": "[askance]",
+     "url": "/emoji/askance.webp"
+    },
+    {
+     "key": "ok",
+     "label": "OK",
+     "code": "[ok]",
+     "url": "/emoji/ok.webp"
+    },
+    {
+     "key": "poop",
+     "label": "Poop",
+     "code": "[poop]",
+     "url": "/emoji/poop.webp"
+    },
+    {
+     "key": "monster",
+     "label": "Monster",
+     "code": "[monster]",
+     "url": "/emoji/monster.webp"
+    },
+    {
+     "key": "demon",
+     "label": "Demon",
+     "code": "[demon]",
+     "url": "/emoji/demon.webp"
+    },
+    {
+     "key": "rage",
+     "label": "Rage",
+     "code": "[rage]",
+     "url": "/emoji/rage.webp"
+    },
+    {
+     "key": "fool",
+     "label": "Fool",
+     "code": "[fool]",
+     "url": "/emoji/fool.webp"
+    },
+    {
+     "key": "pig",
+     "label": "Pig",
+     "code": "[pig]",
+     "url": "/emoji/pig.webp"
+    },
+    {
+     "key": "cow",
+     "label": "Cow",
+     "code": "[cow]",
+     "url": "/emoji/cow.webp"
+    },
+    {
+     "key": "love-you",
+     "label": "Love you",
+     "code": "[love-you]",
+     "url": "/emoji/love-you.webp"
+    },
+    {
+     "key": "skull",
+     "label": "Skull",
+     "code": "[skull]",
+     "url": "/emoji/skull.webp"
+    },
+    {
+     "key": "bomb",
+     "label": "Bomb",
+     "code": "[bomb]",
+     "url": "/emoji/bomb.webp"
+    },
+    {
+     "key": "coffee",
+     "label": "Coffee",
+     "code": "[coffee]",
+     "url": "/emoji/coffee.webp"
+    },
+    {
+     "key": "cake",
+     "label": "Cake",
+     "code": "[cake]",
+     "url": "/emoji/cake.webp"
+    },
+    {
+     "key": "beer",
+     "label": "Beer",
+     "code": "[beer]",
+     "url": "/emoji/beer.webp"
+    },
+    {
+     "key": "flower",
+     "label": "Flower",
+     "code": "[flower]",
+     "url": "/emoji/flower.webp"
+    },
+    {
+     "key": "watermelon",
+     "label": "Watermelon",
+     "code": "[watermelon]",
+     "url": "/emoji/watermelon.webp"
+    },
+    {
+     "key": "rich",
+     "label": "Rich",
+     "code": "[rich]",
+     "url": "/emoji/rich.webp"
+    },
+    {
+     "key": "heart",
+     "label": "Heart",
+     "code": "[heart]",
+     "url": "/emoji/heart.webp"
+    },
+    {
+     "key": "moon",
+     "label": "Moon",
+     "code": "[moon]",
+     "url": "/emoji/moon.webp"
+    },
+    {
+     "key": "sun",
+     "label": "Sun",
+     "code": "[sun]",
+     "url": "/emoji/sun.webp"
+    },
+    {
+     "key": "star",
+     "label": "Star",
+     "code": "[star]",
+     "url": "/emoji/star.webp"
+    },
+    {
+     "key": "red-packet",
+     "label": "Red packet",
+     "code": "[red-packet]",
+     "url": "/emoji/red-packet.webp"
+    },
+    {
+     "key": "celebrate",
+     "label": "Celebrate",
+     "code": "[celebrate]",
+     "url": "/emoji/celebrate.webp"
+    },
+    {
+     "key": "bless",
+     "label": "Bless",
+     "code": "[bless]",
+     "url": "/emoji/bless.webp"
+    },
+    {
+     "key": "fortune",
+     "label": "Fortune",
+     "code": "[fortune]",
+     "url": "/emoji/fortune.webp"
+    },
+    {
+     "key": "convinced",
+     "label": "Convinced",
+     "code": "[convinced]",
+     "url": "/emoji/convinced.webp"
+    },
+    {
+     "key": "prohibit",
+     "label": "Prohibit",
+     "code": "[prohibit]",
+     "url": "/emoji/prohibit.webp"
+    },
+    {
+     "key": "666",
+     "label": "666",
+     "code": "[666]",
+     "url": "/emoji/666.webp"
+    },
+    {
+     "key": "857",
+     "label": "857",
+     "code": "[857]",
+     "url": "/emoji/857.webp"
+    },
+    {
+     "key": "knife",
+     "label": "Knife",
+     "code": "[knife]",
+     "url": "/emoji/knife.webp"
+    },
+    {
+     "key": "like",
+     "label": "Like",
+     "code": "[like]",
+     "url": "/emoji/like.webp"
+    }
+   ]
+  }
+ },
  "update": {
   "status": 200,
   "body": {
    "room": {
-    "id": "06851d4d-8fc0-4ac0-b460-0d6b8a726cfb",
-    "roomNumber": 167836,
-    "title": "Wire Room Edited 7985806",
+    "id": "289396cc-c09f-4ac9-9d32-95270f94efbb",
+    "roomNumber": 478765,
+    "title": "Wire Room Edited 0258815",
     "description": "captured profile",
     "coverUrl": null,
     "theme": "nebula",
+    "themeWallpaper": "/themes/nebula/wallpaper.png",
     "category": "CHAT",
     "language": "en",
     "region": "BD",
@@ -1148,12 +1625,12 @@
     "listenerCount": 3,
     "likeCount": 15,
     "totalGiftValue": 2,
-    "livekitRoomName": "voiza-room-167836",
-    "createdAt": "2026-10-27T10:46:26.277Z",
+    "livekitRoomName": "voiza-room-478765",
+    "createdAt": "2026-10-28T06:50:59.617Z",
     "closedAt": null,
     "host": {
-     "id": "6c1a3229-c925-413d-a40b-bac8d9f6f596",
-     "username": "wire_host_5806",
+     "id": "46a52b40-db14-4d09-bfc6-4d11e7e5c980",
+     "username": "wire_host_8815",
      "avatarUrl": null
     }
    }

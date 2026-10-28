@@ -315,3 +315,38 @@ export const IconArrowDown = createIcon(
     <path d="M6.5 12.5L12 18l5.5-5.5" />
   </>,
 );
+
+/** Media library: a framed picture, used for the uploads page in the sidebar. */
+export const IconImage = createIcon(
+  <>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <circle cx="9" cy="10" r="1.8" />
+    <path d="M4 18l5-5 3 3 3-3 5 5" />
+  </>,
+);
+
+/** Upload: an arrow leaving a tray. */
+export const IconUpload = createIcon(
+  <>
+    <path d="M12 16V4" />
+    <path d="M7 9l5-5 5 5" />
+    <path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" />
+  </>,
+);
+
+/** Copy to clipboard: two overlapping sheets. */
+export const IconCopy = createIcon(
+  <>
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <path d="M15 5H6a2 2 0 00-2 2v9" />
+  </>,
+);
+
+/** Chat emoji: a face. The picker catalogue lives in `emoji_characters`. */
+export const IconSmile = createIcon(
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M9 10h.01M15 10h.01" />
+    <path d="M8.5 14.5a4.5 4.5 0 007 0" />
+  </>,
+);

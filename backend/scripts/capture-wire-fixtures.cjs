@@ -167,6 +167,9 @@ function redact(value) {
   // theme registry itself becomes a captured REST shape.
   const theme = await api('POST', `/api/rooms/${roomId}/theme`, { token: host.token, body: { theme: 'nebula' } });
   const themes = await api('GET', '/api/rooms/themes', H);
+  // The chat emoji manifest is public, and a phone reads it the same way: no token, no
+  // admin permission, just the codes the server is willing to draw art for.
+  const emojis = await api('GET', '/api/emoji', {});
   // The host edits the profile over REST; the connected socket must see it as
   // `room:profile_updated`, which is the only way a member learns the rules changed.
   const update = await api('PATCH', `/api/rooms/${roomId}`, {
@@ -183,6 +186,7 @@ function redact(value) {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   rest.theme = theme;
   rest.themes = themes;
+  rest.emojis = emojis;
   rest.update = update;
   fs.writeFileSync(path.join(OUT_DIR, 'wire-rest.json'), JSON.stringify(redact(rest), null, 1));
   fs.writeFileSync(path.join(OUT_DIR, 'wire-socket.json'), JSON.stringify(redact(raw), null, 1));

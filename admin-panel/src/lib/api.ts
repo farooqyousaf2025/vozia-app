@@ -6,13 +6,17 @@
 //   (except on the login call itself, where the error is surfaced inline)
 // ---------------------------------------------------------------------------
 import type {
+  AdminEmoji,
   AdminGamesResult,
   AdminIdentity,
+  AdminRank,
+  AdminRoomTheme,
   AdminStats,
   AuditEntry,
   BalanceAdjustResult,
   BusinessAccount,
   BusinessAccountListResult,
+  CategoryEffect,
   CommissionBeneficiary,
   CommissionEntry,
   CommissionRule,
@@ -22,6 +26,9 @@ import type {
   CommissionSummary,
   CommissionTier,
   ConsoleRoom,
+  DecorCatalogue,
+  EffectInput,
+  EmojiInput,
   FinAccount,
   GameDefinition,
   GameDispute,
@@ -34,7 +41,12 @@ import type {
   GiftPatch,
   JournalListResult,
   LoginResponse,
+  MediaAsset,
+  MediaKind,
   OkResult,
+  PublishedEmojiCatalogue,
+  PublishedLadder,
+  RankInput,
   RechargeOrder,
   RechargeOrderListResult,
   RechargePackage,
@@ -47,10 +59,13 @@ import type {
   RoomSeatDetail,
   SeatPolicyResult,
   ThemeCatalogue,
+  ThemeInput,
   TrialBalance,
   UserListQuery,
   UserListResult,
   UserMutationResult,
+  VisualEffect,
+  VisualEffectKind,
   WithdrawalListQuery,
   WithdrawalListResult,
   WithdrawalMutationResult,
@@ -292,6 +307,17 @@ export const api = {
     });
   },
 
+  /**
+   * Nudge a member's earned experience. It is a delta, not an absolute, so an adjustment cannot
+   * clobber the gifts a member sent while this dialog was open.
+   */
+  addXp(userId: string, delta: number, reason?: string): Promise<UserMutationResult> {
+    return request<UserMutationResult>(`/api/admin/users/${userId}/xp`, {
+      method: 'POST',
+      body: { delta, reason: reason && reason.length > 0 ? reason : undefined },
+    });
+  },
+
   // ---- rooms -------------------------------------------------------------------
   listRooms(params: RoomListQuery = {}): Promise<RoomListResult> {
     return request<RoomListResult>(
@@ -375,7 +401,7 @@ export const api = {
     );
   },
 
-  /** Wallpapers and animations the generated asset pipeline ships. */
+  /** Wallpapers and animations an operator maintains in the database (migration 0015). */
   themeCatalogue(): Promise<ThemeCatalogue> {
     return request<ThemeCatalogue>('/api/rooms/themes');
   },
@@ -402,6 +428,132 @@ export const api = {
 
   deleteGift(giftId: string): Promise<OkResult> {
     return request<OkResult>(`/api/admin/gifts/${giftId}`, { method: 'DELETE' });
+  },
+
+  // ---- uploaded media -------------------------------------------------------------
+  // The file travels as base64 inside JSON, so it can carry the bearer token without a
+  // multipart request the CSRF-protected API would have to special-case. `/api/admin/uploads`
+  // is the only route given a multi-megabyte body limit.
+  listUploads(params: { kind?: MediaKind; limit?: number; offset?: number } = {}): Promise<{ assets: MediaAsset[]; total: number }> {
+    return request<{ assets: MediaAsset[]; total: number }>(
+      `/api/admin/uploads${query({ kind: params.kind, limit: params.limit ?? 60, offset: params.offset ?? 0 })}`,
+    );
+  },
+
+  uploadAsset(kind: MediaKind, fileName: string, base64: string): Promise<{ asset: MediaAsset; duplicate: boolean }> {
+    return request<{ asset: MediaAsset; duplicate: boolean }>('/api/admin/uploads', {
+      method: 'POST',
+      body: { kind, fileName, data: base64 },
+    });
+  },
+
+  deleteUpload(assetId: string): Promise<OkResult> {
+    return request<OkResult>(`/api/admin/uploads/${assetId}`, { method: 'DELETE' });
+  },
+
+  // ---- room decoration ----------------------------------------------------------
+  // Themes, Lottie loops and which category plays which loop are rows since migration
+  // 0015, so this is the only place the panel learns what skins exist — nothing here may
+  // hardcode a slug, or an operator's new theme would be invisible.
+  decorCatalogue(): Promise<DecorCatalogue> {
+    return request<DecorCatalogue>('/api/admin/decor');
+  },
+
+  createTheme(input: ThemeInput): Promise<{ theme: AdminRoomTheme }> {
+    return request<{ theme: AdminRoomTheme }>('/api/admin/themes', { method: 'POST', body: input });
+  },
+
+  updateTheme(slug: string, patch: ThemeInput): Promise<{ theme: AdminRoomTheme }> {
+    return request<{ theme: AdminRoomTheme }>(`/api/admin/themes/${encodeURIComponent(slug)}`, {
+      method: 'PUT',
+      body: patch,
+    });
+  },
+
+  deleteTheme(slug: string): Promise<{ ok: true; slug: string; roomsLeftOnDefault: number }> {
+    return request<{ ok: true; slug: string; roomsLeftOnDefault: number }>(
+      `/api/admin/themes/${encodeURIComponent(slug)}`,
+      { method: 'DELETE' },
+    );
+  },
+
+  createEffect(input: EffectInput): Promise<{ effect: VisualEffect }> {
+    return request<{ effect: VisualEffect }>('/api/admin/effects', { method: 'POST', body: input });
+  },
+
+  updateEffect(key: string, patch: EffectInput): Promise<{ effect: VisualEffect }> {
+    return request<{ effect: VisualEffect }>(`/api/admin/effects/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      body: patch,
+    });
+  },
+
+  deleteEffect(key: string): Promise<{ ok: true; key: string }> {
+    return request<{ ok: true; key: string }>(`/api/admin/effects/${encodeURIComponent(key)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  setCategoryEffect(category: string, effectKey: string): Promise<{ mapping: CategoryEffect }> {
+    return request<{ mapping: CategoryEffect }>(
+      `/api/admin/room-categories/${encodeURIComponent(category)}/effect`,
+      { method: 'PUT', body: { effectKey } },
+    );
+  },
+
+  // ---- chat emoji --------------------------------------------------------------
+  // The picker members open in a room. `key` is the code a message stores (`[key]`), so this is
+  // the only screen that decides which tokens the app will ever be able to draw as art.
+  emojiCatalogue(): Promise<{ emojis: AdminEmoji[] }> {
+    return request<{ emojis: AdminEmoji[] }>('/api/admin/emoji');
+  },
+
+  /** The unauthenticated view a phone reads — used here to prove a saved row was published. */
+  publicEmoji(): Promise<PublishedEmojiCatalogue> {
+    return request<PublishedEmojiCatalogue>('/api/emoji');
+  },
+
+  createEmoji(input: EmojiInput): Promise<{ emoji: AdminEmoji }> {
+    return request<{ emoji: AdminEmoji }>('/api/admin/emoji', { method: 'POST', body: input });
+  },
+
+  updateEmoji(key: string, patch: EmojiInput): Promise<{ emoji: AdminEmoji }> {
+    return request<{ emoji: AdminEmoji }>(`/api/admin/emoji/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      body: patch,
+    });
+  },
+
+  deleteEmoji(key: string): Promise<{ ok: true; key: string }> {
+    return request<{ ok: true; key: string }>(`/api/admin/emoji/${encodeURIComponent(key)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // ---- level ladder ------------------------------------------------------------
+  // Rungs members earn with experience (migration 0017). This is the only screen that decides
+  // where each rung sits and what badge it carries, so nothing here may hardcode a level number.
+  rankLadder(): Promise<{ levels: AdminRank[] }> {
+    return request<{ levels: AdminRank[] }>('/api/admin/ranks');
+  },
+
+  /** The unauthenticated view a phone reads — proves a saved rung is actually published. */
+  publicRanks(): Promise<PublishedLadder> {
+    return request<PublishedLadder>('/api/ranks');
+  },
+
+  createRank(input: RankInput): Promise<{ rank: AdminRank }> {
+    return request<{ rank: AdminRank }>('/api/admin/ranks', { method: 'POST', body: input });
+  },
+
+  updateRank(level: number, patch: RankInput): Promise<{ rank: AdminRank }> {
+    return request<{ rank: AdminRank }>(`/api/admin/ranks/${level}`, { method: 'PUT', body: patch });
+  },
+
+  deleteRank(level: number): Promise<{ ok: true; level: string; membersMoved: number }> {
+    return request<{ ok: true; level: string; membersMoved: number }>(`/api/admin/ranks/${level}`, {
+      method: 'DELETE',
+    });
   },
 
   // ---- withdrawals ------------------------------------------------------------------

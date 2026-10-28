@@ -31,7 +31,7 @@ import {
   emitToRoom,
   emitToUser,
 } from '../services/socket.service';
-import { themeCatalogue, THEME_SLUGS } from '../config/themes';
+import { themeCatalogue, themeSlugs } from '../services/theme.service';
 import {
   ApiError,
   asyncHandler,
@@ -123,7 +123,7 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
     // Absent means "use the platform default", so the client never has to hardcode one.
     seatCapacity: optionalInt(req.body?.seatCapacity, 'seatCapacity', { min: limits.min, max: limits.max }),
     coverUrl: optionalString(req.body?.coverUrl, 'coverUrl', 500),
-    theme: req.body?.theme === undefined ? undefined : requireEnum(req.body.theme, 'theme', THEME_SLUGS),
+    theme: req.body?.theme === undefined ? undefined : requireEnum(req.body.theme, 'theme', themeSlugs()),
     // Language/region/rules are optional profile text; the service normalizes the tags and
     // throws on a malformed one, so a typo is a 400 here rather than a room nobody can filter.
     language: optionalString(req.body?.language, 'language', 16),
@@ -275,9 +275,11 @@ export const close = asyncHandler(async (req: Request, res: Response) => {
 
 export const setTheme = asyncHandler(async (req: Request, res: Response) => {
   const id = roomId(req);
-  const theme = requireEnum(req.body?.theme, 'theme', THEME_SLUGS);
+  const theme = requireEnum(req.body?.theme, 'theme', themeSlugs());
   const { room } = await setRoomTheme(id, theme, req.user!.sub);
-  emitToRoom(id, 'room:theme_changed', { roomId: id, theme: room.theme });
+  // The wallpaper URL travels with the slug: a client that derived `/themes/<slug>/…` would 404
+  // on any theme an operator pointed at the upload store.
+  emitToRoom(id, 'room:theme_changed', { roomId: id, theme: room.theme, wallpaper: room.themeWallpaper });
   res.json({ room });
 });
 

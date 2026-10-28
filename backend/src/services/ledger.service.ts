@@ -4,6 +4,7 @@ import { many, one, withTransaction } from '../config/db';
 import { rateLimit, redis } from '../config/redis';
 import { GiftRow, TransactionRow, UserRow, WithdrawalRow } from '../types/db';
 import { ApiError } from '../utils/http';
+import { awardXp, xpForEarning, xpForSpend } from './rank.service';
 import { GiftDto, toGift, toTransaction, toUser, TransactionDto, UserDto } from '../utils/serialize';
 
 const TX_WITH_PARTIES = `
@@ -87,6 +88,11 @@ export async function sendGift(input: {
         WHERE id = $1`,
       [receiver.id, totalRCoins, input.quantity],
     );
+
+    // Experience is part of the same transaction as the money: a gift that rolls back cannot leave
+    // a rank behind, and a sender cannot farm XP by failing a send. `rank.service` owns the rate.
+    await awardXp(client, sender.id, xpForSpend(totalDiamonds));
+    await awardXp(client, receiver.id, xpForEarning(totalRCoins));
 
     const txRes = await client.query<TransactionRow>(
       `INSERT INTO transactions (type, status, sender_id, receiver_id, gift_id, quantity,

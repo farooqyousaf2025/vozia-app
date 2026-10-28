@@ -7,6 +7,7 @@
  *   backend/public/welcome.json           (room entry effect)
  *   backend/public/effects/*.json         (loopable room effects)
  *   backend/public/themes/<slug>/wallpaper.png  (room themes)
+ *   backend/public/badges/level-<n>.png         (migration 0017's rank ladder)
  *
  * Those rows store root-relative URLs (`/gifts/rose.png`), which `express.static`
  * serves from the API origin, so nothing 404s on a fresh VPS until real art lands.
@@ -15,8 +16,8 @@
  * no image library and produces byte-identical output on every run.
  *
  * Gift/welcome/effect animations are Lottie JSON built by scripts/lottie-kit.cjs.
- * Theme slugs must stay in sync with backend/src/config/themes.ts, which is the
- * registry the API exposes.
+ * Theme slugs mirror the seed INSERTs of migration 0015; those rows are the registry the
+ * API serves, and an administrator edits them from the panel — this script only ships art.
  *
  *   node scripts/generate-placeholder-assets.cjs
  */
@@ -502,8 +503,8 @@ const AVATARS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Room themes. Slugs mirror backend/src/config/themes.ts, which is the registry
-// the API serves; the wallpapers are rendered here so a fresh checkout has art.
+// Room themes. These slugs are the seeded defaults migration 0015 inserts into `room_themes`;
+// the rows (editable from the panel) are what the API serves, and wallpapers point at them.
 // ---------------------------------------------------------------------------
 // Wallpapers are background art the client upscales; 540x960 keeps a smooth
 // gradient clean without shipping (or regenerating) a 2 MP bitmap per theme.
@@ -732,7 +733,50 @@ for (const theme of THEMES) {
   written.push(write(path.join('themes', theme.slug, 'wallpaper.png'), wallpaperPng(theme)));
 }
 
-// backend/src/config/themes.ts reads this as the authoritative theme registry.
+// ---------------------------------------------------------------------------
+// Level badges. The 21 rungs migration 0017 seeds into `rank_levels` carry one of these in
+// `badge_url`. Only the colour ramp and the shape are baked here — the name, the XP floor and
+// custom uploaded art are all rows an operator edits, and nothing in this file needs to know them.
+// ---------------------------------------------------------------------------
+const BADGE_RAMP = [
+  '#9aa5b1', '#a9714b', '#b07a52', '#b8835a', '#a8b0ba', '#b3bbc4', '#c0c7cf', '#d9a53c',
+  '#e2b04a', '#ecbc58', '#7fd3c8', '#8adbd0', '#96e2d8', '#7ea8ff', '#8bb2ff', '#98bdff',
+  '#c98cff', '#d49bff', '#dfabff', '#ff8f9e', '#ff6b3d',
+];
+
+/**
+ * A shield in the rung's colour with 1-3 pips, so a ladder of 21 rungs still reads as a family:
+ * the ramp carries the tier and the pip count carries the step within it. 24dp on a phone is the
+ * size that matters, so the silhouette is chunky and the rim is 8 units wide.
+ */
+function badgeCanvas(level, accent) {
+  const c = new Raster();
+  const base = hex(accent);
+  const body = mix(base, [12, 14, 20, 1], 0.72);
+  const pip = mix(base, [255, 255, 255, 1], 0.55);
+  const shield = [
+    [128, 14], [218, 66], [204, 168], [128, 242], [52, 168], [38, 66],
+  ];
+  const inset = shield.map(([x, y]) => [128 + (x - 128) * 0.84, 132 + (y - 132) * 0.84]);
+  c.poly(shield, base); // rim
+  c.poly(inset, body); // body
+  c.circle(128, 92, 52, hex(accent, 0.2)); // glow behind the pips
+  // One to three pips per family of three rungs, so Bronze II reads as "the second step" beside
+  // Bronze I. The two top rungs have no family, so they take the full three and the ramp colour
+  // (pink, then ember) is what separates them.
+  const pips = level === 0 ? 1 : level >= 19 ? 3 : ((level - 1) % 3) + 1;
+  const gap = 36;
+  const first = 128 - ((pips - 1) * gap) / 2;
+  for (let i = 0; i < pips; i += 1) c.circle(first + i * gap, 138, 13, pip);
+  return c;
+}
+
+for (let level = 0; level < BADGE_RAMP.length; level += 1) {
+  written.push(writeIcon(path.join('badges', `level-${level}.png`), badgeCanvas(level, BADGE_RAMP[level])));
+}
+
+// A record of what this script drew. Nothing reads it at runtime any more — migration 0015
+// copied these values into `room_themes` / `visual_effects`, and that is the live registry.
 const manifest = {
   generatedBy: 'scripts/generate-placeholder-assets.cjs',
   welcome: '/welcome.json',

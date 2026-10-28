@@ -28,8 +28,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.voiza.app.domain.model.UserJoinedEvent
 import com.voiza.app.domain.usecase.RoomEffects
+import com.voiza.app.ui.components.accentColor
 import com.voiza.app.ui.components.Avatar
+import com.voiza.app.ui.components.RankBadge
 import com.voiza.app.ui.theme.OnDarkHigh
+import com.voiza.app.ui.theme.OnDarkMedium
 import kotlinx.coroutines.delay
 
 /**
@@ -106,6 +109,21 @@ fun EntryBanner(
                 fontWeight = if (tier == 0) FontWeight.Normal else FontWeight.SemiBold,
                 maxLines = 1,
             )
+            joined.user.rank?.let { rung ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    RankBadge(rank = rung, size = 14.dp)
+                    Text(
+                        text = rung.name,
+                        color = accentColor(rung.accent, OnDarkMedium),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                    )
+                }
+            }
             if (tier > 0) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(

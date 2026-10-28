@@ -7,6 +7,8 @@ import com.voiza.app.data.mapper.GameMappersKt;
 import com.voiza.app.data.mapper.MappersKt;
 import com.voiza.app.data.remote.dto.*;
 import com.voiza.app.domain.model.GameHistoryRow;
+import com.voiza.app.domain.model.EmojiCatalogue;
+import com.voiza.app.domain.model.EmojiOption;
 import com.voiza.app.domain.model.GameSession;
 import com.voiza.app.domain.model.GamesKt;
 import com.voiza.app.domain.model.LudoBoard;
@@ -16,14 +18,19 @@ import com.voiza.app.domain.model.TicTacToeBoard;
 import com.voiza.app.domain.model.GiftEffectKind;
 import com.voiza.app.domain.model.Leaderboard;
 import com.voiza.app.domain.model.ModelsKt;
+import com.voiza.app.domain.model.MiniUser;
 import com.voiza.app.domain.model.RankBoard;
 import com.voiza.app.domain.model.RankRow;
+import com.voiza.app.domain.model.UserJoinedEvent;
+import com.voiza.app.domain.model.UserRank;
 import com.voiza.app.domain.model.Room;
 import com.voiza.app.domain.model.RoomProfileEvent;
 import com.voiza.app.domain.model.RoomType;
 import com.voiza.app.domain.model.SeatPolicy;
 import com.voiza.app.domain.model.RoomLikeEvent;
 import com.voiza.app.domain.model.ThemeChangedEvent;
+import com.voiza.app.domain.model.RoomThemeOption;
+import com.voiza.app.domain.model.ThemeCatalogue;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -69,6 +76,27 @@ public class DtosGsonHarness {
         JsonArray a = doc.getAsJsonArray(event);
         if (a == null || a.size() == 0) throw new IllegalStateException("fixture has no '" + event + "' event");
         return a.get(a.size() - 1);
+    }
+
+    /**
+     * A rung the phone is about to paint. The client never derives a level, so everything a
+     * badge depends on has to arrive intact: a name to show, art that resolves through the
+     * same asset-URL rule as gift art, and an accent the parser can read without crashing.
+     */
+    static void checkRung(UserRank rung, String where) {
+        if (rung.getLevel() < 0) throw new IllegalStateException(where + " sent a negative level: " + rung.getLevel());
+        String name = rung.getName();
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalStateException(where + " sent a rung nobody can name");
+        }
+        String badge = rung.getBadge();
+        if (badge != null && !badge.startsWith("/") && !badge.startsWith("https://")) {
+            throw new IllegalStateException(where + " badge is not an asset URL: " + badge);
+        }
+        String accent = rung.getAccent();
+        if (accent != null && !accent.matches("#[0-9a-fA-F]{6}")) {
+            throw new IllegalStateException(where + " accent is not #rrggbb: " + accent);
+        }
     }
 
     /** The session envelope one captured engine run left behind for a game key. */
@@ -206,17 +234,65 @@ public class DtosGsonHarness {
         t("room:gift_animated    -> SocketGiftAnimatedDto -> gift+sender+receiver", () ->
                 MappersKt.toDomain(G.fromJson(last(sock, "room:gift_animated"), SocketGiftAnimatedDto.class)));
 
-        t("room:user_joined      -> SocketUserJoinedDto", () ->
-                MappersKt.toDomain(G.fromJson(last(sock, "room:user_joined"), SocketUserJoinedDto.class)));
+        t("room:user_joined      -> SocketUserJoinedDto -> UserJoinedEvent", () -> {
+            UserJoinedEvent ev = MappersKt.toDomain(
+                    G.fromJson(last(sock, "room:user_joined"), SocketUserJoinedDto.class));
+            // fetchMiniUser is the one member query that selects xp, so the joiner always
+            // arrives with a resolved rung — the entry banner has nothing to invent.
+            if (ev.getUser().getRank() == null) {
+                throw new IllegalStateException("joiner carried no rank; the ladder did not ship");
+            }
+            checkRung(ev.getUser().getRank(), "room:user_joined");
+        });
+
+        t("MiniUserDto WITHOUT rank leaves the level absent, never zero", () -> {
+            // Seats and the audience roster select neither xp nor rank, and Gson runs no
+            // default initialiser, so the key is missing rather than empty. A banner that
+            // read that as "Newcomer" would contradict the administrator's ladder.
+            MiniUser lean = MappersKt.toDomain(
+                    G.fromJson("{\"id\":\"u1\",\"username\":\"ana\"}", MiniUserDto.class));
+            if (lean.getRank() != null) throw new IllegalStateException("absent rank became " + lean.getRank());
+        });
+
+        t("a rung with no name is dropped, art alone is not a level", () -> {
+            RankDto dto = G.fromJson("{\"level\":3,\"badge\":\"/badges/level-3.png\"}", RankDto.class);
+            UserRank rung = MappersKt.toDomain(dto);
+            if (rung != null) throw new IllegalStateException("an unnamed rung reached the banner: " + rung);
+        });
+
+        t("a seat/audience roster maps whatever rung it is sent", () -> {
+            // Seats and the roster are the lean member queries: today they ship no xp, so the
+            // client must read "absent", and if the server ever starts sending a rung here the
+            // same code has to paint it without another release.
+            JsonArray arr = sock.getAsJsonArray("room:seat_update");
+            if (arr == null || arr.size() == 0) throw new IllegalStateException("fixture has no 'room:seat_update' event");
+            for (JsonElement e : arr) {
+                SocketSeatUpdateDto dto = G.fromJson(e, SocketSeatUpdateDto.class);
+                for (SeatDto seat : dto.getSeats()) {
+                    if (seat.getUser() == null) continue;
+                    UserRank rung = MappersKt.toDomain(seat.getUser()).getRank();
+                    if (rung != null) checkRung(rung, "room:seat_update seat " + seat.getSeatIndex());
+                }
+                for (MiniUserDto member : dto.getAudience()) {
+                    UserRank rung = MappersKt.toDomain(member).getRank();
+                    if (rung != null) checkRung(rung, "room:seat_update audience");
+                }
+            }
+        });
 
         t("room:listener_count   -> SocketListenerCountDto", () ->
                 G.fromJson(last(sock, "room:listener_count"), SocketListenerCountDto.class));
 
         t("room:theme_changed    -> SocketThemeChangedDto -> ThemeChangedEvent", () -> {
             SocketThemeChangedDto dto = G.fromJson(last(sock, "room:theme_changed"), SocketThemeChangedDto.class);
-            ThemeChangedEvent ev = new ThemeChangedEvent(dto.getRoomId(), dto.getTheme());
+            ThemeChangedEvent ev = new ThemeChangedEvent(dto.getRoomId(), dto.getTheme(), dto.getWallpaper());
             if (ev.getTheme() == null || ev.getTheme().isEmpty()) {
                 throw new IllegalStateException("broadcast carried an empty theme slug");
+            }
+            // The client renders the wallpaper, not the slug, so a broadcast without a URL
+            // would leave everyone looking at the previous theme's art.
+            if (ev.getWallpaper() == null || ev.getWallpaper().isEmpty()) {
+                throw new IllegalStateException("broadcast carried no wallpaper URL");
             }
         });
 
@@ -270,13 +346,94 @@ public class DtosGsonHarness {
             }
         });
 
-        t("live room payloads carry a theme slug", () -> {
+        t("live room payloads carry a theme slug AND its wallpaper", () -> {
             JsonObject detail = body(rest, "detail").getAsJsonObject("room");
             JsonElement theme = detail.get("theme");
             if (theme == null || theme.isJsonNull() || theme.getAsString().isEmpty()) {
                 throw new IllegalStateException("GET /api/rooms/:id returned no theme — wallpaper lookup would 404");
             }
-            MappersKt.toDomain(G.fromJson(detail, RoomDto.class));
+            if (!detail.has("themeWallpaper") || detail.get("themeWallpaper").isJsonNull()) {
+                throw new IllegalStateException("GET /api/rooms/:id returned no themeWallpaper URL");
+            }
+            Room room = MappersKt.toDomain(G.fromJson(detail, RoomDto.class));
+            if (room.getThemeWallpaper() == null || room.getThemeWallpaper().isEmpty()) {
+                throw new IllegalStateException("mapper dropped the theme wallpaper");
+            }
+        });
+
+        t("GET /api/rooms/themes -> ThemeCatalogueDto -> ThemeCatalogue", () -> {
+            ThemeCatalogue cat = MappersKt.toDomain(G.fromJson(body(rest, "themes"), ThemeCatalogueDto.class));
+            if (cat.getThemes().isEmpty()) throw new IllegalStateException("published catalogue has no theme");
+            if (cat.getDefaultTheme().isEmpty()) throw new IllegalStateException("catalogue published no default slug");
+            for (RoomThemeOption theme : cat.getThemes()) {
+                // The whole point of the catalogue: it hands the client a loadable URL, never a
+                // slug it has to turn into a path (operator art lives in the upload store).
+                if (!theme.getWallpaper().startsWith("/") && !theme.getWallpaper().startsWith("https://")) {
+                    throw new IllegalStateException(theme.getSlug() + " wallpaper is not a URL: " + theme.getWallpaper());
+                }
+                if (theme.getAccent().isEmpty() || theme.getName().isEmpty()) {
+                    throw new IllegalStateException(theme.getSlug() + " lost its name or accent");
+                }
+            }
+            if (cat.getWelcome() != null && !cat.getWelcome().startsWith("/")) {
+                throw new IllegalStateException("welcome animation is not a same-origin asset path: " + cat.getWelcome());
+            }
+        });
+
+        t("catalogue WITHOUT optional keys still maps", () -> {
+            ThemeCatalogueDto dto = G.fromJson("{\"themes\":[{\"slug\":\"a\",\"name\":\"A\","
+                    + "\"accent\":\"#ffffff\",\"wallpaper\":\"/u/a.png\"}]}", ThemeCatalogueDto.class);
+            ThemeCatalogue cat = MappersKt.toDomain(dto);
+            if (!"aurora".equals(cat.getDefaultTheme())) {
+                throw new IllegalStateException("an old backend left the default slug blank");
+            }
+            if (cat.getWelcome() != null) throw new IllegalStateException("absent welcome mapped to something");
+            if (cat.getThemes().size() != 1) throw new IllegalStateException("catalogue row lost");
+        });
+
+        t("GET /api/emoji -> EmojiCatalogueDto -> EmojiCatalogue", () -> {
+            EmojiCatalogue cat = MappersKt.toDomain(G.fromJson(body(rest, "emojis"), EmojiCatalogueDto.class));
+            if (cat.getEmojis().isEmpty()) throw new IllegalStateException("published catalogue has no emoji");
+            // The picker inserts this token and the scanner finds it again, so a code that does
+            // not match the published pattern would be typed but never drawn.
+            java.util.regex.Pattern scanner = java.util.regex.Pattern.compile(cat.getCodePattern());
+            for (EmojiOption option : cat.getEmojis()) {
+                if (!scanner.matcher(option.getCode()).matches()) {
+                    throw new IllegalStateException(option.getKey() + " code is not scanned: " + option.getCode());
+                }
+                if (!option.getUrl().startsWith("/") && !option.getUrl().startsWith("https://")) {
+                    throw new IllegalStateException(option.getKey() + " art is not a URL: " + option.getUrl());
+                }
+                if (option.getLabel().isEmpty()) {
+                    throw new IllegalStateException(option.getKey() + " lost its label (a11y description)");
+                }
+            }
+        });
+
+        t("emoji catalogue WITHOUT optional keys still maps", () -> {
+            EmojiCatalogueDto dto = G.fromJson("{\"emojis\":["
+                    + "{\"key\":\"smile\",\"url\":\"/emoji/smile.webp\"},"   // no label, no code
+                    + "{\"key\":\"noart\",\"label\":\"No art\",\"code\":\"[noart]\"}" + // no url
+                    "]}", EmojiCatalogueDto.class);
+            EmojiCatalogue cat = MappersKt.toDomain(dto);
+            if (cat.getEmojis().size() != 1) throw new IllegalStateException("row with no art was kept");
+            EmojiOption only = cat.getEmojis().get(0);
+            if (!"[smile]".equals(only.getCode())) throw new IllegalStateException("derived code is wrong: " + only.getCode());
+            if (!"smile".equals(only.getLabel())) throw new IllegalStateException("absent label did not fall back to the key");
+            if (!ModelsKt.FALLBACK_EMOJI_CODE_PATTERN.equals(cat.getCodePattern())) {
+                throw new IllegalStateException("absent codePattern did not fall back: " + cat.getCodePattern());
+            }
+        });
+
+        t("an emoji catalogue with nothing usable maps to an empty picker", () -> {
+            EmojiCatalogue cat = MappersKt.toDomain(G.fromJson("{}", EmojiCatalogueDto.class));
+            if (!cat.getEmojis().isEmpty()) throw new IllegalStateException("absent list became rows");
+            // A pattern the server cannot compile would crash every bubble; check the guard holds.
+            EmojiCatalogue broken = MappersKt.toDomain(
+                    G.fromJson("{\"codePattern\":\"[\",\"emojis\":[]}", EmojiCatalogueDto.class));
+            if (!ModelsKt.FALLBACK_EMOJI_CODE_PATTERN.equals(broken.getCodePattern())) {
+                throw new IllegalStateException("an un-compilable pattern reached the scanner");
+            }
         });
 
         t("GET /api/rooms/capacity -> SeatPolicyResponse -> SeatPolicy (the form reads its range here)", () -> {

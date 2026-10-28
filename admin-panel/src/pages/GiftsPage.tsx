@@ -4,6 +4,7 @@
 // ---------------------------------------------------------------------------
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Badge, type BadgeTone } from '../components/ui/Badge';
+import { ArtField } from '../components/ui/ArtField';
 import { Button, IconButton } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -411,26 +412,32 @@ function GiftFormModal({ gift, onClose, onSaved }: GiftFormModalProps) {
           </Select>
         </div>
 
-        <Input
+        <ArtField
+          kind="GIFT_ICON"
           label="Icon URL"
           value={form.iconUrl}
-          onChange={(e) => setField('iconUrl', e.target.value)}
           error={errorFor('iconUrl')}
           placeholder="/gifts/rose.png or https://cdn…"
+          onChange={(url) => setField('iconUrl', url)}
+          onError={setServerError}
         />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Input
+          <ArtField
+            kind="GIFT_ANIMATION"
             label="Animation URL (optional)"
             value={form.animationUrl}
-            onChange={(e) => setField('animationUrl', e.target.value)}
             placeholder="/gifts/rose.json (Lottie)"
             hint="Full-screen overlay clients play; leave empty for a particle burst."
+            onChange={(url) => setField('animationUrl', url)}
+            onError={setServerError}
           />
-          <Input
+          <ArtField
+            kind="GIFT_SOUND"
             label="Sound URL (optional)"
             value={form.soundUrl}
-            onChange={(e) => setField('soundUrl', e.target.value)}
             placeholder="/gifts/rose.mp3"
+            onChange={(url) => setField('soundUrl', url)}
+            onError={setServerError}
           />
         </div>
 

@@ -29,6 +29,10 @@ android/.kotlin/
 android/keystore.properties
 android/app/google-services.json
 
+# Operator-uploaded gift art, effect scenes and sounds. The database row is the record;
+# the bytes live only on the server that received them, and backups must include this dir.
+backend/uploads/
+
 # editors / os
 .DS_Store
 Thumbs.db

@@ -1,6 +1,7 @@
 package com.voiza.app.ui.screens.room
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,12 +14,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -35,13 +39,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.voiza.app.domain.model.ChatMessage
+import com.voiza.app.domain.model.EmojiOption
+import com.voiza.app.domain.model.FALLBACK_EMOJI_CODE_PATTERN
 import com.voiza.app.domain.model.MessageType
 import com.voiza.app.ui.components.Avatar
+import com.voiza.app.ui.components.asAssetUrl
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.Fuchsia
 import com.voiza.app.ui.theme.GiftPink
@@ -52,6 +62,10 @@ import com.voiza.app.ui.theme.VoizaSurfaceHigh
 /**
  * Semi-transparent chat feed: a compact overlay window (~6 rows tall) with an
  * auto-scrolling list and input row. GIFT/SYSTEM lines are highlighted.
+ *
+ * The emoji strip is the picker for the codes an operator maintains in the admin panel: tapping a
+ * tile inserts its `[code]` into the draft, because that token, not the picture, is what the
+ * message will store and what everyone else's client will draw art for.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,9 +73,12 @@ fun ChatOverlay(
     messages: List<ChatMessage>,
     onSend: (String) -> Unit,
     modifier: Modifier = Modifier,
+    emojis: List<EmojiOption> = emptyList(),
+    codePattern: String = FALLBACK_EMOJI_CODE_PATTERN,
 ) {
     val listState = rememberLazyListState()
     var input by remember { mutableStateOf("") }
+    var pickerOpen by remember { mutableStateOf(false) }
 
     // Keep pinned to the newest message.
     LaunchedEffect(messages.size) {
@@ -88,7 +105,23 @@ fun ChatOverlay(
                 .background(Color(0x400B0A1F)),
         ) {
             items(messages, key = { it.id }) { msg ->
-                ChatRow(msg)
+                ChatRow(msg, emojis, codePattern)
+            }
+        }
+
+        if (pickerOpen && emojis.isNotEmpty()) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0x590B0A1F)),
+            ) {
+                items(emojis, key = { it.key }) { option ->
+                    EmojiTile(option) { input = (input + option.code).take(MAX_INPUT) }
+                }
             }
         }
 
@@ -98,7 +131,7 @@ fun ChatOverlay(
         ) {
             OutlinedTextField(
                 value = input,
-                onValueChange = { input = it.take(300) },
+                onValueChange = { input = it.take(MAX_INPUT) },
                 placeholder = { Text("Say something\u2026", fontSize = 13.sp, color = OnDarkMedium) },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
@@ -114,6 +147,13 @@ fun ChatOverlay(
                 modifier = Modifier
                     .weight(1f),
             )
+            IconButton(onClick = { pickerOpen = !pickerOpen }) {
+                Icon(
+                    imageVector = Icons.Default.EmojiEmotions,
+                    contentDescription = if (pickerOpen) "Hide emoji" else "Pick emoji",
+                    tint = if (pickerOpen) Cyan else OnDarkMedium,
+                )
+            }
             IconButton(
                 onClick = {
                     if (input.isNotBlank()) {
@@ -132,11 +172,39 @@ fun ChatOverlay(
     }
 }
 
+private const val MAX_INPUT = 300
+
+/** One picker tile: the operator's art, tappable, labelled for TalkBack with the row's own name. */
 @Composable
-private fun ChatRow(msg: ChatMessage) {
+private fun EmojiTile(option: EmojiOption, onPick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0x33FFFFFF))
+            .clickable(onClick = onPick),
+        contentAlignment = Alignment.Center,
+    ) {
+        AsyncImage(
+            model = option.url.asAssetUrl(),
+            contentDescription = option.label,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.padding(5.dp).fillMaxSize(),
+        )
+    }
+}
+
+@Composable
+private fun ChatRow(
+    msg: ChatMessage,
+    emojis: List<EmojiOption>,
+    codePattern: String,
+) {
     val isGift = msg.type == MessageType.GIFT
     val isSystem = msg.type == MessageType.SYSTEM
     val bubbleShape = RoundedCornerShape(12.dp)
+    // Only a member's own words carry codes; gift and system lines are written by the server.
+    val line = rememberEmojiMessage(msg.content, if (isGift || isSystem) emptyList() else emojis, codePattern)
 
     Box(
         modifier = Modifier
@@ -167,11 +235,14 @@ private fun ChatRow(msg: ChatMessage) {
                         fontWeight = FontWeight.Bold,
                     )
                 }
-                Text(
-                    text = msg.content,
-                    color = OnDarkHigh,
-                    fontSize = 12.sp,
-                    fontWeight = if (isGift) FontWeight.SemiBold else FontWeight.Normal,
+                BasicText(
+                    text = line.text,
+                    inlineContent = line.inlineContent,
+                    style = TextStyle(
+                        color = OnDarkHigh,
+                        fontSize = 12.sp,
+                        fontWeight = if (isGift) FontWeight.SemiBold else FontWeight.Normal,
+                    ),
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                 )

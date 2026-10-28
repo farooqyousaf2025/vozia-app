@@ -25,10 +25,11 @@ import {
   IconDiamond,
   IconSearch,
   IconShieldCheck,
+  IconTrendUp,
   IconUsers,
 } from '../components/ui/Icons';
 import { Table, TBody, Td, Th, THead, Tr } from '../components/ui/Table';
-import { ApiError, api } from '../lib/api';
+import { ApiError, api, assetUrl } from '../lib/api';
 import { formatCompact, formatDiamonds, formatRCoin, parseSignedInt, relativeTime } from '../lib/format';
 import type { UserListQuery, UserRow, UserStatus, UserType } from '../types';
 
@@ -61,6 +62,7 @@ export default function UsersPage() {
 
   const [balanceTarget, setBalanceTarget] = useState<UserRow | null>(null);
   const [banTarget, setBanTarget] = useState<UserRow | null>(null);
+  const [xpTarget, setXpTarget] = useState<UserRow | null>(null);
 
   const query = useMemo<UserListQuery>(
     () => ({
@@ -182,6 +184,7 @@ export default function UsersPage() {
                 <Th>Type</Th>
                 <Th>Status</Th>
                 <Th>VIP</Th>
+                <Th>Earned level</Th>
                 <Th align="right">Diamonds</Th>
                 <Th align="right">R-coins</Th>
                 <Th align="right">Gifts sent / recv</Th>
@@ -227,6 +230,30 @@ export default function UsersPage() {
                         ))}
                       </Select>
                     </Td>
+                    {/* Earned rank, read-only beside the tier an operator sets: a member climbs this
+                        one by sending and receiving coins, and only an operator's correction moves it. */}
+                    <Td>
+                      <span className="flex items-center gap-2">
+                        <img
+                          src={assetUrl(user.rank.badge)}
+                          alt=""
+                          loading="lazy"
+                          className="h-5 w-5 shrink-0 object-contain"
+                          onError={(event) => {
+                            event.currentTarget.style.visibility = 'hidden';
+                          }}
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate text-xs font-medium" style={{ color: user.rank.accent }}>
+                            {user.rank.name}
+                          </span>
+                          <span className="block text-[11px] tabular-nums text-faint">
+                            {formatCompact(user.xp)} XP
+                            {user.nextRank !== null && ` · ${formatCompact(user.nextRank.remainingXp)} to next`}
+                          </span>
+                        </span>
+                      </span>
+                    </Td>
                     <Td align="right" className="tabular-nums text-ink">
                       {formatDiamonds(user.diamondBalance)}
                     </Td>
@@ -245,6 +272,13 @@ export default function UsersPage() {
                           onClick={() => setBalanceTarget(user)}
                         >
                           Balance
+                        </Button>
+                        <Button
+                          size="sm"
+                          icon={<IconTrendUp className="h-3.5 w-3.5" />}
+                          onClick={() => setXpTarget(user)}
+                        >
+                          Level
                         </Button>
                         {user.status === 'ACTIVE' ? (
                           <IconButton label={`Ban ${user.username}`} tone="danger" onClick={() => setBanTarget(user)}>
@@ -276,6 +310,18 @@ export default function UsersPage() {
             replaceRow(updated);
             setBalanceTarget(null);
             toast.success(`Wallet updated for ${updated.username}.`);
+          }}
+        />
+      )}
+
+      {xpTarget !== null && (
+        <AdjustXpModal
+          user={xpTarget}
+          onClose={() => setXpTarget(null)}
+          onUpdated={(updated) => {
+            replaceRow(updated);
+            setXpTarget(null);
+            toast.success(`${updated.username} is now ${updated.rank.name} at ${formatCompact(updated.xp)} XP.`);
           }}
         />
       )}
@@ -430,6 +476,128 @@ function AdjustBalanceModal({ user, onClose, onUpdated }: AdjustBalanceModalProp
                 user.rCoinBalance + (rCoinDelta ?? 0),
               )} R-coins (recorded as ADMIN_ADJUSTMENT).`}
         </p>
+
+        {serverError !== null && (
+          <div className="flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 py-2 text-xs text-rose-200">
+            <IconAlert className="h-4 w-4 shrink-0" />
+            {serverError}
+          </div>
+        )}
+      </form>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Experience correction. The write is a delta rather than an absolute, so a
+// correction cannot erase the XP a member earned from gifts while this dialog was
+// open, and the server refuses anything that would take the total below zero.
+// ---------------------------------------------------------------------------
+interface AdjustXpModalProps {
+  user: UserRow;
+  onClose: () => void;
+  onUpdated: (user: UserRow) => void;
+}
+
+function AdjustXpModal({ user, onClose, onUpdated }: AdjustXpModalProps) {
+  const [deltaRaw, setDeltaRaw] = useState('');
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  const delta = parseSignedInt(deltaRaw);
+  const result = delta === null ? null : user.xp + delta;
+  const deltaError =
+    deltaRaw.trim() === ''
+      ? 'Enter an amount, positive or negative.'
+      : delta === null
+        ? 'Must be a whole number (e.g. 5000 or -1200).'
+        : result !== null && result < 0
+          ? `Would take ${user.username} below 0 XP (currently ${formatCompact(user.xp)}).`
+          : null;
+  const canSubmit = deltaError === null && delta !== 0 && !submitting;
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canSubmit || delta === null) return;
+    setSubmitting(true);
+    setServerError(null);
+    try {
+      const updated = await api.addXp(user.id, delta, reason.trim());
+      onUpdated(updated.user);
+    } catch (err) {
+      setServerError(err instanceof ApiError ? err.message : 'Experience adjustment failed.');
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Adjust experience"
+      subtitle={
+        <span className="flex items-center gap-2">
+          <Avatar name={user.username} src={user.avatarUrl} size="xs" />
+          {user.username} · {user.phone}
+        </span>
+      }
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            type="submit"
+            form="adjust-xp-form"
+            loading={submitting}
+            disabled={!canSubmit}
+          >
+            Apply
+          </Button>
+        </>
+      }
+    >
+      <form id="adjust-xp-form" onSubmit={submit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-3 rounded-lg border border-edge/60 bg-elevated/40 p-3 text-sm">
+          <div>
+            <p className="text-xs text-faint">Current level</p>
+            <p className="mt-1 flex items-center gap-1.5 font-semibold text-ink">
+              <img src={assetUrl(user.rank.badge)} alt="" className="h-5 w-5 object-contain" />
+              <span style={{ color: user.rank.accent }}>{user.rank.name}</span>
+            </p>
+            <p className="mt-0.5 text-[11px] tabular-nums text-faint">{formatCompact(user.xp)} XP</p>
+          </div>
+          <div>
+            <p className="text-xs text-faint">Next rung</p>
+            <p className="mt-1 font-semibold text-ink">
+              {user.nextRank === null ? 'top of the ladder' : user.nextRank.name}
+            </p>
+            <p className="mt-0.5 text-[11px] tabular-nums text-faint">
+              {user.nextRank === null
+                ? 'nothing above level 20'
+                : `${formatCompact(user.nextRank.remainingXp)} XP away`}
+            </p>
+          </div>
+        </div>
+
+        <Input
+          label="Experience delta"
+          inputMode="numeric"
+          placeholder="+5000 or -1200"
+          value={deltaRaw}
+          onChange={(e) => setDeltaRaw(e.target.value)}
+          error={deltaRaw.trim() === '' ? null : deltaError}
+          hint="Only an operator can move experience; a member's own app cannot write it."
+        />
+
+        <Textarea
+          label="Reason (goes in the audit log)"
+          placeholder="Refunded after a support ticket about a failed gift"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          maxLength={200}
+          error={reason.trim().length > 200 ? 'Limited to 200 characters.' : null}
+        />
 
         {serverError !== null && (
           <div className="flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 py-2 text-xs text-rose-200">
