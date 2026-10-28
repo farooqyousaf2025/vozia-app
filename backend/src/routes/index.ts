@@ -9,6 +9,7 @@ import livekitRoutes from './livekit.routes';
 import paymentsRoutes from './payments.routes';
 import rankRoutes from './rank.routes';
 import roomRoutes from './room.routes';
+import storeRoutes from './store.routes';
 import userRoutes from './user.routes';
 import walletRoutes from './wallet.routes';
 
@@ -26,6 +27,9 @@ router.use('/ranks', rankRoutes);
 router.use('/games', gameRoutes);
 router.use('/wallet', walletRoutes);
 router.use('/users', userRoutes);
+// The cosmetic store. Its own prefix rather than a branch of /users, because buying is a money
+// path like /gifts and /wallet — the catalogue and the ownership rows live behind it.
+router.use('/store', storeRoutes);
 router.use('/admin', adminRoutes);
 // Partner panel: BD representatives and coin sellers. Its own prefix, because a partner
 // credential must never be able to reach an operator route.

@@ -314,6 +314,15 @@ fun PartyRoomScreen(
                 onFinished = { welcomeVisible = false },
             )
         }
+
+        // Another member's paid entry flourish, named by the server on their join payload.
+        // Their banner still shows either way; this only adds the scene they bought.
+        if (state.entryFlourish != null) {
+            WelcomeEffect(
+                welcomeUrl = state.entryFlourish,
+                onFinished = viewModel::clearEntryFlourish,
+            )
+        }
     }
 
     // Password gate for PRIVATE rooms.

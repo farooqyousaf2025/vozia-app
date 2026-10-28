@@ -22,6 +22,20 @@ data class VerifyOtpBody(
     @SerializedName("username") val username: String? = null,
 )
 
+/**
+ * The avatar ring a member paid for, resolved server-side from the worn key and its expiry.
+ *
+ * `art` is the exact URL a phone draws — a ring PNG with a transparent middle — and `accent` is
+ * the colour to fall back on while that file loads, so a slow CDN shows a plain circle rather than
+ * a hole. Neither may be derived from [key].
+ */
+data class FrameArtDto(
+    @SerializedName("key") val key: String? = null,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("art") val art: String? = null,
+    @SerializedName("accent") val accent: String? = null,
+)
+
 data class MiniUserDto(
     @SerializedName("id") val id: String,
     @SerializedName("username") val username: String,
@@ -31,6 +45,10 @@ data class MiniUserDto(
     @SerializedName("vipLevel") val vipLevel: Int? = null,
     // Only present where the query read `users.xp`; absent means "not shipped", never "level 0".
     @SerializedName("rank") val rank: RankDto? = null,
+    // Present only where the query read the decoration columns; null means "wearing nothing".
+    @SerializedName("profileFrame") val profileFrame: FrameArtDto? = null,
+    // The paid entry flourish URL on join payloads; null means the room's free default.
+    @SerializedName("entryEffect") val entryEffect: String? = null,
 )
 
 /** A rung of the earned ladder, resolved server-side from the member's XP. */
@@ -59,6 +77,9 @@ data class UserDto(
     @SerializedName("vipLevel") val vipLevel: Int = 0,
     @SerializedName("xp") val xp: Long = 0,
     @SerializedName("rank") val rank: RankDto? = null,
+    // The account's own worn decoration, so the profile header draws what the server says.
+    @SerializedName("profileFrame") val profileFrame: FrameArtDto? = null,
+    @SerializedName("entryEffect") val entryEffect: String? = null,
 )
 
 data class AuthResponse(
@@ -178,6 +199,9 @@ data class UpdateRoomBody(
 )
 
 data class JoinRoomBody(@SerializedName("password") val password: String? = null)
+
+/** `POST /api/rooms/:id/theme` — the slug only; the server resolves its own wallpaper URL. */
+data class SetRoomThemeBody(@SerializedName("theme") val theme: String)
 
 /**
  * `GET /api/rooms/capacity` — the seat policy the administrator owns.
@@ -373,4 +397,54 @@ data class LeaderboardResponse(
     /** receivers = who earned, senders = who spent. */
     @SerializedName("role") val role: String? = null,
     @SerializedName("leaders") val leaders: List<LeaderEntryDto>? = null,
+)
+
+/**
+ * One row of `GET /api/store`, i.e. what is on sale plus what *this* member holds.
+ *
+ * `owned` and `equipped` are per-caller answers from the server, never derived here: a modified
+ * client that flips them changes only what it draws. `expiresAt` is null for a purchase that
+ * never runs out, and `equipped` is only ever true for a frame or an effect — a theme is worn by
+ * a room, not by an account.
+ */
+data class StoreItemDto(
+    @SerializedName("kind") val kind: String? = null,
+    @SerializedName("key") val key: String? = null,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("art") val art: String? = null,
+    @SerializedName("accent") val accent: String? = null,
+    @SerializedName("priceDiamonds") val priceDiamonds: Int = 0,
+    @SerializedName("periodDays") val periodDays: Int? = null,
+    @SerializedName("owned") val owned: Boolean = false,
+    @SerializedName("expiresAt") val expiresAt: String? = null,
+    @SerializedName("equipped") val equipped: Boolean = false,
+)
+
+/** What the member holds, including rows an operator has since retired from the shop. */
+data class OwnedStoreItemDto(
+    @SerializedName("kind") val kind: String? = null,
+    @SerializedName("key") val key: String? = null,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("art") val art: String? = null,
+    @SerializedName("onSale") val onSale: Boolean = false,
+    @SerializedName("expiresAt") val expiresAt: String? = null,
+    @SerializedName("acquiredVia") val acquiredVia: String? = null,
+)
+
+data class StoreResponse(
+    @SerializedName("items") val items: List<StoreItemDto>? = null,
+    @SerializedName("owned") val owned: List<OwnedStoreItemDto>? = null,
+)
+
+/** The only two fields the purchase/equip routes accept: a kind and a key, never a price. */
+data class StoreItemBody(
+    @SerializedName("kind") val kind: String,
+    @SerializedName("key") val key: String? = null,
+)
+
+/** 201 from POST /api/store/purchase: the deed, the receipt, and the wallet that paid. */
+data class StorePurchaseResponse(
+    @SerializedName("item") val item: StoreItemDto? = null,
+    @SerializedName("transaction") val transaction: TransactionDto? = null,
+    @SerializedName("wallet") val wallet: UserDto? = null,
 )

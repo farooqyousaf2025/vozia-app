@@ -16,6 +16,14 @@ export type UserRow = {
   vip_level: number;
   /** Lifetime experience (migration 0017). BIGINT, so `pg` hands back a string. */
   xp?: string | number;
+  /**
+   * What the member is wearing (migration 0019). Optional because a lean seat-list SELECT does not
+   * read them; `toMiniUser` only resolves a ring for a query that bothered to.
+   */
+  profile_frame_key?: string | null;
+  profile_frame_expires_at?: Date | null;
+  welcome_effect_key?: string | null;
+  welcome_effect_expires_at?: Date | null;
   device_token: string | null;
   last_seen_at: Date | null;
   created_at: Date;
@@ -49,6 +57,8 @@ export type RoomRow = {
   // present only on joined queries
   host_username?: string;
   host_avatar_url?: string | null;
+  host_profile_frame_key?: string | null;
+  host_profile_frame_expires_at?: Date | null;
 };
 
 export type SeatRow = {
@@ -61,6 +71,8 @@ export type SeatRow = {
   is_speaker: boolean;
   username: string | null;
   avatar_url: string | null;
+  profile_frame_key?: string | null;
+  profile_frame_expires_at?: Date | null;
 };
 
 export type GiftRow = {
@@ -116,6 +128,8 @@ export type ParticipantRow = {
   joined_at: Date;
   username?: string;
   avatar_url?: string | null;
+  profile_frame_key?: string | null;
+  profile_frame_expires_at?: Date | null;
 };
 
 export type ChatRow = {
@@ -498,6 +512,10 @@ export type VisualEffectRow = {
   name: string;
   url: string;
   sort_order: number;
+  /** Migration 0019: a WELCOME row can be sold as a member's entry flourish. */
+  price_diamonds: number;
+  for_sale: boolean;
+  period_days: number | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -510,6 +528,37 @@ export type RoomThemeRow = {
   wallpaper_url: string;
   is_default: boolean;
   sort_order: number;
+  /** Migration 0019: a host must own a `for_sale` theme before a room can wear it. */
+  price_diamonds: number;
+  for_sale: boolean;
+  period_days: number | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+/** `profile_frames` (migration 0019) — one avatar ring the store sells. */
+export type ProfileFrameRow = {
+  key: string;
+  name: string;
+  art_url: string;
+  accent: string;
+  sort_order: number;
+  price_diamonds: number;
+  for_sale: boolean;
+  period_days: number | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+/** `user_items` (migration 0019) — one thing a member owns, and until when. */
+export type UserItemRow = {
+  id: string;
+  user_id: string;
+  kind: 'FRAME' | 'THEME' | 'EFFECT';
+  item_key: string;
+  acquired_via: 'PURCHASE' | 'ADMIN_GRANT';
+  transaction_id: string | null;
+  expires_at: Date | null;
   created_at: Date;
   updated_at: Date;
 };

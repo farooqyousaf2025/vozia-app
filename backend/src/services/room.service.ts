@@ -6,6 +6,7 @@ import { ChatRow, ParticipantRow, RoomRow, SeatRow, UserRow } from '../types/db'
 import { hashSecret, randomRoomNumber, verifySecret } from '../utils/crypto';
 import { ApiError } from '../utils/http';
 import { readConfig } from './business.service';
+import { assertMayWearTheme } from './store.service';
 import {
   ChatMessageDto,
   MiniUser,
@@ -108,7 +109,7 @@ export async function resolveSeatCapacity(requested: number | undefined): Promis
 
 const SEAT_SELECT = `
   SELECT rs.id, rs.room_id, rs.seat_index, rs.user_id, rs.status, rs.is_muted, rs.is_speaker,
-         u.username, u.avatar_url
+         u.username, u.avatar_url, u.profile_frame_key, u.profile_frame_expires_at
     FROM room_seats rs
     LEFT JOIN users u ON u.id = rs.user_id
    WHERE rs.room_id = $1
@@ -116,13 +117,15 @@ const SEAT_SELECT = `
 
 const PARTICIPANT_SELECT = `
   SELECT p.id, p.room_id, p.user_id, p.role, p.seat_index, p.hand_raised, p.joined_at,
-         u.username, u.avatar_url
+         u.username, u.avatar_url, u.profile_frame_key, u.profile_frame_expires_at
     FROM room_participants p
     JOIN users u ON u.id = p.user_id
    WHERE p.room_id = $1 AND p.left_at IS NULL`;
 
 const ROOM_SELECT = `
-  SELECT r.*, u.username AS host_username, u.avatar_url AS host_avatar_url
+  SELECT r.*, u.username AS host_username, u.avatar_url AS host_avatar_url,
+         u.profile_frame_key AS host_profile_frame_key,
+         u.profile_frame_expires_at AS host_profile_frame_expires_at
     FROM rooms r
     JOIN users u ON u.id = r.host_id`;
 
@@ -148,7 +151,17 @@ export async function fetchMiniUser(userId: string): Promise<MiniUser | null> {
     avatar_url: string | null;
     vip_level: number;
     xp: string | number;
-  }>('SELECT id, username, avatar_url, vip_level, xp FROM users WHERE id = $1', [userId]);
+    profile_frame_key: string | null;
+    profile_frame_expires_at: Date | null;
+    welcome_effect_key: string | null;
+    welcome_effect_expires_at: Date | null;
+  }>(
+    `SELECT id, username, avatar_url, vip_level, xp,
+            profile_frame_key, profile_frame_expires_at,
+            welcome_effect_key, welcome_effect_expires_at
+       FROM users WHERE id = $1`,
+    [userId],
+  );
   return row ? toMiniUser(row) : null;
 }
 
@@ -157,7 +170,16 @@ export async function fetchAudience(roomId: string, limit = 120): Promise<MiniUs
     `${PARTICIPANT_SELECT} AND p.role = 'AUDIENCE' ORDER BY p.joined_at DESC LIMIT $2`,
     [roomId, limit],
   );
-  return rows.map((r) => ({ id: r.user_id, username: r.username ?? 'unknown', avatarUrl: r.avatar_url ?? null }));
+  // `r.id` is the participant row's id, so the MiniUser is built from `user_id` explicitly.
+  return rows.map((r) =>
+    toMiniUser({
+      id: r.user_id,
+      username: r.username ?? 'unknown',
+      avatar_url: r.avatar_url ?? null,
+      profile_frame_key: r.profile_frame_key,
+      profile_frame_expires_at: r.profile_frame_expires_at,
+    }),
+  );
 }
 
 export async function loadRoom(roomId: string, client?: PoolClient): Promise<RoomRow> {
@@ -392,6 +414,8 @@ export type CreateRoomInput = {
 export async function createRoom(hostUserId: string, input: CreateRoomInput): Promise<RoomDto & { seats: SeatDto[] }> {
   const user = await loadUser(hostUserId);
   const seatCapacity = await resolveSeatCapacity(input.seatCapacity);
+  // Asked for a paid look with no receipt behind it? Refuse before a room exists to hang it on.
+  if (input.theme && isTheme(input.theme)) await assertMayWearTheme(hostUserId, input.theme);
   const passwordHash = input.type === 'PRIVATE' ? hashSecret(input.password ?? String(randomRoomNumber())) : null;
   if (input.type === 'PRIVATE' && !input.password) {
     throw ApiError.badRequest('Private rooms need a password', 'password_required');
@@ -921,6 +945,9 @@ export async function setRoomTheme(
   if (!opts.asAdmin && (!actorId || room.host_id !== actorId)) {
     throw ApiError.forbidden('Only the host can restyle this room', 'not_host');
   }
+  // A console acting as the host already passed the paywall when it sold the theme; the host
+  // buying nothing gets refused here rather than in a client that can be edited.
+  if (!opts.asAdmin && actorId) await assertMayWearTheme(actorId, theme);
   await query('UPDATE rooms SET theme = $2 WHERE id = $1', [roomId, theme]);
   return { room: toRoom(await loadRoom(roomId)) };
 }

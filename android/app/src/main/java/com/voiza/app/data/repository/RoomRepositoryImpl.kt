@@ -9,6 +9,7 @@ import com.voiza.app.data.remote.dto.HandRaiseBody
 import com.voiza.app.data.remote.dto.JoinRoomBody
 import com.voiza.app.data.remote.dto.SeatMuteBody
 import com.voiza.app.data.remote.dto.SeatStatusBody
+import com.voiza.app.data.remote.dto.SetRoomThemeBody
 import com.voiza.app.data.remote.dto.UpdateRoomBody
 import com.voiza.app.data.socket.VoizaSocketClient
 import com.voiza.app.domain.model.LiveKitCredentials
@@ -157,6 +158,9 @@ class RoomRepositoryImpl(
 
     override suspend fun closeRoom(roomId: String): ApiResult<Boolean> =
         apiCall { api.closeRoom(roomId) }.mapSuccess { it.ok }
+
+    override suspend fun setTheme(roomId: String, theme: String): ApiResult<Room> =
+        apiCall { api.setRoomTheme(roomId, SetRoomThemeBody(theme)) }.mapSuccess { it.room.toDomain() }
 
     override suspend fun fetchLiveKitToken(roomId: String): ApiResult<LiveKitCredentials> =
         apiCall { api.livekitToken(roomId) }.mapSuccess { it.toDomain() }

@@ -50,6 +50,12 @@ class WalletViewModel(
     }
 
     fun load() {
+        // Balances and the ledger are the caller's own rows, so a guest has nothing to read; the
+        // screen shows a sign-in prompt instead of surfacing the server's 401 text.
+        if (authRepository.currentUser.value == null) {
+            _state.update { it.copy(loading = false, error = null) }
+            return
+        }
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
             when (val result = walletRepository.getWallet()) {

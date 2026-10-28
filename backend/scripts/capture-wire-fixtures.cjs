@@ -79,6 +79,30 @@ function redact(value) {
     body: { amountDiamonds: 5000 },
   });
 
+  // The capture has to *own* what it wears: a for-sale theme is refused to a host without a live
+  // copy, and an equipped ring or flourish only appears on a join payload if it was bought. These
+  // purchases are also the wire shapes the Android shop parses (price, expiry, owned/equipped).
+  await api('POST', '/api/wallet/recharge', { token: seated.token, body: { amountDiamonds: 5000 } });
+  await api('POST', '/api/store/purchase', { token: seated.token, body: { kind: 'FRAME', key: 'ring-bronze' } });
+  await api('POST', '/api/store/purchase', { token: seated.token, body: { kind: 'EFFECT', key: 'welcome-hearts' } });
+  await api('POST', '/api/store/equip', { token: seated.token, body: { kind: 'FRAME', key: 'ring-bronze' } });
+  await api('POST', '/api/store/equip', { token: seated.token, body: { kind: 'EFFECT', key: 'welcome-hearts' } });
+
+  const themePurchase = await api('POST', '/api/store/purchase', {
+    token: host.token,
+    body: { kind: 'THEME', key: 'nebula' },
+  });
+  const storePurchase = await api('POST', '/api/store/purchase', {
+    token: host.token,
+    body: { kind: 'EFFECT', key: 'welcome-spectrum' },
+  });
+  await api('POST', '/api/store/purchase', { token: host.token, body: { kind: 'FRAME', key: 'ring-bronze' } });
+  const storeEquip = await api('POST', '/api/store/equip', {
+    token: host.token,
+    body: { kind: 'FRAME', key: 'ring-bronze' },
+  });
+  await api('POST', '/api/store/equip', { token: host.token, body: { kind: 'EFFECT', key: 'welcome-spectrum' } });
+
   // ---- REST envelopes ------------------------------------------------------
   const rooms = await api('GET', '/api/rooms?limit=3', H);
   const roomNumber = rooms.body.rooms[0] ? rooms.body.rooms[0].number : null;
@@ -112,6 +136,13 @@ function redact(value) {
     // the DTO harness reads, and it reads `leaders` the same either way.
     boardReceivers: await api('GET', '/api/users/top?window=week&limit=5', H),
     boardSenders: await api('GET', '/api/users/top?window=week&limit=5&role=senders', H),
+    // The shop as this member sees it after buying: rows carry a price, a period and the caller's
+    // own owned/equipped marks; `owned` also holds what an operator may later retire.
+    store: await api('GET', '/api/store', H),
+    storePurchase,
+    storeEquip,
+    // The account after equipping: the ring and flourish the phone will draw on every surface.
+    me: await api('GET', '/api/auth/me', H),
     roomNumber,
   };
 
@@ -191,7 +222,7 @@ function redact(value) {
   fs.writeFileSync(path.join(OUT_DIR, 'wire-rest.json'), JSON.stringify(redact(rest), null, 1));
   fs.writeFileSync(path.join(OUT_DIR, 'wire-socket.json'), JSON.stringify(redact(raw), null, 1));
   console.log(`REST: ${Object.entries(rest).filter(([, v]) => v && v.status).map(([k, v]) => `${k}=${v.status}`).join(' ')}`);
-  console.log(`side effects: recharge=${recharge.status} gift->seat=${toSeated.status} gift->audience=${toAudience.status}`);
+  console.log(`side effects: recharge=${recharge.status} theme-buy=${themePurchase.status} buy=${storePurchase.status} gift->seat=${toSeated.status} gift->audience=${toAudience.status}`);
   console.log(`socket events captured: ${EVENTS.filter((e) => raw[e] && raw[e].length).map((e) => `${e}×${raw[e].length}`).join(' ') || '(none)'}`);
   console.log(`wrote ${path.join(OUT_DIR, 'wire-rest.json')}`);
   console.log(`wrote ${path.join(OUT_DIR, 'wire-socket.json')}`);

@@ -15,6 +15,9 @@ import com.voiza.app.domain.model.RoomJoinResult
 import com.voiza.app.domain.model.RoomSummary
 import com.voiza.app.domain.model.Seat
 import com.voiza.app.domain.model.SeatPolicy
+import com.voiza.app.domain.model.StoreItemKind
+import com.voiza.app.domain.model.StorePurchase
+import com.voiza.app.domain.model.StoreSnapshot
 import com.voiza.app.domain.model.ThemeCatalogue
 import com.voiza.app.domain.model.Transaction
 import com.voiza.app.domain.model.User
@@ -128,6 +131,13 @@ interface RoomRepository {
 
     suspend fun raiseHand(roomId: String, raise: Boolean): ApiResult<Boolean>
     suspend fun closeRoom(roomId: String): ApiResult<Boolean>
+
+    /**
+     * Host-only restyle. A theme the shop sells is only accepted when the host owns a live copy, and
+     * the server decides that from `user_items` — this call cannot claim ownership.
+     */
+    suspend fun setTheme(roomId: String, theme: String): ApiResult<Room>
+
     suspend fun fetchLiveKitToken(roomId: String): ApiResult<com.voiza.app.domain.model.LiveKitCredentials>
 
     suspend fun sendChat(roomId: String, message: String)
@@ -163,6 +173,26 @@ interface GiftRepository {
      * whether the room ranks spenders or earners.
      */
     suspend fun getLeaderboard(window: String, board: RankBoard): ApiResult<Leaderboard>
+}
+
+/**
+ * The cosmetic shop (GET /api/store). Every call is the member's own: the shop rows carry
+ * "do you hold this" and "are you wearing this", which belong to the caller's account.
+ *
+ * None of these take a price. Buying sends a kind and a key; the server reads the price inside
+ * the purchase transaction, so the number on the screen is a label and never an input.
+ */
+interface StoreRepository {
+    suspend fun catalogue(): ApiResult<StoreSnapshot>
+
+    /** A purchase, with the wallet the ledger debited. */
+    suspend fun purchase(kind: StoreItemKind, key: String): ApiResult<StorePurchase>
+
+    /** Wear an owned frame or entry flourish; the updated account comes back. */
+    suspend fun equip(kind: StoreItemKind, key: String): ApiResult<User>
+
+    /** Take off whatever of this kind is worn. */
+    suspend fun unequip(kind: StoreItemKind): ApiResult<User>
 }
 
 /**

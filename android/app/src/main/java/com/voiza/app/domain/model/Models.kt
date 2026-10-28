@@ -33,6 +33,24 @@ data class MiniUser(
      * choosing not to ship it, never a hint that the app should compute one.
      */
     val rank: UserRank? = null,
+    /** The paid ring drawn over this member's avatar, or null when they wear none. */
+    val profileFrame: ProfileFrame? = null,
+    /** The paid entry flourish URL the server resolved for this join, or null for the free one. */
+    val entryEffect: String? = null,
+)
+
+/**
+ * An avatar ring sold in the store and worn by a member (migration 0019).
+ *
+ * [art] is a ring PNG with a transparent middle, drawn *over* the avatar rather than replacing
+ * it, and [accent] is the colour to show while that file loads. Both come from the server's
+ * catalogue; neither is built here from [key].
+ */
+data class ProfileFrame(
+    val key: String,
+    val name: String,
+    val art: String,
+    val accent: String?,
 )
 
 /** Full `users` row as returned by /api/auth/me and auth responses. */
@@ -59,6 +77,9 @@ data class User(
     val xp: Long = 0,
     /** The rung [xp] sits on. */
     val rank: UserRank? = null,
+    /** What this account is wearing right now, as the server resolved it from the worn columns. */
+    val profileFrame: ProfileFrame? = null,
+    val entryEffect: String? = null,
 )
 
 enum class SeatStatus { EMPTY, OCCUPIED, LOCKED }
@@ -318,6 +339,63 @@ data class Withdrawal(
     val amountRCoins: Int,
     val status: String,
     val payoutMethod: String,
+)
+
+// ---------------------------------------------------------------------------
+// Cosmetic store (GET /api/store, migration 0019)
+// ---------------------------------------------------------------------------
+
+/** The three catalogues one shop lists: rings a member wears, themes a room wears, entry flourishes. */
+enum class StoreItemKind { FRAME, THEME, EFFECT }
+
+/**
+ * One purchasable row, already annotated by the server with what *this* caller holds.
+ *
+ * [owned] becomes false when a rental lapses, and [expiresAt] is null for a purchase that never
+ * does. What is [equipped] is likewise the server's answer — a theme can never be, because a
+ * theme decorates a room.
+ */
+data class StoreItem(
+    val kind: StoreItemKind,
+    val key: String,
+    val name: String,
+    val art: String,
+    val accent: String?,
+    val priceDiamonds: Int,
+    /** Rental length in days; null means the purchase never expires. */
+    val periodDays: Int?,
+    val owned: Boolean,
+    val expiresAt: String?,
+    val equipped: Boolean,
+) {
+    val id: String get() = "${kind.name}:$key"
+
+    /** A theme is picked by a host in the room settings; it is never worn by an account. */
+    val wearable: Boolean get() = kind != StoreItemKind.THEME
+}
+
+/** What the member already holds — including items retired from sale, which stay theirs. */
+data class OwnedStoreItem(
+    val kind: StoreItemKind,
+    val key: String,
+    val name: String,
+    val art: String,
+    val onSale: Boolean,
+    val expiresAt: String?,
+    val acquiredVia: String,
+)
+
+data class StoreSnapshot(
+    val items: List<StoreItem>,
+    val owned: List<OwnedStoreItem>,
+) {
+    fun itemsOf(kind: StoreItemKind): List<StoreItem> = items.filter { it.kind == kind }
+}
+
+/** The result of one purchase: the row as it now stands, plus the wallet that paid for it. */
+data class StorePurchase(
+    val item: StoreItem?,
+    val user: User?,
 )
 
 // ---------------------------------------------------------------------------

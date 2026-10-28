@@ -121,6 +121,9 @@ private fun SeatCell(
                 size = outer,
                 ringBrush = ring,
                 ringWidth = if (isHostSeat) 3.dp else 2.5.dp,
+                // The ring a member bought is drawn by the seat grid too, so a paid decoration is
+                // visible where most people actually see each other.
+                frame = seat.user?.profileFrame,
                 fallbackBackground = when (seat.status) {
                     SeatStatus.EMPTY -> Color(0xFF1C1840)
                     SeatStatus.LOCKED -> Color(0xFF2A2459)

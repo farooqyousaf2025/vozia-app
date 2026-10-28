@@ -14,6 +14,7 @@ import com.voiza.app.ui.screens.home.CreateRoomScreen
 import com.voiza.app.ui.screens.home.HomeScreen
 import com.voiza.app.ui.screens.profile.ProfileScreen
 import com.voiza.app.ui.screens.room.PartyRoomScreen
+import com.voiza.app.ui.screens.store.StoreScreen
 import com.voiza.app.ui.screens.wallet.WalletScreen
 
 /**
@@ -46,6 +47,7 @@ fun VoizaNavHost(
                 onOpenRoom = { roomId -> navController.navigate(Routes.room(roomId)) },
                 onCreateRoom = { navController.navigate(Routes.CREATE_ROOM) },
                 onOpenWallet = { navController.navigate(Routes.WALLET) },
+                onOpenStore = { navController.navigate(Routes.STORE) },
                 onOpenProfile = { navController.navigate(Routes.PROFILE) },
             )
         }
@@ -117,10 +119,18 @@ fun VoizaNavHost(
             WalletScreen(onBack = { navController.popBackStack() })
         }
 
+        composable(Routes.STORE) {
+            StoreScreen(
+                onBack = { navController.popBackStack() },
+                onOpenWallet = { navController.navigate(Routes.WALLET) },
+            )
+        }
+
         composable(Routes.PROFILE) {
             ProfileScreen(
                 onBack = { navController.popBackStack() },
                 onOpenWallet = { navController.navigate(Routes.WALLET) },
+                onOpenStore = { navController.navigate(Routes.STORE) },
                 onLoggedOut = {
                     navController.navigate(Routes.AUTH) {
                         popUpTo(0) { inclusive = true }

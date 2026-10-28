@@ -23,7 +23,9 @@ import {
   IconCheck,
   IconCoin,
   IconDiamond,
+  IconGift,
   IconSearch,
+  IconSpark,
   IconShieldCheck,
   IconTrendUp,
   IconUsers,
@@ -31,7 +33,7 @@ import {
 import { Table, TBody, Td, Th, THead, Tr } from '../components/ui/Table';
 import { ApiError, api, assetUrl } from '../lib/api';
 import { formatCompact, formatDiamonds, formatRCoin, parseSignedInt, relativeTime } from '../lib/format';
-import type { UserListQuery, UserRow, UserStatus, UserType } from '../types';
+import type { StoreItemKind, UserListQuery, UserRow, UserStatus, UserType } from '../types';
 
 const PAGE_LIMIT = 20;
 
@@ -63,6 +65,7 @@ export default function UsersPage() {
   const [balanceTarget, setBalanceTarget] = useState<UserRow | null>(null);
   const [banTarget, setBanTarget] = useState<UserRow | null>(null);
   const [xpTarget, setXpTarget] = useState<UserRow | null>(null);
+  const [grantTarget, setGrantTarget] = useState<UserRow | null>(null);
 
   const query = useMemo<UserListQuery>(
     () => ({
@@ -280,6 +283,13 @@ export default function UsersPage() {
                         >
                           Level
                         </Button>
+                        <Button
+                          size="sm"
+                          icon={<IconGift className="h-3.5 w-3.5" />}
+                          onClick={() => setGrantTarget(user)}
+                        >
+                          Grant
+                        </Button>
                         {user.status === 'ACTIVE' ? (
                           <IconButton label={`Ban ${user.username}`} tone="danger" onClick={() => setBanTarget(user)}>
                             <IconBan className="h-4 w-4" />
@@ -322,6 +332,17 @@ export default function UsersPage() {
             replaceRow(updated);
             setXpTarget(null);
             toast.success(`${updated.username} is now ${updated.rank.name} at ${formatCompact(updated.xp)} XP.`);
+          }}
+        />
+      )}
+
+      {grantTarget !== null && (
+        <GrantItemModal
+          user={grantTarget}
+          onClose={() => setGrantTarget(null)}
+          onGranted={(message) => {
+            setGrantTarget(null);
+            toast.success(message);
           }}
         />
       )}
@@ -684,6 +705,262 @@ function BanModal({ user, onClose, onUpdated }: BanModalProps) {
           </div>
         )}
       </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Grant a cosmetic. No diamonds move: the receipt says ADMIN_GRANT and names
+// no transaction, which is what keeps it distinguishable from a purchase at
+// price 0. The duration follows the catalogue unless the operator overrides it.
+// ---------------------------------------------------------------------------
+type GrantEntry = {
+  kind: StoreItemKind;
+  key: string;
+  name: string;
+  art: string;
+  priceDiamonds: number;
+  periodDays: number | null;
+};
+
+const GRANT_KIND_LABELS: Record<StoreItemKind, string> = {
+  FRAME: 'Avatar ring',
+  THEME: 'Room theme',
+  EFFECT: 'Entry flourish',
+};
+
+interface GrantItemModalProps {
+  user: UserRow;
+  onClose: () => void;
+  onGranted: (message: string) => void;
+}
+
+function GrantItemModal({ user, onClose, onGranted }: GrantItemModalProps) {
+  const [entries, setEntries] = useState<GrantEntry[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [kind, setKind] = useState<StoreItemKind>('FRAME');
+  const [key, setKey] = useState('');
+  const [duration, setDuration] = useState<'listed' | 'permanent' | 'custom'>('listed');
+  const [daysRaw, setDaysRaw] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .decorCatalogue()
+      .then((catalogue) => {
+        if (cancelled) return;
+        setEntries([
+          ...catalogue.frames.map((frame) => ({
+            kind: 'FRAME' as const,
+            key: frame.key,
+            name: frame.name,
+            art: frame.art,
+            priceDiamonds: frame.priceDiamonds,
+            periodDays: frame.periodDays,
+          })),
+          ...catalogue.themes.map((theme) => ({
+            kind: 'THEME' as const,
+            key: theme.slug,
+            name: theme.name,
+            art: theme.wallpaper,
+            priceDiamonds: theme.priceDiamonds,
+            periodDays: theme.periodDays,
+          })),
+          ...catalogue.effects
+            .filter((effect) => effect.kind === 'WELCOME')
+            .map((effect) => ({
+              kind: 'EFFECT' as const,
+              key: effect.key,
+              name: effect.name,
+              art: effect.url,
+              priceDiamonds: effect.priceDiamonds,
+              periodDays: effect.periodDays,
+            })),
+        ]);
+      })
+      .catch((err) => {
+        if (!cancelled) setLoadError(err instanceof ApiError ? err.message : 'Could not load the catalogue.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const options = useMemo(() => (entries ?? []).filter((entry) => entry.kind === kind), [entries, kind]);
+
+  // Keep the picker valid as the kind changes: the first option is always a real key.
+  useEffect(() => {
+    if (options.length === 0) {
+      setKey('');
+    } else if (!options.some((option) => option.key === key)) {
+      setKey(options[0].key);
+    }
+  }, [options, key]);
+
+  const selected = options.find((option) => option.key === key) ?? null;
+
+  const days = Number(daysRaw);
+  const daysError =
+    duration !== 'custom'
+      ? null
+      : daysRaw.trim() === ''
+        ? 'Enter how many days the grant lasts.'
+        : !Number.isInteger(days) || days < 1 || days > 3650
+          ? 'Whole days between 1 and 3650.'
+          : null;
+
+  const canSubmit = selected !== null && daysError === null && !submitting && loadError === null;
+
+  const listedLabel = (periodDays: number | null) =>
+    periodDays === null ? 'permanent' : `${periodDays} days`;
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canSubmit || selected === null) return;
+    setSubmitting(true);
+    setServerError(null);
+    try {
+      // Omitting `days` keeps the catalogue period; `null` is permanence.
+      const body =
+        duration === 'listed'
+          ? { kind: selected.kind, key: selected.key }
+          : { kind: selected.kind, key: selected.key, days: duration === 'permanent' ? null : days };
+      const { item } = await api.grantItem(user.id, body);
+      onGranted(`${item.name} granted to ${user.username}.`);
+    } catch (err) {
+      setServerError(err instanceof ApiError ? err.message : 'Grant failed.');
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Grant a cosmetic"
+      subtitle={
+        <span className="flex items-center gap-2">
+          <Avatar name={user.username} src={user.avatarUrl} size="xs" />
+          {user.username} · {user.phone}
+        </span>
+      }
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            type="submit"
+            form="grant-item-form"
+            loading={submitting}
+            disabled={!canSubmit}
+          >
+            Grant
+          </Button>
+        </>
+      }
+    >
+      {loadError !== null ? (
+        <div className="flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 py-2 text-xs text-rose-200">
+          <IconAlert className="h-4 w-4 shrink-0" />
+          {loadError}
+        </div>
+      ) : entries === null ? (
+        <div className="grid h-32 place-items-center text-violet-300">
+          <Spinner className="h-6 w-6" />
+        </div>
+      ) : (
+        <form id="grant-item-form" onSubmit={submit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Kind"
+              value={kind}
+              onChange={(e) => setKind(e.target.value as StoreItemKind)}
+            >
+              {(Object.keys(GRANT_KIND_LABELS) as StoreItemKind[]).map((option) => (
+                <option key={option} value={option}>
+                  {GRANT_KIND_LABELS[option]}
+                </option>
+              ))}
+            </Select>
+            <Select label="Item" value={key} onChange={(e) => setKey(e.target.value)}>
+              {options.length === 0 ? (
+                <option value="">Nothing in this catalogue</option>
+              ) : (
+                options.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.name}
+                  </option>
+                ))
+              )}
+            </Select>
+          </div>
+
+          {selected !== null && (
+            <div className="flex items-center gap-3 rounded-lg border border-edge/60 bg-elevated/40 p-3">
+              {selected.kind === 'EFFECT' ? (
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-violet-500/10 text-violet-300">
+                  <IconSpark className="h-5 w-5" />
+                </span>
+              ) : (
+                <img
+                  src={assetUrl(selected.art)}
+                  alt=""
+                  className={`h-11 w-11 shrink-0 bg-black/20 object-contain ${
+                    selected.kind === 'FRAME' ? 'rounded-full' : 'rounded-lg'
+                  }`}
+                  onError={(event) => {
+                    event.currentTarget.style.visibility = 'hidden';
+                  }}
+                />
+              )}
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-ink">{selected.name}</p>
+                <p className="text-[11px] text-faint">
+                  {selected.priceDiamonds > 0
+                    ? `${formatDiamonds(selected.priceDiamonds)} · catalogue period ${listedLabel(selected.periodDays)}`
+                    : `free · catalogue period ${listedLabel(selected.periodDays)}`}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <Select
+            label="Duration"
+            value={duration}
+            onChange={(e) => setDuration(e.target.value as 'listed' | 'permanent' | 'custom')}
+          >
+            <option value="listed">As the catalogue lists it</option>
+            <option value="permanent">Permanent (no expiry)</option>
+            <option value="custom">Set days</option>
+          </Select>
+
+          {duration === 'custom' && (
+            <Input
+              label="Days"
+              inputMode="numeric"
+              placeholder="30"
+              value={daysRaw}
+              onChange={(e) => setDaysRaw(e.target.value)}
+              error={daysError}
+            />
+          )}
+
+          <p className="text-xs text-faint">
+            Granting moves no diamonds — it is recorded as ADMIN_GRANT with no transaction, and is the
+            way a reversed purchase is handed back. An item the member already holds has its clock
+            extended instead of gaining a second receipt.
+          </p>
+
+          {serverError !== null && (
+            <div className="flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 py-2 text-xs text-rose-200">
+              <IconAlert className="h-4 w-4 shrink-0" />
+              {serverError}
+            </div>
+          )}
+        </form>
+      )}
     </Modal>
   );
 }

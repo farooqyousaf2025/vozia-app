@@ -13,6 +13,8 @@ import com.voiza.app.data.remote.dto.SocketHandRaiseDto
 import com.voiza.app.data.remote.dto.SocketLikeDto
 import com.voiza.app.data.remote.dto.SocketRoomProfileDto
 import com.voiza.app.data.remote.dto.SocketWalletUpdateDto
+import com.voiza.app.data.remote.dto.StorePurchaseResponse
+import com.voiza.app.data.remote.dto.StoreResponse
 import com.voiza.app.data.remote.dto.ThemeCatalogueDto
 import com.voiza.app.data.remote.dto.UserDto
 import com.voiza.app.domain.model.DEFAULT_AMBIENT_EFFECT
@@ -26,6 +28,7 @@ import com.voiza.app.domain.model.RoomSort
 import com.voiza.app.domain.model.RoomType
 import com.voiza.app.domain.model.SeatPolicy
 import com.voiza.app.domain.model.SeatStatus
+import com.voiza.app.domain.model.StoreItemKind
 import com.voiza.app.domain.model.UserRank
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -564,5 +567,146 @@ class MappersTest {
         assertEquals("Platinum III", row.user.rank?.name)
         assertEquals("/badges/level-12.png", row.user.rank?.badge)
         assertEquals(5000L, row.earned)
+    }
+
+    @Test
+    fun `a seat user ships the ring and flourish the server resolved for them`() {
+        // fetchMiniUser() joins the worn columns, so a room draws what the member paid for.
+        val user = gson.fromJson(
+            """{"id":"u1","username":"ana",
+               "profileFrame":{"key":"ring-gold","name":"Gold ring",
+                               "art":"/frames/trace/frame-3.png","accent":"#ecbc58"},
+               "entryEffect":"/effects/welcome-hearts.json"}""",
+            MiniUserDto::class.java,
+        ).toDomain()
+
+        assertEquals("ring-gold", user.profileFrame?.key)
+        assertEquals("/frames/trace/frame-3.png", user.profileFrame?.art)
+        assertEquals("#ecbc58", user.profileFrame?.accent)
+        assertEquals("/effects/welcome-hearts.json", user.entryEffect)
+    }
+
+    @Test
+    fun `a ring with no art or a blank flourish leaves the avatar plain`() {
+        val user = gson.fromJson(
+            """{"id":"u2","username":"bo","profileFrame":{"key":"broken","art":""},
+               "entryEffect":"  "}""",
+            MiniUserDto::class.java,
+        ).toDomain()
+
+        // Drawing a frame with no PNG would add an invisible overlay and shrink the face for
+        // nothing; a blank URL must read as "wears none", not as the empty string.
+        assertNull(user.profileFrame)
+        assertNull(user.entryEffect)
+    }
+
+    @Test
+    fun `the account carries the ring and flourish that are actually worn`() {
+        val account = gson.fromJson(
+            """{"id":"u1","phone":"+1","username":"ana","diamondBalance":10,"rCoinBalance":0,
+               "totalGiftsSent":0,"totalGiftsReceived":0,"userType":"USER","status":"ACTIVE",
+               "isVerified":false,"vipLevel":0,
+               "profileFrame":{"key":"ring-immortal","name":"Immortal",
+                               "art":"/frames/trace/frame-10.png","accent":"#ff6ec7"},
+               "entryEffect":"/effects/welcome-spectrum.json"}""",
+            UserDto::class.java,
+        ).toDomain()
+
+        assertEquals("ring-immortal", account.profileFrame?.key)
+        assertEquals("Immortal", account.profileFrame?.name)
+        assertEquals("/effects/welcome-spectrum.json", account.entryEffect)
+    }
+
+    @Test
+    fun `the store catalogue keeps prices, periods and the caller's own marks`() {
+        val store = gson.fromJson(
+            """{"items":[
+                 {"kind":"FRAME","key":"ring-gold","name":"Gold ring",
+                  "art":"/frames/trace/frame-3.png","accent":"#ecbc58","priceDiamonds":300,
+                  "periodDays":30,"owned":true,"expiresAt":"2026-11-27T10:00:00.000Z","equipped":true},
+                 {"kind":"THEME","key":"nebula","name":"Nebula",
+                  "art":"/themes/nebula/wallpaper.png","accent":"#b02fd6","priceDiamonds":1500,
+                  "periodDays":30},
+                 {"kind":"EFFECT","key":"welcome-hearts","name":"Hearts",
+                  "art":"/effects/welcome-hearts.json","priceDiamonds":1200,"periodDays":null}],
+               "owned":[
+                 {"kind":"FRAME","key":"ring-gold","name":"Gold ring",
+                  "art":"/frames/trace/frame-3.png","onSale":true,
+                  "expiresAt":"2026-11-27T10:00:00.000Z","acquiredVia":"PURCHASE"},
+                 {"kind":"THEME","key":"retired-aurora","name":"Old Aurora","art":"",
+                  "onSale":false,"expiresAt":null,"acquiredVia":"ADMIN_GRANT"}]}""",
+            StoreResponse::class.java,
+        ).toDomain()
+
+        assertEquals(3, store.items.size)
+        val gold = store.itemsOf(StoreItemKind.FRAME).single()
+        assertEquals(300, gold.priceDiamonds)
+        assertEquals(30, gold.periodDays)
+        assertTrue(gold.owned)
+        assertTrue(gold.equipped)
+
+        // Absent booleans and a null period are meaningful: not owned, and permanent.
+        val hearts = store.itemsOf(StoreItemKind.EFFECT).single()
+        assertFalse(hearts.owned)
+        assertFalse(hearts.equipped)
+        assertNull(hearts.periodDays)
+        assertNull(hearts.expiresAt)
+
+        // A theme is worn by a room, so the shop never marks it as worn by the account.
+        assertFalse(store.itemsOf(StoreItemKind.THEME).single().equipped)
+
+        // The receipt survives the operator retiring the row: it is still the member's.
+        val retired = store.owned.last()
+        assertFalse(retired.onSale)
+        assertEquals("ADMIN_GRANT", retired.acquiredVia)
+        assertNull(retired.expiresAt)
+    }
+
+    @Test
+    fun `a store row of a kind this build does not know is dropped`() {
+        val store = gson.fromJson(
+            """{"items":[
+                 {"kind":"STICKER","key":"wave","name":"Wave","art":"/stickers/wave.png",
+                  "priceDiamonds":50,"periodDays":7},
+                 {"kind":"EFFECT","key":"welcome","name":"Welcome",
+                  "art":"/effects/welcome.json","priceDiamonds":800,"periodDays":null}]}""",
+            StoreResponse::class.java,
+        ).toDomain()
+
+        // A backend may add a fourth catalogue; that row must not crash or render as a blank card.
+        assertEquals(1, store.items.size)
+        assertEquals(StoreItemKind.EFFECT, store.items.single().kind)
+        assertTrue(store.owned.isEmpty())
+    }
+
+    @Test
+    fun `a purchase response maps the wallet the ledger debited`() {
+        val purchase = gson.fromJson(
+            """{"item":{"kind":"FRAME","key":"ring-gold","name":"Gold ring",
+                        "art":"/frames/trace/frame-3.png","accent":"#ecbc58","priceDiamonds":300,
+                        "periodDays":30,"owned":true,"expiresAt":"2026-11-27T10:00:00.000Z"},
+               "wallet":{"id":"u1","phone":"+1","username":"ana","diamondBalance":700,
+                         "rCoinBalance":40,"totalGiftsSent":0,"totalGiftsReceived":0,
+                         "userType":"USER","status":"ACTIVE","isVerified":false,"vipLevel":0}}""",
+            StorePurchaseResponse::class.java,
+        ).toDomain()
+
+        assertTrue(purchase.item?.owned == true)
+        assertEquals(700, purchase.user?.diamondBalance)
+    }
+
+    @Test
+    fun `a purchase envelope without an item still reports the wallet instead of throwing`() {
+        // The money already moved when this is parsed, so a malformed item must not lose the
+        // confirmation — and, because this transform runs outside apiCall's try, it must not throw.
+        val purchase = gson.fromJson(
+            """{"wallet":{"id":"u1","phone":"+1","username":"ana","diamondBalance":500,
+                         "rCoinBalance":0,"totalGiftsSent":0,"totalGiftsReceived":0,
+                         "userType":"USER","status":"ACTIVE","isVerified":false,"vipLevel":0}}""",
+            StorePurchaseResponse::class.java,
+        ).toDomain()
+
+        assertNull(purchase.item)
+        assertEquals(500, purchase.user?.diamondBalance)
     }
 }

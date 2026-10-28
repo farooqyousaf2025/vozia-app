@@ -93,6 +93,7 @@ fun EntryBanner(
                     Brush.linearGradient(listOf(Color(0xFFFFF3B0), Color(0xFFFF6EC7)))
                 },
                 ringWidth = if (tier == 2) 3.dp else 2.dp,
+                frame = joined.user.profileFrame,
             )
             Text(
                 text = joined.user.username,

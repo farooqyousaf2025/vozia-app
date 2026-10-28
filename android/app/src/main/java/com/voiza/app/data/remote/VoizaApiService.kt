@@ -29,8 +29,12 @@ import com.voiza.app.data.remote.dto.SeatMuteBody
 import com.voiza.app.data.remote.dto.SeatPolicyResponse
 import com.voiza.app.data.remote.dto.SeatStatusBody
 import com.voiza.app.data.remote.dto.SeatsResponse
+import com.voiza.app.data.remote.dto.SetRoomThemeBody
 import com.voiza.app.data.remote.dto.SendGiftBody
 import com.voiza.app.data.remote.dto.SendGiftResponse
+import com.voiza.app.data.remote.dto.StoreItemBody
+import com.voiza.app.data.remote.dto.StorePurchaseResponse
+import com.voiza.app.data.remote.dto.StoreResponse
 import com.voiza.app.data.remote.dto.ThemeCatalogueDto
 import com.voiza.app.data.remote.dto.UpdateProfileBody
 import com.voiza.app.data.remote.dto.UpdateRoomBody
@@ -104,6 +108,13 @@ interface VoizaApiService {
 
     @PATCH("api/rooms/{id}")
     suspend fun updateRoom(@Path("id") roomId: String, @Body body: UpdateRoomBody): RoomEnvelope
+
+    /**
+     * Host-only restyle. A theme the shop sells is refused unless the caller owns it — the check is
+     * in `assertMayWearTheme`, so this call carries no proof of purchase for a client to forge.
+     */
+    @POST("api/rooms/{id}/theme")
+    suspend fun setRoomTheme(@Path("id") roomId: String, @Body body: SetRoomThemeBody): RoomEnvelope
 
     @DELETE("api/rooms/{id}")
     suspend fun deleteRoom(@Path("id") roomId: String): OkResponse
@@ -184,6 +195,31 @@ interface VoizaApiService {
         @Query("role") role: String,
         @Query("limit") limit: Int,
     ): LeaderboardResponse
+
+    // ---- Store -------------------------------------------------------------
+
+    /**
+     * The cosmetic shop: what is on sale and what *this* caller owns or wears. Reading it needs a
+     * member, because "owned" and "equipped" are answers about the caller.
+     */
+    @GET("api/store")
+    suspend fun store(): StoreResponse
+
+    /**
+     * A purchase. The body carries a kind and a key and never a price: the server reads the price
+     * inside the transaction, so a client that edits its copy of this screen cannot change what it
+     * pays.
+     */
+    @POST("api/store/purchase")
+    suspend fun purchaseItem(@Body body: StoreItemBody): StorePurchaseResponse
+
+    /** Wear an owned frame or entry flourish. A theme is worn by a room, so it is refused here. */
+    @POST("api/store/equip")
+    suspend fun equipItem(@Body body: StoreItemBody): UserEnvelope
+
+    /** Take it off; the key is not part of this call because only one item of a kind is worn. */
+    @POST("api/store/unequip")
+    suspend fun unequipItem(@Body body: StoreItemBody): UserEnvelope
 
     // ---- Games -------------------------------------------------------------
 

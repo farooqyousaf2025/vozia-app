@@ -1,6 +1,7 @@
 package com.voiza.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,12 +20,18 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.voiza.app.domain.model.ProfileFrame
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.VoizaAccentGradient
 
 /**
  * Circular avatar with Coil network image + initials fallback, and an optional
  * gradient ring (host emphasis / speaking indicator).
+ *
+ * [frame] is the ring the member bought: a transparent-centred PNG drawn *over* the avatar, with
+ * [ProfileFrame.accent] as a plain circle underneath it while the art loads, so a slow CDN never
+ * leaves a hole. It comes from the server's catalogue and is only ever the ring that member is
+ * actually wearing — flipping it on locally would change what this phone draws and nothing else.
  */
 @Composable
 fun Avatar(
@@ -35,9 +42,15 @@ fun Avatar(
     ringBrush: Brush? = null,
     ringWidth: Dp = 2.dp,
     fallbackBackground: Color = MaterialTheme.colorScheme.surfaceVariant,
+    frame: ProfileFrame? = null,
 ) {
     val initial = name?.trim()?.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
-    val innerSize = if (ringBrush != null) size - ringWidth * 2 else size
+    val innerSize = when {
+        // The ring's inner hole is smaller than the image, so the face shrinks to sit inside it.
+        frame != null -> size * 0.84f
+        ringBrush != null -> size - ringWidth * 2
+        else -> size
+    }
 
     Box(
         contentAlignment = Alignment.Center,
@@ -75,6 +88,21 @@ fun Avatar(
                     fontWeight = FontWeight.Bold,
                 )
             }
+        }
+        if (frame != null) {
+            // Fallback first: an accent circle that is already the right shape when the PNG is late.
+            Box(
+                modifier = Modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .border(2.dp, accentColor(frame.accent, OnDarkHigh), CircleShape),
+            )
+            AsyncImage(
+                model = frame.art.asAssetUrl(),
+                contentDescription = frame.name,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(size),
+            )
         }
     }
 }

@@ -73,6 +73,7 @@ import com.voiza.app.viewmodel.voizaViewModelFactory
 fun ProfileScreen(
     onBack: () -> Unit,
     onOpenWallet: () -> Unit,
+    onOpenStore: () -> Unit,
     onLoggedOut: () -> Unit,
     viewModel: AuthViewModel = viewModel(
         factory = voizaViewModelFactory { AuthViewModel() },
@@ -130,6 +131,7 @@ fun ProfileScreen(
                 size = 92.dp,
                 ringBrush = Brush.sweepGradient(listOf(Fuchsia, Cyan, Fuchsia)),
                 ringWidth = 3.dp,
+                frame = user?.profileFrame,
             )
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -174,6 +176,14 @@ fun ProfileScreen(
         }
 
         // ---- Actions ----
+        VoizaButton(
+            text = "Cosmetic store",
+            onClick = onOpenStore,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+        )
+        Spacer(Modifier.height(8.dp))
         VoizaButton(
             text = "Open wallet",
             onClick = onOpenWallet,

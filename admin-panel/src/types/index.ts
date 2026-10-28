@@ -278,6 +278,11 @@ export interface AdminRoomTheme extends RoomTheme {
   sortOrder: number;
   /** Rooms still carrying this slug. Deleting the theme leaves them on the default look. */
   roomsUsing: number;
+  /** 0 when the theme is free for every host; a host must own a paid theme before a room wears it. */
+  priceDiamonds: number;
+  forSale: boolean;
+  /** Rental length in days; null means a purchase never expires. */
+  periodDays: number | null;
 }
 
 export type VisualEffectKind = 'AMBIENT' | 'WELCOME';
@@ -290,6 +295,26 @@ export interface VisualEffect {
   sortOrder: number;
   /** Room categories that play this loop; empty for a welcome flourish. */
   usedByCategories: string[];
+  /** Only a WELCOME effect can be sold: an ambient loop belongs to a room category. */
+  priceDiamonds: number;
+  forSale: boolean;
+  periodDays: number | null;
+}
+
+/**
+ * An avatar ring (migration 0019). `art` is a transparent PNG drawn over the avatar, and `holders`
+ * is how many receipts name this key — the number an operator sees before retiring it.
+ */
+export interface ProfileFrame {
+  key: string;
+  name: string;
+  art: string;
+  accent: string;
+  sortOrder: number;
+  priceDiamonds: number;
+  forSale: boolean;
+  periodDays: number | null;
+  holders: number;
 }
 
 export interface CategoryEffect {
@@ -303,6 +328,7 @@ export interface DecorCatalogue {
   themes: AdminRoomTheme[];
   effects: VisualEffect[];
   categoryEffects: CategoryEffect[];
+  frames: ProfileFrame[];
 }
 
 /** Body of POST/PUT /api/admin/themes — `wallpaperUrl`, not `wallpaper`: the row's column name. */
@@ -313,6 +339,10 @@ export interface ThemeInput {
   wallpaperUrl?: string;
   isDefault?: boolean;
   sortOrder?: number;
+  priceDiamonds?: number;
+  forSale?: boolean;
+  /** `null` makes a purchase permanent; omitting it on an update keeps the current period. */
+  periodDays?: number | null;
 }
 
 export interface EffectInput {
@@ -321,6 +351,46 @@ export interface EffectInput {
   name?: string;
   url?: string;
   sortOrder?: number;
+  priceDiamonds?: number;
+  forSale?: boolean;
+  periodDays?: number | null;
+}
+
+export interface FrameInput {
+  key?: string;
+  name?: string;
+  artUrl?: string;
+  accent?: string;
+  sortOrder?: number;
+  priceDiamonds?: number;
+  forSale?: boolean;
+  periodDays?: number | null;
+}
+
+/** The three catalogues a member can buy from, as `/api/admin/users/:id/grant` names them. */
+export type StoreItemKind = 'FRAME' | 'THEME' | 'EFFECT';
+
+/** One row of "who holds this ring", including the door it came through. */
+export interface FrameHolder {
+  userId: string;
+  username: string;
+  acquiredVia: 'PURCHASE' | 'ADMIN_GRANT';
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+/** What a member asked about it sees — what a grant answers with. */
+export interface GrantedItem {
+  kind: StoreItemKind;
+  key: string;
+  name: string;
+  art: string;
+  accent: string | null;
+  priceDiamonds: number;
+  periodDays: number | null;
+  owned: boolean;
+  expiresAt: string | null;
+  equipped: boolean;
 }
 
 /**

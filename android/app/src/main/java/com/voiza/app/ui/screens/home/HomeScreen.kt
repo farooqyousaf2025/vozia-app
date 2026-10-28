@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Wallet
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -102,6 +103,7 @@ fun HomeScreen(
     onOpenRoom: (String) -> Unit,
     onCreateRoom: () -> Unit,
     onOpenWallet: () -> Unit,
+    onOpenStore: () -> Unit,
     onOpenProfile: () -> Unit,
     viewModel: HomeViewModel = viewModel(
         factory = voizaViewModelFactory { HomeViewModel() },
@@ -126,6 +128,13 @@ fun HomeScreen(
                     onClick = {},
                     icon = { Icon(Icons.Default.Home, contentDescription = "Rooms") },
                     label = { Text("Rooms") },
+                    colors = navItemColors(),
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onOpenStore,
+                    icon = { Icon(Icons.Default.ShoppingCart, contentDescription = "Store") },
+                    label = { Text("Store") },
                     colors = navItemColors(),
                 )
                 NavigationBarItem(
@@ -395,6 +404,7 @@ private fun HomeTopBar(
             url = user?.avatarUrl,
             name = user?.username,
             size = 40.dp,
+            frame = user?.profileFrame,
         )
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {

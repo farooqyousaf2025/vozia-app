@@ -19,7 +19,7 @@ import {
   UserRow,
   WithdrawalRow,
 } from '../types/db';
-import { ambientEffectFor, themeFor } from '../services/theme.service';
+import { ambientEffectFor, FrameArt, themeFor, wornFrame, wornWelcome } from '../services/theme.service';
 import { nextRankFor, rankFor, RankDto } from '../services/rank.service';
 
 export type MiniUser = {
@@ -35,6 +35,16 @@ export type MiniUser = {
    * holds comes from XP the phone is not allowed to know about.
    */
   rank?: RankDto;
+  /**
+   * The purchased ring drawn around this member's avatar, or null. Resolved server-side from the
+   * worn key plus its expiry; a client that invents a frame gets nothing.
+   */
+  profileFrame?: FrameArt | null;
+  /**
+   * The paid flourish other members see when this one joins a room; null means "play the free
+   * default", never "announce nobody". Only the join path reads the columns that resolve it.
+   */
+  entryEffect?: string | null;
 };
 
 export type SeatDto = {
@@ -140,6 +150,13 @@ export type UserDto = {
   rank: RankDto;
   /** What the next rung costs, or null at the top of the ladder. */
   nextRank: { level: number; name: string; remainingXp: number } | null;
+  /** The ring this member is wearing right now — null when they own none or it lapsed. */
+  profileFrame: FrameArt | null;
+  /**
+   * This member's paid room-entry flourish, or null for the free default. Only a socket payload
+   * uses it; it is here so the profile screen can preview what others already see.
+   */
+  entryEffect: string | null;
   lastSeenAt: string | null;
   createdAt: string;
 };
@@ -250,12 +267,19 @@ export function toMiniUser(row: {
   diamond_balance?: number;
   vip_level?: number;
   xp?: string | number;
+  profile_frame_key?: string | null;
+  profile_frame_expires_at?: Date | null;
+  welcome_effect_key?: string | null;
+  welcome_effect_expires_at?: Date | null;
 }): MiniUser {
   const mini: MiniUser = { id: row.id, username: row.username, avatarUrl: row.avatar_url ?? null };
   if (row.diamond_balance !== undefined) mini.diamondBalance = row.diamond_balance;
   if (row.vip_level !== undefined) mini.vipLevel = row.vip_level;
   // Only queries that bother to read `xp` get a rank, so a lean seat-list SELECT stays lean.
   if (row.xp !== undefined) mini.rank = rankFor(Number(row.xp));
+  // Same rule for the decoration columns: a SELECT that skipped them stays cheap.
+  if (row.profile_frame_key !== undefined) mini.profileFrame = wornFrame(row);
+  if (row.welcome_effect_key !== undefined) mini.entryEffect = wornWelcome(row);
   return mini;
 }
 
@@ -280,6 +304,8 @@ export function toUser(row: UserRow): UserDto {
     xp,
     rank: rankFor(xp),
     nextRank: nextRankFor(xp),
+    profileFrame: wornFrame(row),
+    entryEffect: wornWelcome(row),
     lastSeenAt: row.last_seen_at ? iso(row.last_seen_at) : null,
     createdAt: iso(row.created_at),
   };
@@ -293,7 +319,13 @@ export function toSeat(row: SeatRow): SeatDto {
     isSpeaker: row.is_speaker,
     user:
       row.user_id && row.username
-        ? { id: row.user_id, username: row.username, avatarUrl: row.avatar_url ?? null }
+        ? toMiniUser({
+            id: row.user_id,
+            username: row.username,
+            avatar_url: row.avatar_url,
+            profile_frame_key: row.profile_frame_key,
+            profile_frame_expires_at: row.profile_frame_expires_at,
+          })
         : null,
   };
 }
@@ -321,12 +353,14 @@ export function toRoom(row: RoomRow): RoomDto {
     livekitRoomName: row.livekit_room_name,
     createdAt: iso(row.created_at),
     closedAt: row.closed_at ? iso(row.closed_at) : null,
-    host: {
+    host: toMiniUser({
       // list queries alias the host columns; detail queries carry host_id only
       id: row.host_id,
       username: row.host_username ?? 'unknown',
-      avatarUrl: row.host_avatar_url ?? null,
-    },
+      avatar_url: row.host_avatar_url ?? null,
+      profile_frame_key: row.host_profile_frame_key ?? null,
+      profile_frame_expires_at: row.host_profile_frame_expires_at ?? null,
+    }),
   };
 }
 
@@ -390,7 +424,13 @@ export function toParticipant(row: ParticipantRow): ParticipantDto {
     role: row.role,
     handRaised: row.hand_raised,
     joinedAt: iso(row.joined_at),
-    user: { id: row.user_id, username: row.username ?? 'unknown', avatarUrl: row.avatar_url ?? null },
+    user: toMiniUser({
+      id: row.user_id,
+      username: row.username ?? 'unknown',
+      avatar_url: row.avatar_url ?? null,
+      profile_frame_key: row.profile_frame_key,
+      profile_frame_expires_at: row.profile_frame_expires_at,
+    }),
   };
 }
 

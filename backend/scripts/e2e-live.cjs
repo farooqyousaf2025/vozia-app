@@ -894,6 +894,271 @@ function loadLivekitService() {
   check('rank: no e2e rung was left on the ladder',
     await sql(`select count(*) from rank_levels where name like 'E2E %'`) === '0');
 
+  // ---- H1e. cosmetic store --------------------------------------------------
+  // The first place a member spends diamonds on something that is not a gift, so the contract
+  // worth testing is the money one: the price is read from the database inside the purchase
+  // transaction (a modified client cannot name its own), a purchase posts exactly one ledger row,
+  // two taps against one balance buy once, and the thing bought — or lost to expiry, or retired by
+  // an operator — leaves the receipt that proves where it came from. The art and wearing side is
+  // checked through the same DTOs a device reads: /me, the store screen, the seat grid, the host
+  // card and the socket banner.
+  const shopUser = await login(`+15559${stamp}21`, `e2e_shop_${stamp.slice(-4)}`);
+  const rivalUser = await login(`+15559${stamp}22`, `e2e_rival_${stamp.slice(-4)}`);
+  const watcher = await login(`+15559${stamp}23`, `e2e_watch_${stamp.slice(-4)}`);
+  const SHOP = shopUser.user.id;
+
+  const anonShop = await api('GET', '/api/store', {});
+  check('store: the catalogue marks what *you* own, so an anonymous read is refused',
+    anonShop.status === 401, { status: anonShop.status });
+
+  const shop = await api('GET', '/api/store', { token: shopUser.token });
+  const shelf = (shop.json && shop.json.items) || [];
+  const itemOn = (kind, key) => shelf.find((i) => i.kind === kind && i.key === key);
+  const bronze = itemOn('FRAME', 'ring-bronze');
+  check('store: one shop lists all three catalogues at the prices an operator set',
+    shop.status === 200 && shelf.length >= 16 && !!itemOn('THEME', 'nebula') && !!itemOn('EFFECT', 'welcome-confetti') &&
+    !!bronze && bronze.priceDiamonds === 300 && bronze.owned === false && bronze.equipped === false,
+    { status: shop.status, rows: shelf.length, kinds: shelf.reduce((acc, i) => ({ ...acc, [i.kind]: (acc[i.kind] || 0) + 1 }), {}) });
+  const ringArt = bronze ? await fetch(`${API}${bronze.art}`) : null;
+  check('store: the ring the shop names is art the server really serves',
+    !!ringArt && ringArt.status === 200 && (ringArt.headers.get('content-type') || '').includes('image'),
+    bronze && { art: bronze.art, status: ringArt && ringArt.status });
+
+  const unpaidTheme = await api('POST', '/api/rooms', {
+    token: shopUser.token,
+    body: { title: `E2E Store Unpaid ${stamp}`, category: 'PARTY', type: 'PUBLIC', theme: 'nebula' },
+  });
+  check('store: a room cannot wear a paid theme its host has not bought',
+    unpaidTheme.status === 403 && unpaidTheme.json.error.code === 'theme_not_owned' &&
+    unpaidTheme.json.error.details.priceDiamonds === 1500,
+    { status: unpaidTheme.status, error: unpaidTheme.json && unpaidTheme.json.error });
+
+  const broke = await api('POST', '/api/store/purchase', { token: shopUser.token, body: { kind: 'FRAME', key: 'ring-bronze' } });
+  check('store: an empty wallet is refused before anything is written',
+    broke.status === 402 && broke.json.error.code === 'insufficient_balance' &&
+    broke.json.error.details.needed === 300 && broke.json.error.details.available === 0 &&
+    await sql(`select count(*) from transactions where sender_id='${SHOP}'`) === '0' &&
+    await sql(`select count(*) from user_items where user_id='${SHOP}'`) === '0',
+    { status: broke.status, error: broke.json && broke.json.error });
+
+  await api('POST', '/api/wallet/recharge', { token: shopUser.token, body: { amountDiamonds: 500 } });
+  const bought = await api('POST', '/api/store/purchase', { token: shopUser.token, body: { kind: 'FRAME', key: 'ring-bronze' } });
+  check('store: a purchase debits the catalogue price and answers with both receipts',
+    bought.status === 201 && bought.json.wallet.diamondBalance === 200 &&
+    bought.json.transaction.type === 'ITEM_PURCHASE' && bought.json.transaction.amountDiamonds === 300 &&
+    bought.json.item.owned === true,
+    { status: bought.status, wallet: bought.json && bought.json.wallet && bought.json.wallet.diamondBalance, tx: bought.json && bought.json.transaction });
+  check('store: spending on a cosmetic earns experience at the same rate as a gift',
+    bought.json.wallet.xp === 300, bought.json && bought.json.wallet && bought.json.wallet.xp);
+  check('store: the debit is one posted row with no receiver — a sink, not a transfer',
+    await sql(`select count(*) from transactions where type='ITEM_PURCHASE' and sender_id='${SHOP}' and receiver_id is null and amount_r_coins=0`) === '1',
+    await sql(`select amount_diamonds||'/'||coalesce(receiver_id::text,'none') from transactions where sender_id='${SHOP}'`));
+
+  const sneaky = await api('POST', '/api/store/purchase', {
+    token: shopUser.token, body: { kind: 'FRAME', key: 'ring-silver', priceDiamonds: 1, amountDiamonds: 1 },
+  });
+  check('store: a price in the request body changes nothing about what is charged',
+    sneaky.status === 402 && sneaky.json.error.code === 'insufficient_balance' && sneaky.json.error.details.needed === 600,
+    { status: sneaky.status, error: sneaky.json && sneaky.json.error });
+
+  const equipped = await api('POST', '/api/store/equip', { token: shopUser.token, body: { kind: 'FRAME', key: 'ring-bronze' } });
+  check('store: equipping puts the ring on the account every DTO reads',
+    equipped.status === 200 && !!equipped.json.user.profileFrame && equipped.json.user.profileFrame.key === 'ring-bronze' &&
+    equipped.json.user.profileFrame.art === bronze.art,
+    { status: equipped.status, frame: equipped.json && equipped.json.user && equipped.json.user.profileFrame });
+
+  const shopAfter = await api('GET', '/api/store', { token: shopUser.token });
+  const ownedBronze = (shopAfter.json.owned || []).find((o) => o.kind === 'FRAME' && o.key === 'ring-bronze');
+  const listedBronze = (shopAfter.json.items || []).find((i) => i.kind === 'FRAME' && i.key === 'ring-bronze');
+  check('store: the shop reads back what the member owns, through which door, and what is on',
+    !!ownedBronze && ownedBronze.acquiredVia === 'PURCHASE' && ownedBronze.onSale === true &&
+    !!listedBronze && listedBronze.owned === true && listedBronze.equipped === true,
+    { owned: ownedBronze, listed: listedBronze });
+
+  const shopRoom = await api('POST', '/api/rooms', {
+    token: shopUser.token, body: { title: `E2E Store Room ${stamp}`, category: 'PARTY', type: 'PUBLIC' },
+  });
+  const shopRoomId = shopRoom.json && shopRoom.json.room && shopRoom.json.room.id;
+  check('store: the ring travels on the seat grid and the room card, not only on /me',
+    shopRoom.status === 201 && shopRoom.json.room.seats[0].user.profileFrame.key === 'ring-bronze' &&
+    shopRoom.json.room.host.profileFrame.key === 'ring-bronze',
+    { status: shopRoom.status, seat0: shopRoom.json && shopRoom.json.room && shopRoom.json.room.seats[0], host: shopRoom.json && shopRoom.json.room && shopRoom.json.room.host });
+
+  const expiresAtEpoch = async () => Number(await sql(`select extract(epoch from expires_at) from user_items where user_id='${SHOP}' and kind='FRAME' and item_key='ring-bronze'`));
+  const firstExpiry = await expiresAtEpoch();
+  await api('POST', '/api/wallet/recharge', { token: shopUser.token, body: { amountDiamonds: 300 } });
+  const renewed = await api('POST', '/api/store/purchase', { token: shopUser.token, body: { kind: 'FRAME', key: 'ring-bronze' } });
+  const renewedExpiry = await expiresAtEpoch();
+  check('store: buying the same ring again adds a period to the one receipt, never a second row',
+    renewed.status === 201 &&
+    await sql(`select count(*) from user_items where user_id='${SHOP}' and kind='FRAME' and item_key='ring-bronze'`) === '1' &&
+    Math.abs((renewedExpiry - firstExpiry) - 30 * 86_400) < 120,
+    { status: renewed.status, first: new Date(firstExpiry * 1000).toISOString(), renewed: new Date(renewedExpiry * 1000).toISOString() });
+
+  const lapsedAt = new Date(Date.now() - 86_400_000).toISOString();
+  await sql(`update user_items set expires_at = '${lapsedAt}' where user_id='${SHOP}' and kind='FRAME' and item_key='ring-bronze'`);
+  await sql(`update users set profile_frame_expires_at = '${lapsedAt}' where id='${SHOP}'`);
+  const lapsedEquip = await api('POST', '/api/store/equip', { token: shopUser.token, body: { kind: 'FRAME', key: 'ring-bronze' } });
+  const meLapsed = (await api('GET', '/api/auth/me', { token: shopUser.token })).json.user;
+  check('store: an expired ring cannot be re-equipped and stops drawing on every seat',
+    lapsedEquip.status === 403 && lapsedEquip.json.error.code === 'item_expired' && meLapsed.profileFrame === null,
+    { status: lapsedEquip.status, frame: meLapsed.profileFrame });
+  check('store: expiry deletes the receipt the member paid for',
+    await sql(`select count(*) from user_items where user_id='${SHOP}' and item_key='ring-bronze'`) === '1');
+
+  await api('POST', '/api/wallet/recharge', { token: shopUser.token, body: { amountDiamonds: 300 } });
+  const revived = await api('POST', '/api/store/purchase', { token: shopUser.token, body: { kind: 'FRAME', key: 'ring-bronze' } });
+  check('store: renewing a lapsed ring starts from today, not from the old date',
+    revived.status === 201 && !!(await api('GET', '/api/auth/me', { token: shopUser.token })).json.user.profileFrame &&
+    await sql(`select (profile_frame_expires_at > now() + interval '29 days')::text from users where id='${SHOP}'`) === 'true',
+    revived.json && revived.json.item);
+
+  const memberGrant = await api('POST', `/api/admin/users/${SHOP}/grant`, { token: shopUser.token, body: { kind: 'FRAME', key: 'ring-jade' } });
+  const memberFrameWrite = await api('POST', '/api/admin/frames', {
+    token: shopUser.token, body: { key: `e2e-nope-${stamp}`, name: 'Nope', artUrl: bronze.art, accent: '#123456' },
+  });
+  check('store: a member cannot grant themselves anything, and the catalogue is not a member route',
+    (memberGrant.status === 401 || memberGrant.status === 403) && (memberFrameWrite.status === 401 || memberFrameWrite.status === 403),
+    { grant: memberGrant.status, frame: memberFrameWrite.status });
+
+  const grant = await api('POST', `/api/admin/users/${SHOP}/grant`, { token: adminToken, body: { kind: 'FRAME', key: 'ring-jade', days: 7 } });
+  check('store: an operator can hand over a ring without money moving',
+    grant.status === 201 && grant.json.item.owned === true && grant.json.item.expiresAt !== null &&
+    await sql(`select count(*) from user_items where user_id='${SHOP}' and kind='FRAME' and item_key='ring-jade' and acquired_via='ADMIN_GRANT' and transaction_id is null`) === '1' &&
+    await sql(`select count(*) from transactions where type='ITEM_PURCHASE' and sender_id='${SHOP}'`) === '3',
+    { status: grant.status, item: grant.json && grant.json.item });
+
+  await api('POST', '/api/wallet/recharge', { token: shopUser.token, body: { amountDiamonds: 3000 } });
+  const themeBuy = await api('POST', '/api/store/purchase', { token: shopUser.token, body: { kind: 'THEME', key: 'nebula' } });
+  check('store: a theme is bought through the same transaction as a ring',
+    themeBuy.status === 201 && themeBuy.json.item.owned === true,
+    themeBuy.json && { status: themeBuy.status, item: themeBuy.json.item });
+  const themed = await api('POST', '/api/rooms', {
+    token: shopUser.token, body: { title: `E2E Store Theme ${stamp}`, category: 'PARTY', type: 'PUBLIC', theme: 'nebula' },
+  });
+  check('store: the paid theme is accepted once its host owns it',
+    themed.status === 201 && themed.json.room.theme === 'nebula', { status: themed.status, error: themed.json && themed.json.error });
+  const themeEquip = await api('POST', '/api/store/equip', { token: shopUser.token, body: { kind: 'THEME', key: 'nebula' } });
+  check('store: a theme decorates a room, so it cannot be equipped to an account',
+    themeEquip.status === 400 && themeEquip.json.error.code === 'theme_is_per_room', { status: themeEquip.status });
+
+  const freeTheme = await api('POST', '/api/store/purchase', { token: shopUser.token, body: { kind: 'THEME', key: 'aurora' } });
+  const ghost = await api('POST', '/api/store/purchase', { token: shopUser.token, body: { kind: 'FRAME', key: `ring-none-${stamp}` } });
+  check('store: a free theme has nothing to buy, and an unknown key is a 404 rather than a charge',
+    freeTheme.status === 400 && freeTheme.json.error.code === 'item_not_for_sale' &&
+    ghost.status === 404 && ghost.json.error.code === 'item_not_found',
+    { free: freeTheme.status, ghost: ghost.status });
+
+  const effectBuy = await api('POST', '/api/store/purchase', { token: shopUser.token, body: { kind: 'EFFECT', key: 'welcome-confetti' } });
+  const effectEquip = await api('POST', '/api/store/equip', { token: shopUser.token, body: { kind: 'EFFECT', key: 'welcome-confetti' } });
+  const effectUrl = await sql(`select url from visual_effects where key='welcome-confetti'`);
+  const meEffect = (await api('GET', '/api/auth/me', { token: shopUser.token })).json.user;
+  check('store: a bought entry flourish becomes the URL other clients play on join',
+    effectBuy.status === 201 && effectEquip.status === 200 && meEffect.entryEffect === effectUrl,
+    { status: effectBuy.status, entryEffect: meEffect.entryEffect, url: effectUrl });
+
+  // The banner is a socket event, not a row: a member buys the flourish so that *other* people see
+  // it, which is only true if the join payload carries it. Two throwaway sockets, one observer.
+  const ioLib = require(SOCKET_IO);
+  const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+  const socketFor = (token) => ioLib('http://127.0.0.1:4000', { transports: ['websocket'], forceNew: true, auth: { token } });
+  const entrances = [];
+  const watchSocket = socketFor(watcher.token);
+  watchSocket.on('room:user_joined', (p) => entrances.push(p));
+  await new Promise((r) => watchSocket.once('connected', r));
+  watchSocket.emit('room:join', { roomId: shopRoomId }, () => {});
+  await delay(400);
+  const wearerSocket = socketFor(shopUser.token);
+  await new Promise((r) => wearerSocket.once('connected', r));
+  wearerSocket.emit('room:join', { roomId: shopRoomId }, () => {});
+  await delay(1200);
+  const banner = entrances.find((p) => p.user && p.user.id === SHOP);
+  check('store: the entry banner another member receives carries the paid flourish and ring',
+    !!banner && banner.user.entryEffect === effectUrl && !!banner.user.profileFrame && banner.user.profileFrame.key === 'ring-bronze',
+    banner && banner.user);
+  watchSocket.close();
+  wearerSocket.close();
+  await delay(300);
+
+  // Two taps against one balance: the second must lose cleanly rather than overdraw. This is the
+  // same guarantee /api/gifts/send gives, from the same ledger primitive.
+  await api('POST', '/api/wallet/recharge', { token: rivalUser.token, body: { amountDiamonds: 600 } });
+  const doubleTap = await Promise.all([
+    api('POST', '/api/store/purchase', { token: rivalUser.token, body: { kind: 'FRAME', key: 'ring-silver' } }),
+    api('POST', '/api/store/purchase', { token: rivalUser.token, body: { kind: 'FRAME', key: 'ring-silver' } }),
+  ]);
+  const paid = doubleTap.filter((r) => r.status === 201).length;
+  const refused = doubleTap.filter((r) => r.json && r.json.error && r.json.error.code === 'insufficient_balance').length;
+  check('store: two taps against one balance buy once — the ledger locks the wallet',
+    paid === 1 && refused === 1 &&
+    await sql(`select count(*) from transactions where type='ITEM_PURCHASE' and sender_id='${rivalUser.user.id}'`) === '1' &&
+    await sql(`select diamond_balance from users where id='${rivalUser.user.id}'`) === '0',
+    { paid, refused, balance: await sql(`select diamond_balance from users where id='${rivalUser.user.id}'`) });
+
+  const shopBalance = Number(await sql(`select diamond_balance from users where id='${SHOP}'`));
+  const shopSpent = Number(await sql(`select coalesce(sum(amount_diamonds),0) from transactions where type='ITEM_PURCHASE' and sender_id='${SHOP}'`));
+  const shopRecharged = Number(await sql(`select coalesce(sum(amount_diamonds),0) from transactions where type='RECHARGE' and receiver_id='${SHOP}'`));
+  check('store: the wallet is exactly recharges minus purchases, to the diamond',
+    shopBalance === shopRecharged - shopSpent, { balance: shopBalance, recharged: shopRecharged, spent: shopSpent });
+
+  const e2eFrame = `e2e-ring-${stamp}`;
+  const unpriced = await api('POST', '/api/admin/frames', {
+    token: adminToken, body: { key: `${e2eFrame}-free`, name: 'E2E Free Sale', artUrl: bronze.art, accent: '#123456', forSale: true },
+  });
+  check('store: an item cannot be on sale for nothing',
+    unpriced.status === 400 && unpriced.json.error.code === 'frame_price_required',
+    { status: unpriced.status, error: unpriced.json && unpriced.json.error });
+  const madeFrame = await api('POST', '/api/admin/frames', {
+    token: adminToken,
+    body: { key: e2eFrame, name: 'E2E Ring', artUrl: bronze.art, accent: '#123456', sortOrder: 999, priceDiamonds: 400, forSale: true, periodDays: 7 },
+  });
+  check('store: an operator can add a ring to the shop from the console',
+    madeFrame.status === 201 && madeFrame.json.frame.forSale === true && madeFrame.json.frame.priceDiamonds === 400 && madeFrame.json.frame.holders === 0,
+    { status: madeFrame.status, frame: madeFrame.json && madeFrame.json.frame });
+
+  const grantedE2e = await api('POST', `/api/admin/users/${SHOP}/grant`, { token: adminToken, body: { kind: 'FRAME', key: e2eFrame } });
+  const holders = await api('GET', `/api/admin/frames/${e2eFrame}/holders`, { token: adminToken });
+  check('store: the console can see who holds a ring and by which door',
+    grantedE2e.status === 201 && holders.status === 200 &&
+    holders.json.holders.some((h) => h.userId === SHOP && h.acquiredVia === 'ADMIN_GRANT'),
+    { status: grantedE2e.status, holders: holders.json && holders.json.holders });
+
+  const permanent = await api('POST', `/api/admin/users/${SHOP}/grant`, {
+    token: adminToken, body: { kind: 'FRAME', key: e2eFrame, days: null },
+  });
+  check('store: a null period is how an operator makes a grant permanent',
+    permanent.status === 201 && permanent.json.item.expiresAt === null,
+    { status: permanent.status, item: permanent.json && permanent.json.item });
+
+  const retiredRing = await api('DELETE', `/api/admin/frames/${e2eFrame}`, { token: adminToken });
+  check('store: retiring a ring keeps the receipts and says how many members wear it',
+    retiredRing.status === 200 && retiredRing.json.membersStillHolding >= 1 &&
+    await sql(`select count(*) from user_items where user_id='${SHOP}' and item_key='${e2eFrame}'`) === '1' &&
+    !(await api('GET', '/api/store', { token: shopUser.token })).json.items.some((i) => i.key === e2eFrame),
+    { status: retiredRing.status, body: retiredRing.json });
+
+  const restoredRing = await api('POST', '/api/admin/frames', {
+    token: adminToken,
+    body: { key: e2eFrame, name: 'E2E Ring', artUrl: bronze.art, accent: '#123456', sortOrder: 999, priceDiamonds: 400, forSale: true, periodDays: 7 },
+  });
+  check('store: the key can be added back and the receipt finds its art again',
+    restoredRing.status === 201 && restoredRing.json.frame.holders === 1,
+    { status: restoredRing.status, frame: restoredRing.json && restoredRing.json.frame });
+
+  const decor = await api('GET', '/api/admin/decor', { token: adminToken });
+  check('store: the decoration screen reads the frames from the same catalogue call',
+    decor.status === 200 && decor.json.frames.some((f) => f.key === 'ring-bronze'), { status: decor.status });
+
+  const cleaned = await api('DELETE', `/api/admin/frames/${e2eFrame}`, { token: adminToken });
+  check('store: the e2e ring is retired again, leaving the shop as this run found it',
+    cleaned.status === 200 && await sql(`select count(*) from profile_frames where key like 'e2e-%'`) === '0',
+    { status: cleaned.status });
+
+  const storeAudit = await sql(`select count(*) from admin_audit where action in ('FRAME_CREATE','FRAME_DELETE') and target_id like 'e2e-ring-%'`);
+  const grantAudit = await sql(`select count(*) from admin_audit where action='ITEM_GRANT' and target_id='${SHOP}'`);
+  check('store: every catalogue write and grant is attributable in the audit log',
+    Number(storeAudit) >= 4 && Number(grantAudit) >= 2, { frameRows: storeAudit, grants: grantAudit });
+
   // ---- H2. seat policy ------------------------------------------------------
   // "A default of 15 speaker seats, configurable by the administrator" is only true if the
   // number comes from the database rather than a constant, so this drives the policy itself:

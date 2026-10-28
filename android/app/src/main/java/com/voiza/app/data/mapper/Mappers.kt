@@ -2,11 +2,13 @@ package com.voiza.app.data.mapper
 
 import com.voiza.app.data.remote.dto.ChatMessageDto
 import com.voiza.app.data.remote.dto.EmojiCatalogueDto
+import com.voiza.app.data.remote.dto.FrameArtDto
 import com.voiza.app.data.remote.dto.GiftDto
 import com.voiza.app.data.remote.dto.LeaderEntryDto
 import com.voiza.app.data.remote.dto.LeaderboardResponse
 import com.voiza.app.data.remote.dto.LiveKitTokenDto
 import com.voiza.app.data.remote.dto.MiniUserDto
+import com.voiza.app.data.remote.dto.OwnedStoreItemDto
 import com.voiza.app.data.remote.dto.RankDto
 import com.voiza.app.data.remote.dto.RoomDto
 import com.voiza.app.data.remote.dto.RoomSummaryDto
@@ -21,6 +23,9 @@ import com.voiza.app.data.remote.dto.SocketMicToggleDto
 import com.voiza.app.data.remote.dto.SocketRoomProfileDto
 import com.voiza.app.data.remote.dto.SocketSeatUpdateDto
 import com.voiza.app.data.remote.dto.SocketUserJoinedDto
+import com.voiza.app.data.remote.dto.StoreItemDto
+import com.voiza.app.data.remote.dto.StorePurchaseResponse
+import com.voiza.app.data.remote.dto.StoreResponse
 import com.voiza.app.data.remote.dto.ThemeCatalogueDto
 import com.voiza.app.data.remote.dto.TransactionDto
 import com.voiza.app.data.remote.dto.UserDto
@@ -41,6 +46,8 @@ import com.voiza.app.domain.model.LiveKitCredentials
 import com.voiza.app.domain.model.MicToggleEvent
 import com.voiza.app.domain.model.MiniUser
 import com.voiza.app.domain.model.MessageType
+import com.voiza.app.domain.model.OwnedStoreItem
+import com.voiza.app.domain.model.ProfileFrame
 import com.voiza.app.domain.model.RankBoard
 import com.voiza.app.domain.model.RankRow
 import com.voiza.app.domain.model.Room
@@ -56,6 +63,10 @@ import com.voiza.app.domain.model.Seat
 import com.voiza.app.domain.model.SeatPolicy
 import com.voiza.app.domain.model.SeatStatus
 import com.voiza.app.domain.model.SeatUpdateEvent
+import com.voiza.app.domain.model.StoreItem
+import com.voiza.app.domain.model.StoreItemKind
+import com.voiza.app.domain.model.StorePurchase
+import com.voiza.app.domain.model.StoreSnapshot
 import com.voiza.app.domain.model.ThemeCatalogue
 import com.voiza.app.domain.model.Transaction
 import com.voiza.app.domain.model.User
@@ -85,7 +96,23 @@ fun MiniUserDto.toDomain(): MiniUser = MiniUser(
     diamondBalance = diamondBalance,
     vipLevel = vipLevel,
     rank = rank.toDomain(),
+    profileFrame = profileFrame.toDomain(),
+    // A blank URL would make Coil request the API origin itself; an absent one means "no flourish".
+    entryEffect = entryEffect?.takeIf { it.isNotBlank() },
 )
+
+/**
+ * A ring the server resolved for a member. It is dropped unless both the key and the art are
+ * present: a ring with no file cannot be drawn, and one with no key cannot be equipped — either
+ * way the avatar simply stays bare instead of the app inventing art.
+ */
+fun FrameArtDto?.toDomain(): ProfileFrame? {
+    val frame = this ?: return null
+    val key = frame.key?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val art = frame.art?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val name = frame.name?.trim()?.takeIf { it.isNotEmpty() } ?: key
+    return ProfileFrame(key = key, name = name, art = art, accent = frame.accent)
+}
 
 fun UserDto.toDomain(): User = User(
     id = id,
@@ -105,6 +132,8 @@ fun UserDto.toDomain(): User = User(
     vipLevel = vipLevel,
     xp = xp,
     rank = rank.toDomain(),
+    profileFrame = profileFrame.toDomain(),
+    entryEffect = entryEffect?.takeIf { it.isNotBlank() },
 )
 
 fun SeatDto.toDomain(): Seat = Seat(
@@ -258,6 +287,64 @@ fun WalletResponse.toDomain(): WalletSnapshot = WalletSnapshot(
 )
 
 fun WithdrawalDto.toDomain() = com.voiza.app.domain.model.Withdrawal(id, amountRCoins, status, payoutMethod)
+
+/**
+ * One shop row. A row is dropped unless its kind is one this build knows, and unless it has the
+ * four strings every card needs to draw and to buy it: key, name and art. A newer backend selling
+ * a fourth catalogue should make the shop show less, not crash it.
+ */
+fun StoreItemDto.toDomainOrNull(): StoreItem? {
+    val parsedKind = kind?.let { raw ->
+        StoreItemKind.entries.firstOrNull { it.name == raw.trim().uppercase() }
+    } ?: return null
+    val itemKey = key?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val itemName = name?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val itemArt = art?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return StoreItem(
+        kind = parsedKind,
+        key = itemKey,
+        name = itemName,
+        art = itemArt,
+        accent = accent,
+        priceDiamonds = priceDiamonds,
+        periodDays = periodDays,
+        owned = owned,
+        expiresAt = expiresAt?.takeIf { it.isNotBlank() },
+        equipped = equipped,
+    )
+}
+
+fun OwnedStoreItemDto.toDomainOrNull(): OwnedStoreItem? {
+    val parsedKind = kind?.let { raw ->
+        StoreItemKind.entries.firstOrNull { it.name == raw.trim().uppercase() }
+    } ?: return null
+    val itemKey = key?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return OwnedStoreItem(
+        kind = parsedKind,
+        key = itemKey,
+        name = name?.trim()?.takeIf { it.isNotEmpty() } ?: itemKey,
+        art = art?.trim().orEmpty(),
+        onSale = onSale,
+        expiresAt = expiresAt?.takeIf { it.isNotBlank() },
+        acquiredVia = acquiredVia?.trim()?.takeIf { it.isNotEmpty() } ?: "PURCHASE",
+    )
+}
+
+fun StoreResponse.toDomain(): StoreSnapshot = StoreSnapshot(
+    items = items.orEmpty().mapNotNull { it.toDomainOrNull() },
+    owned = owned.orEmpty().mapNotNull { it.toDomainOrNull() },
+)
+
+/**
+ * `POST /api/store/purchase` (201): the ledger wrote the debit, so [user] is the wallet after it.
+ * [item] may fail to map — the money already moved — and the caller then reloads the shop rather
+ * than pretending the row is unknown. [user] is nullable only for a malformed envelope, so a
+ * response that names no wallet still lets the purchase be reported instead of throwing.
+ */
+fun StorePurchaseResponse.toDomain(): StorePurchase = StorePurchase(
+    item = item?.toDomainOrNull(),
+    user = wallet?.toDomain(),
+)
 
 fun LeaderEntryDto.toDomain(): RankRow = RankRow(
     user = MiniUser(id = id, username = username, avatarUrl = avatarUrl, rank = rank.toDomain()),

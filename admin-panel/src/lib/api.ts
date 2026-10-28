@@ -30,6 +30,8 @@ import type {
   EffectInput,
   EmojiInput,
   FinAccount,
+  FrameHolder,
+  FrameInput,
   GameDefinition,
   GameDispute,
   GameEvent,
@@ -39,11 +41,13 @@ import type {
   GiftListResult,
   GiftMutationResult,
   GiftPatch,
+  GrantedItem,
   JournalListResult,
   LoginResponse,
   MediaAsset,
   MediaKind,
   OkResult,
+  ProfileFrame,
   PublishedEmojiCatalogue,
   PublishedLadder,
   RankInput,
@@ -58,6 +62,7 @@ import type {
   RoomMutationResult,
   RoomSeatDetail,
   SeatPolicyResult,
+  StoreItemKind,
   ThemeCatalogue,
   ThemeInput,
   TrialBalance,
@@ -492,6 +497,38 @@ export const api = {
     return request<{ ok: true; key: string }>(`/api/admin/effects/${encodeURIComponent(key)}`, {
       method: 'DELETE',
     });
+  },
+
+  // ---- cosmetic store ----------------------------------------------------------
+  // Frames are their own catalogue (migration 0019); prices on themes and effects are columns on
+  // the rows above, which is why they are saved through the same create/update calls.
+  createFrame(input: FrameInput): Promise<{ frame: ProfileFrame }> {
+    return request<{ frame: ProfileFrame }>('/api/admin/frames', { method: 'POST', body: input });
+  },
+
+  updateFrame(key: string, patch: FrameInput): Promise<{ frame: ProfileFrame }> {
+    return request<{ frame: ProfileFrame }>(`/api/admin/frames/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      body: patch,
+    });
+  },
+
+  deleteFrame(key: string): Promise<{ ok: true; key: string; membersStillHolding: number }> {
+    return request<{ ok: true; key: string; membersStillHolding: number }>(
+      `/api/admin/frames/${encodeURIComponent(key)}`,
+      { method: 'DELETE' },
+    );
+  },
+
+  frameHolders(key: string): Promise<{ key: string; holders: FrameHolder[] }> {
+    return request<{ key: string; holders: FrameHolder[] }>(
+      `/api/admin/frames/${encodeURIComponent(key)}/holders`,
+    );
+  },
+
+  /** Give an item to a member without diamonds moving. `days: null` means permanent. */
+  grantItem(userId: string, body: { kind: StoreItemKind; key: string; days?: number | null }): Promise<{ item: GrantedItem }> {
+    return request<{ item: GrantedItem }>(`/api/admin/users/${userId}/grant`, { method: 'POST', body });
   },
 
   setCategoryEffect(category: string, effectKey: string): Promise<{ mapping: CategoryEffect }> {

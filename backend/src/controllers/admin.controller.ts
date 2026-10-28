@@ -2,13 +2,16 @@ import { Request, Response } from 'express';
 import { one } from '../config/db';
 import {
   createEffect,
+  createFrame,
   createTheme,
   deleteEffect,
+  deleteFrame,
   deleteTheme,
   listAdminCatalogue,
   setCategoryEffect,
   themeSlugs,
   updateEffect,
+  updateFrame,
   updateTheme,
 } from '../services/theme.service';
 import {
@@ -66,6 +69,7 @@ import {
   saveUpload,
 } from '../services/media.service';
 import { pushToUser } from '../services/push.service';
+import { grantItem, holdersOf, readItemKey, readKind } from '../services/store.service';
 import {
   SEAT_CEILING,
   SEAT_POLICY_KEY,
@@ -608,6 +612,85 @@ export const mapCategoryEffect = asyncHandler(async (req: Request, res: Response
     details: { category, effectKey },
   });
   res.json({ mapping });
+});
+
+// --- Avatar frames and store grants (migration 0019) ----------------------
+//
+// A ring is the one catalogue whose rows are both sold and worn by a member. Pricing it is the
+// same `config:manage` power that owns every other catalogue, while handing one to an account
+// without money moving is a wallet-shaped act and asks for `user:wallet`. The published
+// catalogue lives in `GET /admin/decor`, beside the themes and loops.
+
+export const createFrameEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const frame = await createFrame(req.body ?? {});
+  await logAction(req, {
+    action: 'FRAME_CREATE',
+    targetType: 'frame',
+    targetId: frame.key,
+    summary: frame.forSale
+      ? `Added avatar frame ${frame.name} (${frame.key}) at ${frame.priceDiamonds} diamonds`
+      : `Added avatar frame ${frame.name} (${frame.key}), not for sale`,
+    details: { frame },
+  });
+  res.status(201).json({ frame });
+});
+
+export const updateFrameEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const key = requireIdentity(req.params.key, 'key');
+  const frame = await updateFrame(key, req.body ?? {});
+  await logAction(req, {
+    action: 'FRAME_UPDATE',
+    targetType: 'frame',
+    targetId: key,
+    summary: frame.forSale
+      ? `Updated avatar frame ${frame.name} — on sale at ${frame.priceDiamonds} diamonds, ${frame.holders} holder(s)`
+      : `Updated avatar frame ${frame.name} — off sale, ${frame.holders} holder(s) keep it`,
+    details: { changes: req.body ?? {}, frame },
+  });
+  res.json({ frame });
+});
+
+export const deleteFrameEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const key = requireIdentity(req.params.key, 'key');
+  const result = await deleteFrame(key);
+  await logAction(req, {
+    action: 'FRAME_DELETE',
+    targetType: 'frame',
+    targetId: key,
+    summary: `Removed avatar frame ${key}; ${result.membersStillHolding} member(s) keep their receipt and stop showing it`,
+    details: result,
+  });
+  res.json(result);
+});
+
+/** Who holds a ring — the panel's answer to "this member says they bought it". */
+export const frameHoldersEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const key = requireIdentity(req.params.key, 'key');
+  res.json({ key, holders: await holdersOf('FRAME', key) });
+});
+
+/**
+ * Give a member an item without diamonds moving.
+ *
+ * `days` is optional: omitted keeps the catalogue's period, and `null` makes the grant permanent.
+ * A grant is never written as a zero-price purchase — the ledger would say money moved when it
+ * did not.
+ */
+export const grantItemEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireString(req.params.id, 'userId', { min: 36, max: 36 });
+  const kind = readKind(req.body?.kind);
+  const key = readItemKey(req.body?.key);
+  // `null` is a value here, not an omission: it is how an operator makes a grant permanent.
+  const days = req.body?.days === null ? null : optionalInt(req.body?.days, 'days', { min: 1, max: 3650 });
+  const item = await grantItem({ userId, kind, key, days });
+  await logAction(req, {
+    action: 'ITEM_GRANT',
+    targetType: 'user',
+    targetId: userId,
+    summary: `Granted ${kind.toLowerCase()} ${item.name} to a member${item.expiresAt ? ` until ${item.expiresAt.slice(0, 10)}` : ' permanently'}`,
+    details: { kind, key, days: days === undefined ? 'catalogue period' : days, item },
+  });
+  res.status(201).json({ item });
 });
 
 // --- Chat emoji -----------------------------------------------------------

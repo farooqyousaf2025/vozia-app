@@ -117,6 +117,13 @@ class PartyRoomViewModel(
         val welcomeEffect: String? = null,
 
         /**
+         * The paid flourish somebody else's entry asked the room to play, straight from the
+         * server's `room:user_joined` payload. Null when they own none, in which case their
+         * banner still announces them and the room's free welcome is untouched.
+         */
+        val entryFlourish: String? = null,
+
+        /**
          * Chat emoji from `GET /api/emoji`, in the picker order the operator set. Empty until that
          * arrives, and empty forever if the panel has no rows — then the picker shows nothing and a
          * typed `[code]` stays the plain text it always was.
@@ -354,8 +361,12 @@ class PartyRoomViewModel(
                         else st.audience + ev.user
                     // Announcing us to ourselves would be a banner that says
                     // "you are here" every time we reconnect.
-                    val banner = if (ev.user.id == st.user?.id) st.entryBanner else ev
-                    st.copy(audience = audience, entryBanner = banner)
+                    val mine = ev.user.id == st.user?.id
+                    val banner = if (mine) st.entryBanner else ev
+                    // The paid flourish is the server's URL on this join; our own entry already
+                    // played the room's welcome above, so it is never replayed here.
+                    val flourish = if (mine) st.entryFlourish else ev.user.entryEffect ?: st.entryFlourish
+                    st.copy(audience = audience, entryBanner = banner, entryFlourish = flourish)
                 }
             }
         }
@@ -744,6 +755,9 @@ class PartyRoomViewModel(
 
     /** Called by the entry banner after it has been on screen long enough. */
     fun clearEntryBanner() = _state.update { it.copy(entryBanner = null) }
+
+    /** Called when another member's paid entry flourish has finished playing. */
+    fun clearEntryFlourish() = _state.update { it.copy(entryFlourish = null) }
 
     // ---- Ranking sheet -------------------------------------------------------------
 

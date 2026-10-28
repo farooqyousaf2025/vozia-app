@@ -22,6 +22,17 @@ const TX_WITH_PARTIES = `
  * transaction with row locks on both parties.
  */
 
+/**
+ * One posted row, with the names and art a wallet screen prints beside it.
+ *
+ * Exposed because a caller that moves money through `postLedgerMoves` gets a transaction id back and
+ * still has to show the row it just wrote; re-implementing this join somewhere else would be a
+ * second opinion on which columns a receipt is made of.
+ */
+export async function postedTransaction(id: string): Promise<TransactionRow | null> {
+  return one<TransactionRow>(`${TX_WITH_PARTIES} WHERE t.id = $1`, [id]);
+}
+
 export async function sendGift(input: {
   senderId: string;
   receiverId: string;

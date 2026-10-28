@@ -6,6 +6,7 @@ object Routes {
     const val CREATE_ROOM = "createRoom"
     const val WALLET = "wallet"
     const val PROFILE = "profile"
+    const val STORE = "store"
 
     const val ROOM_ARG = "roomId"
     const val ROOM_BASE = "room"

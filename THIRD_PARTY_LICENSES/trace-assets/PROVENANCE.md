@@ -1,4 +1,4 @@
-# Third-party artwork: rank badges and room loops
+# Third-party artwork: rank badges, room loops and avatar frames
 
 Retrieved 2026-10-28 from the **Trace** social network / live-streaming template
 (`trace_app/assets/`), a Flutter application published under the MIT licence —
@@ -8,6 +8,50 @@ package's source code was read into, translated or linked**, and no Dart file,
 string or icon from it is part of this repository.
 
 ## What was taken
+
+### Avatar frames — 10 files, 144 KB total
+
+Added with migration 0019 and the cosmetic store, shipped unchanged as
+[`backend/public/frames/trace/frame-<n>.png`](../../backend/public/frames/trace).
+Verified on the downloaded files: byte-identical to upstream (sha256), 8-bit
+**truecolour RGBA** PNG (colour type 6) with a real alpha channel — not the
+palette-plus-`tRNS` form the badge seals use — and roughly 185x200 px. The middle
+is transparent, which is the only property that makes a picture usable as a ring:
+the client draws the avatar first and this over it.
+
+| Repository file | Upstream file | Shop key | Seeded price |
+| --- | --- | --- | --- |
+| `frame-1.png` | `images/ic_vip_frame_1.png` | `ring-bronze` | 300 |
+| `frame-2.png` | `images/ic_vip_frame_2.png` | `ring-silver` | 600 |
+| `frame-3.png` | `images/ic_vip_frame_3.png` | `ring-jade` | 1,200 |
+| `frame-4.png` | `images/ic_vip_frame_4.png` | `ring-ocean` | 2,000 |
+| `frame-5.png` | `images/ic_vip_frame_5.png` | `ring-amber` | 3,000 |
+| `frame-6.png` | `images/ic_vip_frame_6.png` | `ring-rose` | 4,500 |
+| `frame-7.png` | `images/ic_vip_frame_7.png` | `ring-sky` | 6,000 |
+| `frame-8.png` | `images/ic_vip_frame_8.png` | `ring-violet` | 8,000 |
+| `frame-9.png` | `images/ic_vip_frame_9.png` | `ring-crown` | 12,000 |
+| `frame-10.png` | `images/ic_vip_frame_10.png` | `ring-immortal` | 20,000 |
+
+Upstream calls these `ic_vip_frame_*` because in Trace they mark a VIP tier. Here
+they carry no tier at all: the rungs on the ladder stay what migration 0017 made
+them, and a ring is bought. The names in the seed describe the metal and gem in
+the picture rather than a status, so nothing implies that a member reached a level
+they did not earn. Prices and the 30-day period are the opening position an
+operator edits from the panel.
+
+`images/bg_contribution_frame_1..3.png` were looked at and refused for a reason
+worth writing down, because the art is good: they are proper circular rings, but
+each carries a **baked-in numeral** — a gold medallion reading 1, 2 or 3 at the
+bottom. That makes them leaderboard markers, and a member who bought one would
+wear a placing they did not finish in. The same three appear as
+`bg_contribution_seat_frame_*` for the seat grid.
+
+`images/ic_frame_top1..3.png` are clean crown rings with no numeral and would fit,
+but they are thinner and plainer than the ten above and would sit in the shop as
+three more rungs nobody asked for. `assets/icons/ic_big_frame_ward_level_1..3.webp`
+were not converted or imported: the ten already cover the ladder, and adding a
+format this app's image loading has not been exercised against is a risk with no
+artistic payoff.
 
 ### Rank badge art — 21 files, 175 KB total
 
@@ -82,11 +126,10 @@ or operator decides where they play — nothing here forces a loop onto a room.
   no result-animation slot, and adding one is a UI change rather than an asset
   import. Recorded here so the choice is revisited deliberately.
 * `images/` (643 files, 32 MB), `icons/`, `countries/` (255 flags), `svg/`
-  (144 files) — VIP covers, seat frames, privilege icons, tab art and flags. They
-  belong to screens this app either does not have or draws with Material icons
-  and Compose-drawn chrome; importing them would add weight with nothing to
-  render them. The seat and profile frames are the interesting ones if the
-  profile-frames work in task #37 is taken up.
+  (144 files) — VIP covers, privilege icons, tab art and flags. They belong to
+  screens this app either does not have or draws with Material icons and
+  Compose-drawn chrome; importing them would add weight with nothing to render
+  them. The avatar rings were the exception, and they are the section above.
 
 ## Attribution as MIT requires
 

@@ -76,6 +76,16 @@ router.put('/effects/:key', requirePermission('config:manage'), admin.updateEffe
 router.delete('/effects/:key', requirePermission('config:manage'), admin.deleteEffectEndpoint);
 router.put('/room-categories/:category/effect', requirePermission('config:manage'), admin.mapCategoryEffect);
 
+// Avatar frames (migration 0019). Same split as themes: they ride in `GET /admin/decor` for
+// reading, while pricing a ring or retiring it changes what every phone draws and is
+// `config:manage`. Granting one hands over value with no money moving — the same consequence as
+// adjusting a balance — so that route asks for `user:wallet`.
+router.post('/frames', requirePermission('config:manage'), admin.createFrameEndpoint);
+router.put('/frames/:key', requirePermission('config:manage'), admin.updateFrameEndpoint);
+router.delete('/frames/:key', requirePermission('config:manage'), admin.deleteFrameEndpoint);
+router.get('/frames/:key/holders', requirePermission('user:read'), admin.frameHoldersEndpoint);
+router.post('/users/:id/grant', requirePermission('user:wallet'), admin.grantItemEndpoint);
+
 // Chat emoji. Reading the catalogue is public (`GET /api/emoji`); this is the operator's view of
 // the same rows, and the only way to change what codes members may type.
 router.get('/emoji', requirePermission('room:read'), admin.emojiCatalogueEndpoint);

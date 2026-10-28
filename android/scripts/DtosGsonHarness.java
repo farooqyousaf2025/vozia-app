@@ -19,6 +19,7 @@ import com.voiza.app.domain.model.GiftEffectKind;
 import com.voiza.app.domain.model.Leaderboard;
 import com.voiza.app.domain.model.ModelsKt;
 import com.voiza.app.domain.model.MiniUser;
+import com.voiza.app.domain.model.ProfileFrame;
 import com.voiza.app.domain.model.RankBoard;
 import com.voiza.app.domain.model.RankRow;
 import com.voiza.app.domain.model.UserJoinedEvent;
@@ -27,6 +28,10 @@ import com.voiza.app.domain.model.Room;
 import com.voiza.app.domain.model.RoomProfileEvent;
 import com.voiza.app.domain.model.RoomType;
 import com.voiza.app.domain.model.SeatPolicy;
+import com.voiza.app.domain.model.StoreItem;
+import com.voiza.app.domain.model.StoreItemKind;
+import com.voiza.app.domain.model.StorePurchase;
+import com.voiza.app.domain.model.StoreSnapshot;
 import com.voiza.app.domain.model.RoomLikeEvent;
 import com.voiza.app.domain.model.ThemeChangedEvent;
 import com.voiza.app.domain.model.RoomThemeOption;
@@ -103,6 +108,23 @@ public class DtosGsonHarness {
     static GameSessionDto capturedSession(JsonObject doc, String key) {
         return G.fromJson(doc.getAsJsonObject("games").getAsJsonObject(key)
                 .getAsJsonObject("read"), GameSessionEnvelope.class).getSession();
+    }
+
+    /**
+     * A ring the phone is about to draw around an avatar. The art is a PNG with a transparent
+     * middle, so it has to be a loadable URL — a ring the client guesses from `key` would be a
+     * broken path, and a blank name would leave the shop row unreadable to a screen reader.
+     */
+    static void checkFrame(ProfileFrame frame, String where) {
+        if (frame.getKey().isEmpty()) throw new IllegalStateException(where + " carried a ring with no key");
+        if (frame.getName().isEmpty()) throw new IllegalStateException(where + " carried a ring with no name");
+        if (!frame.getArt().startsWith("/") && !frame.getArt().startsWith("https://")) {
+            throw new IllegalStateException(where + " ring art is not an asset URL: " + frame.getArt());
+        }
+        String accent = frame.getAccent();
+        if (accent != null && !accent.matches("#[0-9a-fA-F]{6}")) {
+            throw new IllegalStateException(where + " ring accent is not #rrggbb: " + accent);
+        }
     }
 
     public static void main(String[] args) throws Exception {
@@ -223,6 +245,84 @@ public class DtosGsonHarness {
             }
         });
 
+        System.out.println("\n--- store, worn decoration and the account that carries it ---");
+
+        t("GET /api/store        -> StoreSnapshot -> sellable rows + the caller's own holdings", () -> {
+            StoreSnapshot shop = MappersKt.toDomain(
+                    G.fromJson(body(rest, "store"), StoreResponse.class));
+            if (shop.getItems().isEmpty()) throw new IllegalStateException("the shop sold nothing");
+            java.util.Set<StoreItemKind> kinds = new java.util.HashSet<>();
+            for (StoreItem item : shop.getItems()) {
+                kinds.add(item.getKind());
+                if (item.getPriceDiamonds() <= 0) {
+                    throw new IllegalStateException(item.getKey() + " is on sale with no price");
+                }
+                // A theme decorates a room, so an account can never wear one.
+                if (item.getEquipped() && item.getKind() == StoreItemKind.THEME) {
+                    throw new IllegalStateException("a theme was reported as worn by the account");
+                }
+                if (item.getPeriodDays() == null && item.getExpiresAt() != null) {
+                    throw new IllegalStateException(item.getKey() + " is permanent but has an expiry");
+                }
+                if (!item.getArt().startsWith("/") && !item.getArt().startsWith("https://")) {
+                    throw new IllegalStateException(item.getKey() + " art is not an asset URL: " + item.getArt());
+                }
+            }
+            // Every kind the shop screen has a tab for must exist, or a tab is a dead end.
+            if (!kinds.containsAll(java.util.Arrays.asList(StoreItemKind.values()))) {
+                throw new IllegalStateException("the capture sold only " + kinds);
+            }
+            for (com.voiza.app.domain.model.OwnedStoreItem owned : shop.getOwned()) {
+                if (owned.getKey().isEmpty()) throw new IllegalStateException("a holding lost its key");
+            }
+        });
+
+        t("POST /api/store/purchase -> the row is owned and the envelope names the wallet that paid", () -> {
+            StorePurchase bought = MappersKt.toDomain(
+                    G.fromJson(body(rest, "storePurchase"), StorePurchaseResponse.class));
+            if (bought.getItem() == null) throw new IllegalStateException("purchase response carried no item");
+            if (!bought.getItem().getOwned()) {
+                throw new IllegalStateException("the row was bought but the response says it is not owned");
+            }
+            if (bought.getUser() == null) throw new IllegalStateException("purchase carried no wallet");
+            // The price came from the server's own row; the client only ever echoed kind+key.
+            if (bought.getItem().getPriceDiamonds() <= 0) {
+                throw new IllegalStateException("purchased row lost its price");
+            }
+        });
+
+        t("POST /api/store/equip -> UserEnvelope carries the ring now worn", () -> {
+            UserEnvelope env = G.fromJson(body(rest, "storeEquip"), UserEnvelope.class);
+            com.voiza.app.domain.model.User user = MappersKt.toDomain(env.getUser());
+            if (user.getProfileFrame() == null) {
+                throw new IllegalStateException("equip returned an account wearing nothing");
+            }
+            checkFrame(user.getProfileFrame(), "POST /api/store/equip");
+        });
+
+        t("GET /api/auth/me     -> the account ships the worn ring and the paid flourish", () -> {
+            // Both were equipped by the capture before it read the account, so an absent
+            // decoration here means an equip did not persist rather than "nothing is worn".
+            com.voiza.app.domain.model.User me = MappersKt.toDomain(
+                    G.fromJson(body(rest, "me"), UserEnvelope.class).getUser());
+            if (me.getProfileFrame() == null) throw new IllegalStateException("account lost its worn ring");
+            checkFrame(me.getProfileFrame(), "GET /api/auth/me");
+            if (me.getEntryEffect() == null) throw new IllegalStateException("account lost its entry flourish");
+            if (!me.getEntryEffect().startsWith("/") && !me.getEntryEffect().startsWith("https://")) {
+                throw new IllegalStateException("flourish is not an asset URL: " + me.getEntryEffect());
+            }
+        });
+
+        t("equip response WITHOUT a ring reads as wearing nothing, never as a broken frame", () -> {
+            // Gson leaves the key absent => null, and a mapper that invented a frame from the
+            // account id would draw a ring nobody bought.
+            com.voiza.app.domain.model.User bare = MappersKt.toDomain(
+                    G.fromJson("{\"user\":{\"id\":\"u1\",\"phone\":\"+15005550001\",\"username\":\"ana\","
+                            + "\"userType\":\"USER\",\"status\":\"ACTIVE\"}}", UserEnvelope.class).getUser());
+            if (bare.getProfileFrame() != null) throw new IllegalStateException("absent frame became " + bare.getProfileFrame());
+            if (bare.getEntryEffect() != null) throw new IllegalStateException("absent flourish became " + bare.getEntryEffect());
+        });
+
         System.out.println("\n--- socket events the app parses ---");
 
         t("room:seat_update      -> SocketSeatUpdateDto -> seats+audience", () ->
@@ -243,6 +343,19 @@ public class DtosGsonHarness {
                 throw new IllegalStateException("joiner carried no rank; the ladder did not ship");
             }
             checkRung(ev.getUser().getRank(), "room:user_joined");
+            // The capture equips a ring and a flourish before its socket joins, so the entry
+            // banner's two paid layers have to arrive on the event itself — the room never
+            // queries a second endpoint to find out what a new member bought.
+            if (ev.getUser().getProfileFrame() == null) {
+                throw new IllegalStateException("joiner carried no ring; the banner would draw a plain avatar");
+            }
+            checkFrame(ev.getUser().getProfileFrame(), "room:user_joined");
+            if (ev.getUser().getEntryEffect() == null) {
+                throw new IllegalStateException("joiner carried no flourish; the paid entrance would not play");
+            }
+            if (!ev.getUser().getEntryEffect().startsWith("/") && !ev.getUser().getEntryEffect().startsWith("https://")) {
+                throw new IllegalStateException("flourish is not an asset URL: " + ev.getUser().getEntryEffect());
+            }
         });
 
         t("MiniUserDto WITHOUT rank leaves the level absent, never zero", () -> {

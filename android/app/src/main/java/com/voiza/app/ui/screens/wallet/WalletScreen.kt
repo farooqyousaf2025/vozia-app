@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -45,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.voiza.app.domain.model.Transaction
+import com.voiza.app.ui.components.EmptyState
 import com.voiza.app.ui.components.LoadingProgress
 import com.voiza.app.ui.components.VoizaButton
 import com.voiza.app.ui.components.VoizaCard
@@ -95,6 +97,26 @@ fun WalletScreen(
 
         val snapshot = state.snapshot
         val user = state.user
+
+        // A guest owns no balance, so presets, cards and the ledger would all be hollow. Show the
+        // way back to sign-in instead of the server's "Missing Authorization header".
+        if (user == null && snapshot == null) {
+            EmptyState(
+                icon = Icons.Default.AccountBalanceWallet,
+                title = "Log in to open your wallet",
+                subtitle = "Diamonds, R-coins and your ledger belong to your account. " +
+                    "Your session has ended \u2014 reopen the app to sign in again.",
+                action = {
+                    VoizaButton(
+                        text = "Back",
+                        onClick = onBack,
+                        height = 44,
+                        modifier = Modifier.width(160.dp),
+                    )
+                },
+            )
+            return@Column
+        }
 
         // Recharge presets row (dev: simulated purchase).
         Row(
