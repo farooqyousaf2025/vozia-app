@@ -46,7 +46,10 @@ jobs:
         image: livekit/livekit-server:v1.8.1
         # --dev mints no auth requirement for the HTTP API used by the suite and
         # pins the key pair the backend defaults to (src/config/env.ts).
-        args: >-
+        # A service block accepts docker `options`, not `args`: the container
+        # command goes at the end of that string. `args` made the whole workflow
+        # unparseable, so every run failed with zero jobs before it ever started.
+        options: >-
           --dev --bind 0.0.0.0
           --keys "voiza-dev-access-key=voiza-dev-secret-key-change-me-32chars"
         ports: ['7880:7880', '7881:7881']
