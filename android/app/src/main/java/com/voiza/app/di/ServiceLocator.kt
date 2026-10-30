@@ -9,6 +9,7 @@ import com.voiza.app.data.remote.VoizaApiService
 import com.voiza.app.data.repository.AuthRepositoryImpl
 import com.voiza.app.data.repository.GameRepositoryImpl
 import com.voiza.app.data.repository.GiftRepositoryImpl
+import com.voiza.app.data.repository.PkRepositoryImpl
 import com.voiza.app.data.repository.QuestRepositoryImpl
 import com.voiza.app.data.repository.RoomRepositoryImpl
 import com.voiza.app.data.repository.StoreRepositoryImpl
@@ -17,6 +18,7 @@ import com.voiza.app.data.socket.VoizaSocketClient
 import com.voiza.app.domain.repository.AuthRepository
 import com.voiza.app.domain.repository.GiftRepository
 import com.voiza.app.domain.repository.GameRepository
+import com.voiza.app.domain.repository.PkRepository
 import com.voiza.app.domain.repository.QuestRepository
 import com.voiza.app.domain.repository.RoomRepository
 import com.voiza.app.domain.repository.StoreRepository
@@ -61,6 +63,8 @@ object ServiceLocator {
         private set
     lateinit var questRepository: QuestRepository
         private set
+    lateinit var pkRepository: PkRepository
+        private set
 
     lateinit var joinRoomUseCase: JoinRoomUseCase
         private set
@@ -97,6 +101,7 @@ object ServiceLocator {
             gameRepository = GameRepositoryImpl(apiService)
             storeRepository = StoreRepositoryImpl(apiService, sessionManager)
             questRepository = QuestRepositoryImpl(apiService, sessionManager)
+            pkRepository = PkRepositoryImpl(apiService)
 
             joinRoomUseCase = JoinRoomUseCase(roomRepository) { roomId ->
                 socketClient.joinRoom(roomId)

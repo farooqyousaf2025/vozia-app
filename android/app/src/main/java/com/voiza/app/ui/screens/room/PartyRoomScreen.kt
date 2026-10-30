@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.SportsEsports
@@ -58,6 +59,8 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.voiza.app.domain.model.PkBattle
+import com.voiza.app.domain.model.PkSide
 import com.voiza.app.ui.components.Avatar
 import com.voiza.app.ui.components.DiamondChip
 import com.voiza.app.ui.components.ListenerBadge
@@ -72,6 +75,7 @@ import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.VoizaAccentGradient
 import com.voiza.app.ui.theme.VoizaHeroGradient
+import com.voiza.app.ui.theme.WarningAmber
 import com.voiza.app.viewmodel.PartyRoomViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
 
@@ -87,6 +91,7 @@ fun PartyRoomScreen(
     roomId: String,
     onLeaveRoom: () -> Unit,
     onOpenGames: () -> Unit,
+    onOpenPk: () -> Unit,
     onEditRoom: () -> Unit,
     viewModel: PartyRoomViewModel = viewModel(
         key = "room-$roomId",
@@ -165,6 +170,17 @@ fun PartyRoomScreen(
                 state.room?.rules?.takeIf { it.isNotBlank() }?.let { rules ->
                     RulesBanner(rules = rules)
                 }
+
+                // PK: a live score strip when a battle is on, or the host's way in when it is not.
+                PkRoomBanner(
+                    battle = state.battle,
+                    roomId = roomId,
+                    isHost = state.isHost,
+                    onClick = {
+                        viewModel.refreshBattle()
+                        onOpenPk()
+                    },
+                )
 
                 // ---- Operator warning (host only; sent on the private channel) ----
                 state.operatorWarning?.let { warning ->
@@ -545,6 +561,105 @@ private fun RulesBanner(rules: String) {
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+// ---------------------------------------------------------------------------
+// PK strip
+// ---------------------------------------------------------------------------
+
+/**
+ * The room's PK line. A live battle shows the two totals and the clock the server sent; with no
+ * battle, the host gets the way into the desk and everybody else sees nothing. Tapping it opens
+ * the PK screen as a child route, so the voice connection is not torn down.
+ */
+@Composable
+private fun PkRoomBanner(
+    battle: PkBattle?,
+    roomId: String,
+    isHost: Boolean,
+    onClick: () -> Unit,
+) {
+    if (battle == null && !isHost) return
+
+    val nowMs = rememberPkClock(enabled = battle?.isActive == true)
+    val mySide = battle?.sideOf(roomId)
+    val mine = when (mySide) {
+        PkSide.A -> battle?.scoreA
+        PkSide.B -> battle?.scoreB
+        null -> null
+    }
+    val theirs = when (mySide) {
+        PkSide.A -> battle?.scoreB
+        PkSide.B -> battle?.scoreA
+        null -> null
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0x3322D3EE))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Icon(
+            Icons.Default.FlashOn,
+            contentDescription = null,
+            tint = if (battle?.isActive == true) WarningAmber else Cyan,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = when {
+                    battle == null -> "PK battle"
+                    battle.isActive -> "PK \u00B7 ${battle.opponentOf(roomId)?.title.orEmpty()}"
+                    else -> "PK invitation \u00B7 ${battle.opponentOf(roomId)?.title.orEmpty()}"
+                },
+                color = OnDarkHigh,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = when {
+                    battle == null -> "Challenge another room \u2014 gifts decide the winner"
+                    battle.isActive -> "This room %,d \u00B7 them %,d".format(mine ?: 0, theirs ?: 0)
+                    mySide == PkSide.A -> "Waiting for the other host to answer"
+                    else -> "Challenged \u2014 open to answer"
+                },
+                color = OnDarkMedium,
+                fontSize = 10.sp,
+                maxLines = 1,
+            )
+        }
+        Text(
+            text = when {
+                battle == null -> "Open"
+                battle.isActive -> battle.clockLabel(battle.remainingAt(nowMs))
+                else -> "Waiting"
+            },
+            color = if (battle?.isActive == true) WarningAmber else Cyan,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+/** A one-second clock for the strip; it only reads the device against the server's deadline. */
+@Composable
+private fun rememberPkClock(enabled: Boolean): Long {
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(enabled) {
+        while (enabled) {
+            now = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1_000)
+        }
+    }
+    return if (enabled) now else System.currentTimeMillis()
 }
 
 // ---------------------------------------------------------------------------

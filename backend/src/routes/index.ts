@@ -7,6 +7,7 @@ import gameRoutes from './game.routes';
 import giftRoutes from './gift.routes';
 import livekitRoutes from './livekit.routes';
 import paymentsRoutes from './payments.routes';
+import pkRoutes from './pk.routes';
 import questRoutes from './quest.routes';
 import rankRoutes from './rank.routes';
 import roomRoutes from './room.routes';
@@ -28,6 +29,9 @@ router.use('/ranks', rankRoutes);
 // Today's quests and the check-in. Separate from /users for the same reason /store is: it is an
 // XP-writing path, not a profile field, and the screen loads before a room is chosen.
 router.use('/quests', questRoutes);
+// PK battles. A battle spans two rooms, so it cannot hang off either one; the panel reads it by
+// room and the invited host answers by battle id from anywhere in the app.
+router.use('/pk', pkRoutes);
 router.use('/games', gameRoutes);
 router.use('/wallet', walletRoutes);
 router.use('/users', userRoutes);

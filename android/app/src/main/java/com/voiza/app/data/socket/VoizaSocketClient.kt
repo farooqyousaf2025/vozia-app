@@ -6,6 +6,7 @@ import com.voiza.app.data.remote.SessionManager
 import com.voiza.app.data.remote.dto.SocketChatDto
 import com.voiza.app.data.remote.dto.SocketGameEndedDto
 import com.voiza.app.data.remote.dto.GameSessionDto
+import com.voiza.app.data.remote.dto.PkBattleDto
 import com.voiza.app.data.remote.dto.SocketGiftAnimatedDto
 import com.voiza.app.data.remote.dto.SocketHandRaiseDto
 import com.voiza.app.data.remote.dto.SocketKickedDto
@@ -28,6 +29,7 @@ import com.voiza.app.domain.model.HostWarningEvent
 import com.voiza.app.domain.model.HandRaiseEvent
 import com.voiza.app.domain.model.ListenerCountEvent
 import com.voiza.app.domain.model.MicToggleEvent
+import com.voiza.app.domain.model.PkBattle
 import com.voiza.app.domain.model.RoomChatEvent
 import com.voiza.app.domain.model.RoomClosedEvent
 import com.voiza.app.domain.model.RoomLikeEvent
@@ -173,6 +175,22 @@ class VoizaSocketClient(
     )
     val gamesEnded: SharedFlow<String> = _gamesEnded.asSharedFlow()
 
+    /**
+     * `pk:state`: the whole battle as the server just wrote it, to both rooms. A full board per
+     * change is deliberate — the scores are the server's ledger sum, and a client that missed one
+     * emit must not keep counting a race that already ended.
+     */
+    private val _pkStates = MutableSharedFlow<PkBattle>(
+        replay = 0, extraBufferCapacity = 32, onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val pkStates: SharedFlow<PkBattle> = _pkStates.asSharedFlow()
+
+    /** `pk:invited`: the private channel of the challenged host, who may not be in the room. */
+    private val _pkInvites = MutableSharedFlow<PkBattle>(
+        replay = 0, extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val pkInvites: SharedFlow<PkBattle> = _pkInvites.asSharedFlow()
+
     init {
         // Re-dial whenever the auth token changes (login, re-login, logout).
         scope.launch {
@@ -267,6 +285,12 @@ class VoizaSocketClient(
         bindHandler(newSocket, EVENT_GAME_ENDED) { args ->
             parse<SocketGameEndedDto>(args)?.let { _gamesEnded.tryEmit(it.sessionId) }
         }
+        bindHandler(newSocket, EVENT_PK_STATE) { args ->
+            parse<PkBattleDto>(args)?.toDomain()?.let { _pkStates.tryEmit(it) }
+        }
+        bindHandler(newSocket, EVENT_PK_INVITED) { args ->
+            parse<PkBattleDto>(args)?.toDomain()?.let { _pkInvites.tryEmit(it) }
+        }
         bindHandler(newSocket, EVENT_WALLET) { args ->
             parse<SocketWalletUpdateDto>(args)?.let { update ->
                 sessionManager.applyWalletUpdate(update.diamondBalance, update.rCoinBalance)
@@ -351,6 +375,8 @@ class VoizaSocketClient(
         const val EVENT_WALLET = "wallet:update"
         const val EVENT_GAME_UPDATE = "game:update"
         const val EVENT_GAME_ENDED = "game:ended"
+        const val EVENT_PK_STATE = "pk:state"
+        const val EVENT_PK_INVITED = "pk:invited"
 
         // Client -> server
         const val EVENT_EMIT_JOIN = "room:join"

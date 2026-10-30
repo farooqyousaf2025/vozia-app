@@ -25,11 +25,16 @@ object Routes {
     const val GAME_LOBBY_PATTERN = "$ROOM_PATTERN/games"
     const val GAME_PATTERN = "game/{$SESSION_ARG}"
 
+    // Same nesting for the PK desk: leaving it returns to the room still connected.
+    const val PK_PATTERN = "$ROOM_PATTERN/pk"
+
     fun room(roomId: String) = "$ROOM_BASE/$roomId"
 
     fun editRoom(roomId: String) = "$EDIT_ROOM_BASE/$roomId"
 
     fun gameLobby(roomId: String) = "$ROOM_BASE/$roomId/games"
+
+    fun pk(roomId: String) = "$ROOM_BASE/$roomId/pk"
 
     fun game(sessionId: String) = "game/$sessionId"
 }

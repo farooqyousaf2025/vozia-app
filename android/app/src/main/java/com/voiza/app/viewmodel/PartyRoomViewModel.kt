@@ -19,6 +19,7 @@ import com.voiza.app.domain.model.Leaderboard
 import com.voiza.app.domain.model.LiveKitCredentials
 import com.voiza.app.domain.model.MiniUser
 import com.voiza.app.domain.model.MessageType
+import com.voiza.app.domain.model.PkBattle
 import com.voiza.app.domain.model.RankBoard
 import com.voiza.app.domain.model.Room
 import com.voiza.app.domain.model.Seat
@@ -26,6 +27,7 @@ import com.voiza.app.domain.model.SeatStatus
 import com.voiza.app.domain.model.User
 import com.voiza.app.domain.model.UserJoinedEvent
 import com.voiza.app.domain.repository.AuthRepository
+import com.voiza.app.domain.repository.PkRepository
 import com.voiza.app.domain.repository.RoomRepository
 import com.voiza.app.domain.usecase.JoinRoomUseCase
 import com.voiza.app.domain.usecase.RoomEffects
@@ -62,6 +64,7 @@ class PartyRoomViewModel(
     private val takeSeatUseCase: TakeSeatUseCase = ServiceLocator.takeSeatUseCase,
     private val sendGiftUseCase: SendGiftUseCase = ServiceLocator.sendGiftUseCase,
     private val toggleMuteUseCase: ToggleMuteUseCase = ServiceLocator.toggleMuteUseCase,
+    private val pkRepository: PkRepository = ServiceLocator.pkRepository,
     private val socket: VoizaSocketClient = ServiceLocator.socketClient,
     private val liveKit: LiveKitRoomManager = ServiceLocator.liveKitRoomManager,
 ) : ViewModel() {
@@ -83,6 +86,12 @@ class PartyRoomViewModel(
         val audience: List<MiniUser> = emptyList(),
         val chat: List<ChatMessage> = emptyList(),
         val listenerCount: Int = 0,
+
+        /**
+         * The PK battle this room is in — invited or running — as the server last sent it.
+         * Null when the room is free; the banner is the only thing that reads it.
+         */
+        val battle: PkBattle? = null,
 
         /** Audience members waiting in the request-to-speak queue. */
         val handRaises: List<MiniUser> = emptyList(),
@@ -286,6 +295,8 @@ class PartyRoomViewModel(
         viewModelScope.launch { loadWelcomeEffect() }
         // Same for the chat emoji: a catalogue of rows, not a list this file may hardcode.
         viewModelScope.launch { loadEmojiCatalogue() }
+        // A battle may already be pending or running; the banner needs it without waiting for a gift.
+        viewModelScope.launch { loadBattle() }
         val lkUrl = lk.url.ifBlank { BuildConfig.VOIZA_LIVEKIT_URL }
         liveKit.connect(lkUrl, lk.token, lk.roomName, it_publishCan(lk, mySeat))
     }
@@ -329,6 +340,22 @@ class PartyRoomViewModel(
                 )
             }
         }
+    }
+
+    /**
+     * The battle this room is in, or null. A failure is silent: the banner simply is not shown,
+     * and the room keeps working — a PK race is an addition to the party, not a gate on it.
+     */
+    private suspend fun loadBattle() {
+        val result = pkRepository.battleForRoom(roomId)
+        if (result is ApiResult.Success) {
+            _state.update { it.copy(battle = result.data) }
+        }
+    }
+
+    /** Re-read the battle after returning from the PK desk, where it may have just started. */
+    fun refreshBattle() {
+        viewModelScope.launch { loadBattle() }
     }
 
     // ---- Socket + LiveKit observation --------------------------------------------
@@ -476,6 +503,12 @@ class PartyRoomViewModel(
             socket.hostWarnings.collect { ev ->
                 if (ev.roomId != roomId) return@collect
                 _state.update { it.copy(operatorWarning = ev.message) }
+            }
+        }
+        viewModelScope.launch {
+            socket.pkStates.collect { battle ->
+                if (battle.roomA.id != roomId && battle.roomB.id != roomId) return@collect
+                _state.update { it.copy(battle = battle) }
             }
         }
     }

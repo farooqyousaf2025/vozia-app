@@ -21,6 +21,10 @@ import com.voiza.app.data.remote.dto.LiveKitTokenDto
 import com.voiza.app.data.remote.dto.OtpRequestBody
 import com.voiza.app.data.remote.dto.OtpResponse
 import com.voiza.app.data.remote.dto.OkResponse
+import com.voiza.app.data.remote.dto.PkBattleEnvelope
+import com.voiza.app.data.remote.dto.PkHistoryResponse
+import com.voiza.app.data.remote.dto.PkInviteBody
+import com.voiza.app.data.remote.dto.PkSettingsEnvelope
 import com.voiza.app.data.remote.dto.QuestsTodayDto
 import com.voiza.app.data.remote.dto.RechargeBody
 import com.voiza.app.data.remote.dto.RechargeResponse
@@ -281,4 +285,44 @@ interface VoizaApiService {
     /** Claim that a finished match was mis-settled; freezes payout for an operator. */
     @POST("api/games/{id}/dispute")
     suspend fun disputeGame(@Path("id") sessionId: String, @Body body: GameReasonBody): GameDisputeEnvelope
+
+    // ---- PK battles --------------------------------------------------------
+
+    /**
+     * The operator's dials this member is allowed to see: whether battles are on, how long one may
+     * last and what the winning room's top spender earns. The invitation form reads its duration
+     * choices from here so it cannot offer a length the server would refuse.
+     */
+    @GET("api/pk/settings")
+    suspend fun pkSettings(): PkSettingsEnvelope
+
+    /**
+     * The battle this room is in — invited or running — or null. A battle whose clock has run out
+     * comes back settled, so a screen opened right after the buzzer never counts up.
+     */
+    @GET("api/pk/rooms/{roomId}")
+    suspend fun pkBattleForRoom(@Path("roomId") roomId: String): PkBattleEnvelope
+
+    /** Finished, declined, cancelled and expired battles, newest first. */
+    @GET("api/pk/rooms/{roomId}/history")
+    suspend fun pkHistory(
+        @Path("roomId") roomId: String,
+        @Query("limit") limit: Int,
+    ): PkHistoryResponse
+
+    /**
+     * Challenge another host's room. The body is two room ids and an optional duration; a score,
+     * a winner or an XP figure in this body would be ignored by the server.
+     */
+    @POST("api/pk/invites")
+    suspend fun pkInvite(@Body body: PkInviteBody): PkBattleEnvelope
+
+    @POST("api/pk/battles/{id}/accept")
+    suspend fun pkAccept(@Path("id") battleId: String): PkBattleEnvelope
+
+    @POST("api/pk/battles/{id}/decline")
+    suspend fun pkDecline(@Path("id") battleId: String): PkBattleEnvelope
+
+    @POST("api/pk/battles/{id}/cancel")
+    suspend fun pkCancel(@Path("id") battleId: String): PkBattleEnvelope
 }

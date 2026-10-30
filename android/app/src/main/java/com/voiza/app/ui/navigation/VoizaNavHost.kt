@@ -12,6 +12,7 @@ import com.voiza.app.ui.screens.game.GameLobbyScreen
 import com.voiza.app.ui.screens.game.GameScreen
 import com.voiza.app.ui.screens.home.CreateRoomScreen
 import com.voiza.app.ui.screens.home.HomeScreen
+import com.voiza.app.ui.screens.pk.PkScreen
 import com.voiza.app.ui.screens.profile.ProfileScreen
 import com.voiza.app.ui.screens.quests.QuestsScreen
 import com.voiza.app.ui.screens.room.PartyRoomScreen
@@ -85,7 +86,19 @@ fun VoizaNavHost(
                 roomId = roomId,
                 onLeaveRoom = { navController.popBackStack() },
                 onOpenGames = { navController.navigate(Routes.gameLobby(roomId)) },
+                onOpenPk = { navController.navigate(Routes.pk(roomId)) },
                 onEditRoom = { navController.navigate(Routes.editRoom(roomId)) },
+            )
+        }
+
+        // Child of the room route, like the game desk: the voice connection stays alive.
+        composable(
+            route = Routes.PK_PATTERN,
+            arguments = listOf(navArgument(Routes.ROOM_ARG) { type = NavType.StringType }),
+        ) { entry ->
+            PkScreen(
+                roomId = entry.arguments?.getString(Routes.ROOM_ARG).orEmpty(),
+                onBack = { navController.popBackStack() },
             )
         }
 

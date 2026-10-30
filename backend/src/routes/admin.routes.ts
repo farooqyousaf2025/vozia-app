@@ -111,6 +111,13 @@ router.post('/quests', requirePermission('config:manage'), admin.createQuestEndp
 router.put('/quests/:key', requirePermission('config:manage'), admin.updateQuestEndpoint);
 router.delete('/quests/:key', requirePermission('config:manage'), admin.deleteQuestEndpoint);
 
+// PK battles (migration 0021). Watching races is a `user:read` concern — the console shows what
+// the rooms are doing — while the durations, the prize and stopping a running battle are
+// `config:manage`. Notice there is no route that *starts* a battle: that is two hosts agreeing.
+router.get('/pk', requirePermission('user:read'), admin.pkBattlesEndpoint);
+router.put('/pk/settings', requirePermission('config:manage'), admin.pkSettingsEndpoint);
+router.post('/pk/battles/:id/stop', requirePermission('config:manage'), admin.stopPkBattleEndpoint);
+
 router.get('/withdrawals', requirePermission('withdrawal:review'), admin.withdrawals);
 router.post('/withdrawals/:id/review', requirePermission('withdrawal:review'), admin.reviewWithdrawalEndpoint);
 

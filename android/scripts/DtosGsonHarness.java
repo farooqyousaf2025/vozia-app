@@ -5,11 +5,16 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.voiza.app.data.mapper.GameMappersKt;
 import com.voiza.app.data.mapper.MappersKt;
+import com.voiza.app.data.mapper.PkMappersKt;
 import com.voiza.app.data.mapper.QuestMappersKt;
 import com.voiza.app.data.remote.dto.*;
 import com.voiza.app.domain.model.CheckInResult;
 import com.voiza.app.domain.model.CheckInState;
 import com.voiza.app.domain.model.DailyQuest;
+import com.voiza.app.domain.model.PkBattle;
+import com.voiza.app.domain.model.PkSettings;
+import com.voiza.app.domain.model.PkSide;
+import com.voiza.app.domain.model.PkStatus;
 import com.voiza.app.domain.model.QuestsToday;
 import com.voiza.app.domain.model.GameHistoryRow;
 import com.voiza.app.domain.model.EmojiCatalogue;
@@ -820,6 +825,89 @@ public class DtosGsonHarness {
                 if (row.getNetDiamonds() != row.getPrizeDiamonds() - row.getEntryFeeDiamonds()) {
                     throw new IllegalStateException("net diamonds is not prize minus the server's fee");
                 }
+            }
+        });
+
+        System.out.println("\n--- PK battles (migration 0021) ---");
+
+        // The wire shape `pk:state` and GET /api/pk/rooms/:id send. Captured from a live battle in
+        // the e2e phase; repeated here so this harness needs no running stack to check the phone's
+        // own reading of it.
+        String battleJson = "{\"id\":\"b1\",\"status\":\"ACTIVE\","
+                + "\"roomA\":{\"id\":\"ra\",\"title\":\"Nights\",\"coverUrl\":null,\"hostId\":\"ha\",\"hostUsername\":\"alice\"},"
+                + "\"roomB\":{\"id\":\"rb\",\"title\":\"Dawn\",\"coverUrl\":\"/c.png\",\"hostId\":\"hb\",\"hostUsername\":\"bob\"},"
+                + "\"durationSeconds\":120,\"scores\":{\"a\":300,\"b\":100},\"unit\":\"diamond\","
+                + "\"invitedAt\":\"2026-10-30T10:00:00.000Z\",\"inviteExpiresAt\":\"2026-10-30T10:00:10.000Z\","
+                + "\"startedAt\":\"2026-10-30T10:00:12.000Z\",\"endsAt\":\"2026-10-30T10:02:12.000Z\","
+                + "\"finishedAt\":null,\"remainingMs\":90000,\"winnerRoomId\":null,"
+                + "\"bonusXp\":0,\"bonusUserId\":null,\"stopped\":false}";
+
+        t("pk:state payload -> PkBattle copies the ledger scores and resolves the sides", () -> {
+            PkBattle battle = PkMappersKt.toDomain(G.fromJson(battleJson, PkBattleDto.class));
+            if (battle == null) throw new IllegalStateException("a full battle mapped to null");
+            if (!battle.isActive()) throw new IllegalStateException("ACTIVE read as " + battle.getStatus());
+            if (battle.getScoreA() != 300 || battle.getScoreB() != 100) {
+                throw new IllegalStateException("scores changed on the phone: " + battle.getScoreA() + "/" + battle.getScoreB());
+            }
+            if (battle.getTotal() != 400) throw new IllegalStateException("total is not the two scores");
+            if (Math.abs(battle.getFractionA() - 0.75f) > 0.0001f) {
+                throw new IllegalStateException("share bar read " + battle.getFractionA());
+            }
+            if (battle.sideOf("ra") != PkSide.A || battle.sideOf("rb") != PkSide.B) {
+                throw new IllegalStateException("a room did not find its side");
+            }
+            if (battle.sideOf("elsewhere") != null) throw new IllegalStateException("a foreign room became a side");
+            if (!"Dawn".equals(battle.opponentOf("ra").getTitle())) {
+                throw new IllegalStateException("opponent lookup returned " + battle.opponentOf("ra").getTitle());
+            }
+            if (battle.getEndsAtMs() == null) throw new IllegalStateException("endsAt did not parse");
+            long endsAt = battle.getEndsAtMs();
+            if (battle.remainingAt(endsAt - 30000L) != 30000L) {
+                throw new IllegalStateException("clock is not measured against the server's deadline");
+            }
+            if (!"00:30".equals(battle.clockLabel(30000L)) || !"02:35".equals(battle.clockLabel(155000L))) {
+                throw new IllegalStateException("clock label is wrong");
+            }
+        });
+
+        t("a PK status this build does not know is never drawn as live", () -> {
+            PkBattle battle = PkMappersKt.toDomain(
+                    G.fromJson(battleJson.replace("\"ACTIVE\"", "\"PAUSED\""), PkBattleDto.class));
+            if (battle.getStatus() != PkStatus.UNKNOWN) throw new IllegalStateException("PAUSED read as " + battle.getStatus());
+            if (battle.isActive() || battle.isInvited() || battle.isFinished()) {
+                throw new IllegalStateException("an unknown status was treated as playable");
+            }
+            if (battle.remainingAt(System.currentTimeMillis()) != 0) {
+                throw new IllegalStateException("an unknown status kept counting");
+            }
+        });
+
+        t("a PK battle without both rooms maps to null instead of a half board", () -> {
+            String noB = battleJson.replace(
+                    "\"roomB\":{\"id\":\"rb\",\"title\":\"Dawn\",\"coverUrl\":\"/c.png\",\"hostId\":\"hb\",\"hostUsername\":\"bob\"}",
+                    "\"roomB\":null");
+            if (PkMappersKt.toDomain(G.fromJson(noB, PkBattleDto.class)) != null) {
+                throw new IllegalStateException("a one-room battle reached the screen");
+            }
+            if (PkMappersKt.toDomain(G.fromJson("{\"status\":\"ACTIVE\"}", PkBattleDto.class)) != null) {
+                throw new IllegalStateException("a battle with no id reached the screen");
+            }
+        });
+
+        t("PK settings publish the durations the invitation may offer", () -> {
+            PkSettings settings = PkMappersKt.toDomain(G.fromJson(
+                    "{\"isEnabled\":true,\"inviteTimeoutSeconds\":30,\"minDurationSeconds\":10,"
+                            + "\"defaultDurationSeconds\":10,\"maxDurationSeconds\":900,\"winnerBonusXp\":40}",
+                    PkSettingsDto.class));
+            if (!settings.isEnabled()) throw new IllegalStateException("switched-on dials read as off");
+            if (settings.getWinnerBonusXp() != 40) throw new IllegalStateException("prize line lost");
+            java.util.List<Integer> choices = settings.durationChoices();
+            if (!choices.equals(java.util.Arrays.asList(10, 60, 120, 180, 300, 600, 900))) {
+                throw new IllegalStateException("choices are " + choices);
+            }
+            PkSettings narrow = new PkSettings(settings.isEnabled(), 30, 100, 150, 200, 40);
+            if (!narrow.durationChoices().equals(java.util.Arrays.asList(120, 150, 180))) {
+                throw new IllegalStateException("narrow range offered " + narrow.durationChoices());
             }
         });
 

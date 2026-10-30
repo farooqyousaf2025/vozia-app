@@ -10,6 +10,8 @@ import com.voiza.app.domain.model.GameSession
 import com.voiza.app.domain.model.Gift
 import com.voiza.app.domain.model.Leaderboard
 import com.voiza.app.domain.model.MiniUser
+import com.voiza.app.domain.model.PkBattle
+import com.voiza.app.domain.model.PkSettings
 import com.voiza.app.domain.model.QuestsToday
 import com.voiza.app.domain.model.RankBoard
 import com.voiza.app.domain.model.Room
@@ -210,6 +212,31 @@ interface QuestRepository {
 
     /** Claim today's check-in; the response carries the refreshed status and the account. */
     suspend fun checkIn(): ApiResult<CheckInResult>
+}
+
+/**
+ * PK battles (migration 0021). The score, the winner and the prize are the server's; this
+ * interface cannot send any of them. [invite] only names the two rooms and a duration from the
+ * operator's range, and [accept]/[decline]/[cancel] are refused by the server unless the caller
+ * hosts the side they answer for.
+ */
+interface PkRepository {
+    /** The duration range and the prize the invitation form must quote. */
+    suspend fun settings(): ApiResult<PkSettings>
+
+    /** The battle this room is invited to or fighting, or null when it is free. */
+    suspend fun battleForRoom(roomId: String): ApiResult<PkBattle?>
+
+    /** Finished, declined, cancelled and expired battles this room took part in, newest first. */
+    suspend fun history(roomId: String, limit: Int = 10): ApiResult<List<PkBattle>>
+
+    suspend fun invite(roomId: String, opponentRoomId: String, durationSeconds: Int?): ApiResult<PkBattle>
+
+    suspend fun accept(battleId: String): ApiResult<PkBattle>
+
+    suspend fun decline(battleId: String): ApiResult<PkBattle>
+
+    suspend fun cancel(battleId: String): ApiResult<PkBattle>
 }
 
 /**

@@ -9,6 +9,7 @@ import { appendChat, appendSystemChat, fetchMiniUser, recomputeListenerCount, se
 import { forgetLikes, registerLike } from './like.service';
 import { recordQuestProgressOutside } from './quest.service';
 import { markDisconnected, submitAction } from './game.service';
+import { battleForRoom } from './pk.service';
 
 /**
  * Realtime transport for in-room events. Postgres stays authoritative for seats,
@@ -182,6 +183,11 @@ export function initSocket(httpServer: HttpServer): Server {
           await announceEntry(payload.roomId, user);
         }
         broadcastSeatUpdate(payload.roomId).catch((err) => console.warn('[socket] seat snapshot', err.message));
+        // A battle may already be running (or pending) when somebody walks in or reconnects. The
+        // room's live scores come back on this socket instead of waiting for the next gift.
+        battleForRoom(payload.roomId)
+          .then((battle) => { if (battle) socket.emit('pk:state', battle); })
+          .catch(() => undefined);
         ack?.({ ok: true });
       } catch (err) {
         ack?.({ ok: false, error: (err as Error).message });

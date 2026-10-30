@@ -1210,6 +1210,9 @@ function loadLivekitService() {
   // ---- H1c. daily quests and the check-in ------------------------------------
   await questPhase(adminToken, rose);
 
+  // ---- H1f. PK battles ------------------------------------------------------
+  await pkPhase(adminToken);
+
   // ---- H2. seat policy ------------------------------------------------------
   // "A default of 15 speaker seats, configurable by the administrator" is only true if the
   // number comes from the database rather than a constant, so this drives the policy itself:
@@ -2051,5 +2054,383 @@ async function questPhase(adminToken, rose) {
 
   hostSock.close();
   chatSock.close();
+  await wait(300);
+}
+
+/**
+ * §PK — two rooms, one clock, a race decided by the gift ledger.
+ *
+ * The score is not written by anything: it is the sum of `GIFT_SENT` rows inside a room between
+ * the start and the end of the battle. Every check here therefore compares the number the API
+ * shows with the ledger itself, and every way a client could try to influence it (a forged body, a
+ * member calling a host route, a gift outside the window, a gift after the buzzer) is exercised.
+ */
+async function pkPhase(adminToken) {
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const xpOf = async (id) => Number(await sql(`select xp from users where id='${id}'`));
+  const settingsSql = 'select is_enabled, invite_timeout_seconds, min_duration_seconds, default_duration_seconds, max_duration_seconds, winner_bonus_xp from pk_settings where singleton';
+  const originalRaw = await sql(settingsSql);
+
+  const adminView = await api('GET', '/api/admin/pk', { token: adminToken });
+  const original = adminView.json && adminView.json.settings;
+  check('pk: the console reads the dials and the live board from one call',
+    adminView.status === 200 && !!original && Array.isArray(adminView.json.live) && Array.isArray(adminView.json.recent) &&
+    typeof original.minDurationSeconds === 'number' && typeof original.winnerBonusXp === 'number',
+    { status: adminView.status, settings: original });
+
+  // Ten-second battles keep the suite short; the dials are put back exactly at the end.
+  const tuned = await api('PUT', '/api/admin/pk/settings', {
+    token: adminToken, body: { minDurationSeconds: 10, defaultDurationSeconds: 10, maxDurationSeconds: 900 },
+  });
+  check('pk: an operator can move the duration floor without touching the other dials',
+    tuned.status === 200 && tuned.json.settings.minDurationSeconds === 10 &&
+    tuned.json.settings.defaultDurationSeconds === 10 &&
+    tuned.json.settings.winnerBonusXp === original.winnerBonusXp &&
+    tuned.json.settings.inviteTimeoutSeconds === original.inviteTimeoutSeconds,
+    tuned.json && tuned.json.settings);
+
+  const mk = (suffix, who) => login(`+15557${stamp}5${suffix}`, `e2e_${who}_${stamp.slice(-4)}`);
+  const hostA = await mk('1', 'hans');
+  const hostB = await mk('2', 'hana');
+  const member = await mk('3', 'milo');
+  const gifterA = await mk('4', 'gina');
+  const gifterB = await mk('5', 'gabe');
+  check('pk: five fresh members are created for the race',
+    [hostA, hostB, member, gifterA, gifterB].every((u) => u && u.token && u.user && u.created === true),
+    [hostA, hostB, member, gifterA, gifterB].map((u) => u && u.created));
+
+  const roomA = (await api('POST', '/api/rooms', { token: hostA.token, body: { title: `E2E PK Alpha ${stamp}`, category: 'CHAT', type: 'PUBLIC' } })).json.room.id;
+  const roomB = (await api('POST', '/api/rooms', { token: hostB.token, body: { title: `E2E PK Beta ${stamp}`, category: 'CHAT', type: 'PUBLIC' } })).json.room.id;
+  const roomC = (await api('POST', '/api/rooms', { token: hostA.token, body: { title: `E2E PK Gamma ${stamp}`, category: 'CHAT', type: 'PUBLIC' } })).json.room.id;
+  const roomD = (await api('POST', '/api/rooms', { token: hostB.token, body: { title: `E2E PK Delta ${stamp}`, category: 'CHAT', type: 'PUBLIC' } })).json.room.id;
+  await api('POST', `/api/rooms/${roomD}/close`, { token: hostB.token, body: {} });
+  check('pk: four rooms exist, one of them closed, to test every refusal',
+    [roomA, roomB, roomC, roomD].every(Boolean) && await sql(`select status from rooms where id='${roomD}'`) === 'CLOSED',
+    { rooms: [roomA, roomB, roomC, roomD] });
+
+  const anonBoard = await api('GET', `/api/pk/rooms/${roomA}`);
+  const anonInvite = await api('POST', '/api/pk/invites', { body: { roomId: roomA, opponentRoomId: roomB } });
+  const anonSettings = await api('GET', '/api/pk/settings');
+  check('pk: the board, the invitation and the dials all require a session',
+    anonBoard.status === 401 && anonInvite.status === 401 && anonSettings.status === 401,
+    { get: anonBoard.status, post: anonInvite.status, settings: anonSettings.status });
+
+  const memberSettings = await api('GET', '/api/pk/settings', { token: member.token });
+  check('pk: the phone reads the same duration range the invitation form must offer',
+    memberSettings.status === 200 && memberSettings.json.settings.minDurationSeconds === 10 &&
+    memberSettings.json.settings.defaultDurationSeconds === 10 &&
+    memberSettings.json.settings.maxDurationSeconds === 900,
+    memberSettings.json && memberSettings.json.settings);
+
+  const badId = await api('GET', '/api/pk/rooms/not-a-uuid', { token: member.token });
+  check('pk: a room id that is not a UUID is a 400, not a 500',
+    badId.status === 400, { status: badId.status });
+
+  const closedTarget = await api('POST', '/api/pk/invites', {
+    token: hostB.token, body: { roomId: roomB, opponentRoomId: roomD },
+  });
+  check('pk: a closed room cannot be challenged',
+    closedTarget.status === 409 && closedTarget.json.error.code === 'room_closed',
+    { status: closedTarget.status, code: closedTarget.json && closedTarget.json.error && closedTarget.json.error.code });
+
+  const memberInvite = await api('POST', '/api/pk/invites', {
+    token: member.token, body: { roomId: roomA, opponentRoomId: roomB },
+  });
+  check('pk: a member who does not host the room cannot start a battle',
+    memberInvite.status === 403 && memberInvite.json.error.code === 'not_host',
+    { status: memberInvite.status, code: memberInvite.json && memberInvite.json.error && memberInvite.json.error.code });
+
+  const selfBattle = await api('POST', '/api/pk/invites', {
+    token: hostA.token, body: { roomId: roomA, opponentRoomId: roomA },
+  });
+  const shortBattle = await api('POST', '/api/pk/invites', {
+    token: hostA.token, body: { roomId: roomA, opponentRoomId: roomB, durationSeconds: 5 },
+  });
+  check('pk: a room cannot fight itself, and a duration under the floor is refused',
+    selfBattle.status === 400 && selfBattle.json.error.code === 'pk_same_room' &&
+    shortBattle.status === 400 && shortBattle.json.error.code === 'pk_duration_out_of_range' &&
+    (await sql(`select count(*) from pk_battles where room_a_id in ('${roomA}','${roomB}') or room_b_id in ('${roomA}','${roomB}')`)) === '0',
+    { self: selfBattle.json && selfBattle.json.error, short: shortBattle.json && shortBattle.json.error });
+
+  // ---- sockets: both rooms and the challenged host are told ------------------
+  const conn = (token) => ioLib('http://127.0.0.1:4000', { transports: ['websocket'], forceNew: true, auth: { token } });
+  const connected = (s) => (s.connected
+    ? Promise.resolve(true)
+    : Promise.race([new Promise((r) => s.once('connect', r)), wait(20000)]));
+  const ack = (s, ev, payload, ms = 15000) => new Promise((resolve) => {
+    const t = setTimeout(() => resolve({ __timeout: true }), ms);
+    s.emit(ev, payload, (r) => { clearTimeout(t); resolve(r); });
+  });
+  const joinRoom = async (s, roomId) => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (!s.connected) await connected(s);
+      const r = await ack(s, 'room:join', { roomId }, 8000);
+      if (!r || !r.__timeout) return r;
+    }
+    return { __timeout: true };
+  };
+  const sockA = conn(hostA.token);
+  const sockB = conn(hostB.token);
+  // Connected but not inside any room: this is the host who has the app open on the lobby.
+  const sockBIdle = conn(hostB.token);
+  await connected(sockA);
+  await connected(sockB);
+  await connected(sockBIdle);
+  await joinRoom(sockA, roomA);
+  await joinRoom(sockB, roomB);
+  const roomAEvents = [];
+  const idleInvites = [];
+  sockA.on('pk:state', (b) => roomAEvents.push(b));
+  sockBIdle.on('pk:invited', (b) => idleInvites.push(b));
+
+  const invite = await api('POST', '/api/pk/invites', {
+    token: hostA.token, body: { roomId: roomA, opponentRoomId: roomB, durationSeconds: 120 },
+  });
+  const battle = invite.json && invite.json.battle;
+  const battleId = battle && battle.id;
+  const ttl = battle ? Math.round((new Date(battle.inviteExpiresAt) - new Date(battle.invitedAt)) / 1000) : -1;
+  check('pk: the challenger opens an invitation with the operator\'s timeout',
+    invite.status === 201 && !!battle && battle.status === 'INVITED' &&
+    battle.roomA.id === roomA && battle.roomB.id === roomB &&
+    battle.durationSeconds === 120 && battle.unit === 'diamond' &&
+    battle.scores.a === 0 && battle.scores.b === 0 && battle.startedAt === null &&
+    ttl === original.inviteTimeoutSeconds,
+    { status: invite.status, battle: battle && { status: battle.status, duration: battle.durationSeconds, ttl, inviteExpiresAt: battle.inviteExpiresAt } });
+
+  await wait(700);
+  check('pk: the invitation reaches the room socket and the challenged host\'s private channel',
+    roomAEvents.some((e) => e.id === battleId && e.status === 'INVITED') &&
+    idleInvites.some((e) => e.id === battleId && e.status === 'INVITED'),
+    { roomEvents: roomAEvents.map((e) => e.status), privateInvites: idleInvites.map((e) => e.status) });
+
+  // ---- gifts decide the score -------------------------------------------------
+  const catalog = await api('GET', '/api/gifts', {});
+  const allGifts = (catalog.json && (catalog.json.gifts || catalog.json.data)) || [];
+  const cheap = allGifts.filter((g) => (g.minVipLevel || 0) === 0).sort((x, y) => x.diamondPrice - y.diamondPrice)[0];
+  const price = cheap.diamondPrice;
+  await api('POST', '/api/wallet/recharge', { token: gifterA.token, body: { amountDiamonds: price * 20 } });
+  await api('POST', '/api/wallet/recharge', { token: gifterB.token, body: { amountDiamonds: price * 20 } });
+
+  // Sent while the invitation is still pending: this money is inside room A, but not in the race.
+  // The body also carries band-aid numbers a modified client might try; none of them are read.
+  const early = await api('POST', '/api/gifts/send', {
+    token: gifterA.token,
+    body: { giftId: cheap.id, receiverId: hostA.user.id, quantity: 1, roomId: roomA, scoreA: 999999, winnerRoomId: roomA },
+  });
+  const outside = await api('POST', '/api/gifts/send', {
+    token: gifterA.token, body: { giftId: cheap.id, receiverId: hostA.user.id, quantity: 4, roomId: roomC },
+  });
+
+  const memberAccept = await api('POST', `/api/pk/battles/${battleId}/accept`, { token: member.token, body: {} });
+  check('pk: only the challenged room\'s host can accept',
+    memberAccept.status === 403 && memberAccept.json.error.code === 'not_host',
+    { status: memberAccept.status, code: memberAccept.json && memberAccept.json.error && memberAccept.json.error.code });
+
+  const challengerAccept = await api('POST', `/api/pk/battles/${battleId}/accept`, { token: hostA.token, body: {} });
+  check('pk: the challenge cannot be accepted by the room that sent it',
+    challengerAccept.status === 403, { status: challengerAccept.status });
+
+  const busy = await api('POST', '/api/pk/invites', {
+    token: hostB.token, body: { roomId: roomB, opponentRoomId: roomA },
+  });
+  check('pk: a room already in a battle is not dragged into a second one',
+    busy.status === 409 && busy.json.error.code === 'pk_room_busy',
+    { status: busy.status, code: busy.json && busy.json.error && busy.json.error.code });
+
+  const accepted = await api('POST', `/api/pk/battles/${battleId}/accept`, { token: hostB.token, body: {} });
+  const active = accepted.json && accepted.json.battle;
+  const windowSeconds = active ? Math.round((new Date(active.endsAt) - new Date(active.startedAt)) / 1000) : -1;
+  check('pk: the challenged host starts the clock with the agreed duration',
+    accepted.status === 200 && !!active && active.status === 'ACTIVE' &&
+    windowSeconds === 120 && active.remainingMs > 0 && active.remainingMs <= 120_000,
+    { status: accepted.status, windowSeconds, remainingMs: active && active.remainingMs });
+
+  const replayAccept = await api('POST', `/api/pk/battles/${battleId}/accept`, { token: hostB.token, body: {} });
+  check('pk: an accepted challenge cannot be accepted twice',
+    replayAccept.status === 409 && replayAccept.json.error.code === 'pk_not_invited',
+    { status: replayAccept.status, code: replayAccept.json && replayAccept.json.error && replayAccept.json.error.code });
+
+  await wait(700);
+  check('pk: both rooms are told the race started',
+    roomAEvents.some((e) => e.id === battleId && e.status === 'ACTIVE'),
+    roomAEvents.map((e) => e.status));
+
+  // A socket that walks into a running room learns the board without a REST call.
+  const sockLate = conn(member.token);
+  const lateEvents = [];
+  sockLate.on('pk:state', (b) => lateEvents.push(b));
+  await connected(sockLate);
+  await joinRoom(sockLate, roomB);
+  await wait(700);
+  check('pk: joining a room mid-battle pushes the current board to that socket',
+    lateEvents.some((e) => e.id === battleId && e.status === 'ACTIVE' && e.scores.b === 0),
+    lateEvents.map((e) => `${e.status}:${e.scores.a}-${e.scores.b}`));
+
+  // ---- gifts decide the score -------------------------------------------------
+  const inA = await api('POST', '/api/gifts/send', {
+    token: gifterA.token, body: { giftId: cheap.id, receiverId: hostA.user.id, quantity: 2, roomId: roomA },
+  });
+  const inB = await api('POST', '/api/gifts/send', {
+    token: gifterB.token, body: { giftId: cheap.id, receiverId: hostB.user.id, quantity: 3, roomId: roomB },
+  });
+  check('pk: gifts post inside and outside the race',
+    early.status === 201 && outside.status === 201 && inA.status === 201 && inB.status === 201,
+    [early.status, outside.status, inA.status, inB.status]);
+
+  await wait(1000);
+  const liveBoard = await api('GET', `/api/pk/battles/${battleId}`, { token: member.token });
+  const liveScores = liveBoard.json && liveBoard.json.battle && liveBoard.json.battle.scores;
+  const inWindow = async (roomId) => (!active ? -1 : Number(await sql(
+    `select coalesce(sum(amount_diamonds),0) from transactions
+      where type='GIFT_SENT' and room_id='${roomId}'
+        and created_at >= '${active.startedAt}' and created_at <= '${active.endsAt}'`,
+  )));
+  const roomTotal = async (roomId) => Number(await sql(
+    `select coalesce(sum(amount_diamonds),0) from transactions where type='GIFT_SENT' and room_id='${roomId}'`,
+  ));
+  check('pk: the live score is exactly the ledger inside the window — before, outside and forged bodies excluded',
+    !!liveScores && liveScores.a === price * 2 && liveScores.b === price * 3 &&
+    await inWindow(roomA) === price * 2 && await inWindow(roomB) === price * 3 &&
+    await roomTotal(roomA) === price * 3 && await roomTotal(roomC) === price * 4,
+    { scores: liveScores, price, roomAInWindow: await inWindow(roomA), roomATotal: await roomTotal(roomA), roomC: await roomTotal(roomC) });
+
+  const roomBoard = await api('GET', `/api/pk/rooms/${roomB}`, { token: member.token });
+  check('pk: the room screen finds the same battle by room id',
+    roomBoard.status === 200 && !!roomBoard.json.battle && roomBoard.json.battle.id === battleId &&
+    roomBoard.json.battle.scores.b === price * 3,
+    roomBoard.json && roomBoard.json.battle && roomBoard.json.battle.scores);
+
+  check('pk: a gift inside the race pushes the new score to the other room',
+    roomAEvents.some((e) => e.id === battleId && e.status === 'ACTIVE' && e.scores.b === price * 3),
+    roomAEvents.filter((e) => e.id === battleId).map((e) => `${e.scores.a}-${e.scores.b}`));
+
+  // ---- settlement: the operator stops it, the winner is paid once -------------
+  const memberStop = await api('POST', `/api/admin/pk/battles/${battleId}/stop`, { token: member.token, body: {} });
+  check('pk: a member cannot stop a battle from the admin route',
+    memberStop.status === 403, { status: memberStop.status });
+
+  const xpWinnerBefore = await xpOf(gifterB.user.id);
+  const xpLoserBefore = await xpOf(gifterA.user.id);
+  const stopped = await api('POST', `/api/admin/pk/battles/${battleId}/stop`, { token: adminToken, body: {} });
+  const finished = (stopped.json && stopped.json.battle) || {};
+  const xpWinnerAfter = await xpOf(gifterB.user.id);
+  const xpLoserAfter = await xpOf(gifterA.user.id);
+  check('pk: stopping settles with the ledger\'s numbers and names the room with more diamonds',
+    stopped.status === 200 && !!finished && finished.status === 'FINISHED' && finished.stopped === true &&
+    finished.scores.a === price * 2 && finished.scores.b === price * 3 &&
+    finished.winnerRoomId === roomB && finished.finishedAt !== null && finished.remainingMs === 0,
+    { status: stopped.status, battle: finished && { status: finished.status, scores: finished.scores, winner: finished.winnerRoomId } });
+  check('pk: the bonus goes to the winning room\'s top spender and nowhere else',
+    finished.bonusUserId === gifterB.user.id && finished.bonusXp === original.winnerBonusXp &&
+    xpWinnerAfter === xpWinnerBefore + original.winnerBonusXp && xpLoserAfter === xpLoserBefore,
+    { bonus: finished && { userId: finished.bonusUserId, xp: finished.bonusXp }, winnerXp: [xpWinnerBefore, xpWinnerAfter], loserXp: [xpLoserBefore, xpLoserAfter] });
+
+  check('pk: the stop is attributable in the audit log',
+    Number(await sql(`select count(*) from admin_audit where action='PK_BATTLE_STOP' and target_id='${battleId}'`)) === 1,
+    await sql(`select summary from admin_audit where action='PK_BATTLE_STOP' and target_id='${battleId}'`));
+
+  // A gift after the buzzer lands in the room but cannot move a settled score.
+  const afterBuzzer = await api('POST', '/api/gifts/send', {
+    token: gifterA.token, body: { giftId: cheap.id, receiverId: hostA.user.id, quantity: 2, roomId: roomA },
+  });
+  await wait(500);
+  const frozen = await api('GET', `/api/pk/battles/${battleId}`, { token: member.token });
+  check('pk: a settled battle keeps its frozen result even as more gifts land in the room',
+    afterBuzzer.status === 201 &&
+    !!frozen.json.battle && frozen.json.battle.scores.a === price * 2 && frozen.json.battle.scores.b === price * 3 &&
+    await inWindow(roomA) === price * 2 + price * 2,
+    { gift: afterBuzzer.status, frozen: frozen.json.battle && frozen.json.battle.scores, ledgerNow: await inWindow(roomA) });
+
+  const stopAgain = await api('POST', `/api/admin/pk/battles/${battleId}/stop`, { token: adminToken, body: {} });
+  const noBattle = await api('GET', `/api/pk/rooms/${roomA}`, { token: member.token });
+  const history = await api('GET', `/api/pk/rooms/${roomA}/history`, { token: member.token });
+  check('pk: a finished battle is no longer live, and the room\'s history keeps it',
+    stopAgain.status === 409 && stopAgain.json.error.code === 'pk_not_active' &&
+    noBattle.json.battle === null &&
+    history.status === 200 && (history.json.battles || []).some((b) => b.id === battleId && b.status === 'FINISHED'),
+    { stopAgain: stopAgain.status, battle: noBattle.json && noBattle.json.battle, history: (history.json && history.json.battles || []).map((b) => b.status) });
+
+  const adminAfter = await api('GET', '/api/admin/pk', { token: adminToken });
+  check('pk: the console moves the battle from live to recent',
+    adminAfter.status === 200 &&
+    !(adminAfter.json.live || []).some((b) => b.id === battleId) &&
+    (adminAfter.json.recent || []).some((b) => b.id === battleId && b.status === 'FINISHED'),
+    { live: (adminAfter.json && adminAfter.json.live || []).length, recent: (adminAfter.json && adminAfter.json.recent || []).length });
+
+  // ---- a draw pays nobody ------------------------------------------------------
+  const drawInvite = await api('POST', '/api/pk/invites', {
+    token: hostA.token, body: { roomId: roomA, opponentRoomId: roomB },
+  });
+  const drawId = drawInvite.json && drawInvite.json.battle && drawInvite.json.battle.id;
+  await api('POST', `/api/pk/battles/${drawId}/accept`, { token: hostB.token, body: {} });
+  // 10 s of clock, then the sweeper (every 2 s) settles it.
+  await wait(13_500);
+  const draw = await api('GET', `/api/pk/battles/${drawId}`, { token: member.token });
+  check('pk: a battle nobody scored ends as a 0–0 draw with no winner and no prize',
+    !!draw.json.battle && draw.json.battle.status === 'FINISHED' && draw.json.battle.stopped === false &&
+    draw.json.battle.scores.a === 0 && draw.json.battle.scores.b === 0 &&
+    draw.json.battle.winnerRoomId === null && draw.json.battle.bonusXp === 0 && draw.json.battle.bonusUserId === null,
+    draw.json && draw.json.battle && { status: draw.json.battle.status, scores: draw.json.battle.scores, winner: draw.json.battle.winnerRoomId });
+
+  // ---- an unanswered invitation expires and frees the room ---------------------
+  const expInvite = await api('POST', '/api/pk/invites', {
+    token: hostA.token, body: { roomId: roomA, opponentRoomId: roomB },
+  });
+  const expId = expInvite.json && expInvite.json.battle && expInvite.json.battle.id;
+  await sql(`update pk_battles set invite_expires_at = now() - interval '1 second' where id='${expId}'`);
+  await wait(3500);
+  const expired = await api('GET', `/api/pk/battles/${expId}`, { token: member.token });
+  const lateAccept = await api('POST', `/api/pk/battles/${expId}/accept`, { token: hostB.token, body: {} });
+  check('pk: an unanswered invitation expires on its own and cannot be accepted afterwards',
+    !!expired.json.battle && expired.json.battle.status === 'EXPIRED' &&
+    lateAccept.status === 409 && lateAccept.json.error.code === 'pk_not_invited',
+    { status: expired.json && expired.json.battle && expired.json.battle.status, accept: lateAccept.status });
+
+  // ---- the two ways a host says no --------------------------------------------
+  const declineInvite = await api('POST', '/api/pk/invites', {
+    token: hostA.token, body: { roomId: roomA, opponentRoomId: roomB },
+  });
+  const declineId = declineInvite.json && declineInvite.json.battle && declineInvite.json.battle.id;
+  const decline = await api('POST', `/api/pk/battles/${declineId}/decline`, { token: hostB.token, body: {} });
+  const cancelInvite = await api('POST', '/api/pk/invites', {
+    token: hostA.token, body: { roomId: roomA, opponentRoomId: roomB },
+  });
+  const cancelId = cancelInvite.json && cancelInvite.json.battle && cancelInvite.json.battle.id;
+  const memberCancel = await api('POST', `/api/pk/battles/${cancelId}/cancel`, { token: member.token, body: {} });
+  const cancelled = await api('POST', `/api/pk/battles/${cancelId}/cancel`, { token: hostA.token, body: {} });
+  check('pk: the challenged host can decline, and only the challenger can take an offer back',
+    decline.status === 200 && decline.json.battle.status === 'DECLINED' && decline.json.battle.bonusXp === 0 &&
+    memberCancel.status === 403 &&
+    cancelled.status === 200 && cancelled.json.battle.status === 'CANCELLED' &&
+    await sql(`select count(*) from pk_battles where id in ('${declineId}','${cancelId}') and bonus_user_id is null and bonus_xp_awarded = 0`) === '2',
+    { decline: decline.json && decline.json.battle && decline.json.battle.status, cancel: cancelled.json && cancelled.json.battle && cancelled.json.battle.status });
+
+  // ---- the off switch ----------------------------------------------------------
+  const off = await api('PUT', '/api/admin/pk/settings', { token: adminToken, body: { isEnabled: false } });
+  const refused = await api('POST', '/api/pk/invites', {
+    token: hostA.token, body: { roomId: roomA, opponentRoomId: roomB },
+  });
+  check('pk: switching battles off refuses new challenges without touching a running one',
+    off.status === 200 && off.json.settings.isEnabled === false &&
+    refused.status === 409 && refused.json.error.code === 'pk_disabled' &&
+    await sql(`select count(*) from pk_battles where status='INVITED' and (room_a_id in ('${roomA}','${roomB}') or room_b_id in ('${roomA}','${roomB}'))`) === '0',
+    { status: refused.status, code: refused.json && refused.json.error && refused.json.error.code });
+
+  const restored = await api('PUT', '/api/admin/pk/settings', { token: adminToken, body: original });
+  const restoredRaw = await sql(settingsSql);
+  check('pk: the dials are put back exactly as the run found them',
+    restored.status === 200 &&
+    ['isEnabled', 'inviteTimeoutSeconds', 'minDurationSeconds', 'defaultDurationSeconds', 'maxDurationSeconds', 'winnerBonusXp']
+      .every((k) => restored.json.settings[k] === original[k]) &&
+    restoredRaw === originalRaw,
+    { before: originalRaw, after: restoredRaw });
+
+  const settingsAudit = Number(await sql(`select count(*) from admin_audit where action='PK_SETTINGS_UPDATE' and target_id='singleton'`));
+  check('pk: every dial move is in the audit log', settingsAudit >= 3, { auditRows: settingsAudit });
+
+  for (const s of [sockA, sockB, sockBIdle, sockLate]) s.close();
+  for (const [id, token] of [[roomA, hostA.token], [roomB, hostB.token], [roomC, hostA.token]]) {
+    await api('POST', `/api/rooms/${id}/close`, { token, body: {} });
+  }
   await wait(300);
 }

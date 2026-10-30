@@ -6,7 +6,8 @@ import { env, assertSecretsAreSafe } from './config/env';
 import { bootstrapAdmin } from './controllers/auth.controller';
 import { setGameBroadcaster, sweepExpiredSessions } from './services/game.service';
 import { expireStaleOrders } from './services/seller-recharge.service';
-import { emitToRoom, initSocket } from './services/socket.service';
+import { expireInvites, settleDueBattles, setPkBroadcaster } from './services/pk.service';
+import { emitToRoom, emitToUser, initSocket } from './services/socket.service';
 import { loadRankRegistry } from './services/rank.service';
 import { loadThemeRegistry } from './services/theme.service';
 
@@ -40,6 +41,13 @@ async function main(): Promise<void> {
   // because socket handlers call back into the engine — so the emitter is handed over here.
   setGameBroadcaster((roomId, event, payload) => emitToRoom(roomId, event, payload));
 
+  // PK battles announce through the same seam for the same reason. A battle reaches two rooms and,
+  // for an invitation, one host's private channel, so the target is part of the payload here.
+  setPkBroadcaster((target, event, payload) => {
+    if (target.roomId) emitToRoom(target.roomId, event, payload);
+    if (target.userId) emitToUser(target.userId, event, payload);
+  });
+
   // Expired turns are swept by the clock instead of by a per-session timer, so a backend
   // restart cannot strand a match whose timer died with the old process.
   const sweeper = setInterval(() => {
@@ -59,6 +67,19 @@ async function main(): Promise<void> {
   }, 60_000);
   rechargeSweeper.unref();
 
+  // PK battles end on the clock, not on a request from the room that lost. Two seconds is short
+  // enough that a supporter watching the countdown hits the buzzer at roughly the same moment the
+  // score freezes; `settleBattle` takes the row lock, so the sweep racing a reader is harmless.
+  const pkSweeper = setInterval(() => {
+    settleDueBattles()
+      .then((settled) => {
+        if (settled) console.info(`[voiza] settled ${settled} PK battle(s)`);
+      })
+      .catch((err) => console.warn('[voiza] PK sweep failed:', err.message));
+    expireInvites().catch((err) => console.warn('[voiza] PK invite sweep failed:', err.message));
+  }, 2_000);
+  pkSweeper.unref();
+
   server.listen(env.port, () => {
     console.info(`[voiza] API + Socket.IO listening on :${env.port} (${env.nodeEnv})`);
     console.info(`[voiza] LiveKit client URL: ${env.livekit.publicUrl}`);
@@ -69,6 +90,7 @@ async function main(): Promise<void> {
     const timer = setTimeout(() => process.exit(1), 8000);
     clearInterval(sweeper);
     clearInterval(rechargeSweeper);
+    clearInterval(pkSweeper);
     io.close();
     server.close();
     await Promise.allSettled([closePool(), closeRedis()]);

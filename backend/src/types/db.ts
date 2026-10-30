@@ -637,3 +637,41 @@ export type DailyCheckinRow = {
   xp_awarded: number;
   created_at: Date;
 };
+
+/** `pk_settings` (migration 0021) — the single row of PK battle dials. */
+export type PkSettingsRow = {
+  singleton: boolean;
+  is_enabled: boolean;
+  invite_timeout_seconds: number;
+  min_duration_seconds: number;
+  default_duration_seconds: number;
+  max_duration_seconds: number;
+  winner_bonus_xp: number;
+  updated_at: Date;
+};
+
+/**
+ * `pk_battles` (migration 0021) — one challenge or race between two rooms.
+ * `score_a`/`score_b` are NULL until settlement freezes them; a live score is summed from the ledger.
+ */
+export type PkBattleRow = {
+  id: string;
+  room_a_id: string;
+  room_b_id: string;
+  invited_by: string;
+  duration_seconds: number;
+  status: string;
+  invited_at: Date;
+  invite_expires_at: Date;
+  started_at: Date | null;
+  ends_at: Date | null;
+  finished_at: Date | null;
+  score_a: string | number | null;
+  score_b: string | number | null;
+  winner_room_id: string | null;
+  bonus_user_id: string | null;
+  bonus_xp_awarded: number;
+  stopped_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+};

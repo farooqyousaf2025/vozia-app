@@ -34,6 +34,7 @@ import {
   updateQuest,
   updateQuestSettings,
 } from '../services/quest.service';
+import { listAdminPk, stopBattle, updatePkSettings } from '../services/pk.service';
 import { UserRow } from '../types/db';
 import {
   ApiError,
@@ -46,6 +47,7 @@ import {
   requireEnum,
   requireInt,
   requireString,
+  requireUuid,
 } from '../utils/http';
 import { toAdmin, toUser, toWithdrawal, UserDto } from '../utils/serialize';
 import {
@@ -876,6 +878,44 @@ export const questSettingsEndpoint = asyncHandler(async (req: Request, res: Resp
     details: { changes: req.body ?? {}, settings },
   });
   res.json({ settings });
+});
+
+/**
+ * PK battles (migration 0021).
+ *
+ * The console can watch, re-tune and stop — never start. A race exists only because two hosts
+ * agreed to it, and the stop route freezes the score as it stands rather than letting an operator
+ * pick a winner. Both writes are audited; the stop is attributed to the operator who pressed it.
+ */
+export const pkBattlesEndpoint = asyncHandler(async (_req: Request, res: Response) => {
+  res.json(await listAdminPk());
+});
+
+export const pkSettingsEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const settings = await updatePkSettings(req.body ?? {});
+  await logAction(req, {
+    action: 'PK_SETTINGS_UPDATE',
+    targetType: 'pk_settings',
+    targetId: 'singleton',
+    summary: `PK ${settings.isEnabled ? 'enabled' : 'disabled'}, ${settings.minDurationSeconds}-${settings.maxDurationSeconds}s (default ${settings.defaultDurationSeconds}s), invite timeout ${settings.inviteTimeoutSeconds}s, winner bonus ${settings.winnerBonusXp} XP`,
+    details: { changes: req.body ?? {}, settings },
+  });
+  res.json({ settings });
+});
+
+export const stopPkBattleEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const id = requireUuid(req.params.id, 'battleId');
+  const battle = await stopBattle(req.admin!.sub, id);
+  await logAction(req, {
+    action: 'PK_BATTLE_STOP',
+    targetType: 'pk_battle',
+    targetId: id,
+    summary: `Stopped ${battle.roomA.title} vs ${battle.roomB.title} at ${battle.scores.a}-${battle.scores.b}` +
+      (battle.winnerRoomId ? `, winner ${battle.winnerRoomId === battle.roomA.id ? battle.roomA.title : battle.roomB.title}` : ', a draw') +
+      (battle.bonusXp > 0 ? `, ${battle.bonusXp} XP to the top supporter` : ''),
+    details: { battle },
+  });
+  res.json({ battle });
 });
 
 export const withdrawals = asyncHandler(async (req: Request, res: Response) => {

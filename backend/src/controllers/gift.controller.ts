@@ -6,6 +6,7 @@ import { sendGift } from '../services/ledger.service';
 import { appendSystemChat } from '../services/room.service';
 import { listGifts } from '../services/admin.service';
 import { broadcastGiftAnimated, emitToRoom, emitToUser } from '../services/socket.service';
+import { announceGiftScore } from '../services/pk.service';
 import { pushToUser } from '../services/push.service';
 
 export const catalog = asyncHandler(async (_req: Request, res: Response) => {
@@ -56,6 +57,10 @@ export const send = asyncHandler(async (req: Request, res: Response) => {
       totalRCoins: transaction.amountRCoins,
     });
     emitToRoom(roomId, 'room:chat_message', systemMessage);
+    // If either room is fighting, the new score goes out now. The 201 does not wait for it: the
+    // battle's score is the ledger, and a slow broadcast only makes the board a few hundred
+    // milliseconds late, never wrong.
+    announceGiftScore(roomId).catch((err) => console.warn('[gift] PK score', err.message));
   } else {
     // A private gift usually lands while the receiver is somewhere else, so it is
     // the one gift path that needs a notification; an in-room gift is already on
