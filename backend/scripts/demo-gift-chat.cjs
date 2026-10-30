@@ -77,7 +77,7 @@ async function api(method, path, { token, body } = {}) {
   }
   // Chat is socket-only (room.routes.ts has no REST chat endpoint), so fan the
   // line out over the same Socket.IO transport a client uses.
-  const io = require(path.join(__dirname, '..', 'node_modules', 'socket.io', 'client-dist', 'socket.io.js'));
+  const io = require('socket.io-client');
   const socket = io(API, { transports: ['websocket'], forceNew: true, auth: { token } });
   const chat = await new Promise((resolve) => {
     const timer = setTimeout(() => resolve('timeout'), 8000);

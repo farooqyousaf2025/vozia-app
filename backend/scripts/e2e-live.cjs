@@ -19,7 +19,10 @@ const BE_ROOT = path.resolve(__dirname, '..');
 // the suite does not need a Postgres client binary on PATH.
 const PSQL = process.env.E2E_PSQL || '';
 const LK_ROOT = path.join(BE_ROOT, 'node_modules', 'livekit-server-sdk');
-const SOCKET_IO = path.join(BE_ROOT, 'node_modules', 'socket.io', 'client-dist', 'socket.io.js');
+// The Node client, not socket.io's browser bundle: that bundle expects a global
+// WebSocket, which only exists from Node 22 on, so the suite silently failed to
+// connect on CI's Node 20 while passing on a newer local runtime.
+const ioLib = require('socket.io-client');
 
 // Same development defaults the backend itself falls back to (src/config/env.ts);
 // an explicit environment always wins so a non-default deployment can be probed.
@@ -1088,14 +1091,16 @@ function loadLivekitService() {
 
   // The banner is a socket event, not a row: a member buys the flourish so that *other* people see
   // it, which is only true if the join payload carries it. Two throwaway sockets, one observer.
-  const ioLib = require(SOCKET_IO);
   const delay = (ms) => new Promise((r) => setTimeout(r, ms));
   const socketFor = (token) => ioLib('http://127.0.0.1:4000', { transports: ['websocket'], forceNew: true, auth: { token } });
   const entrances = [];
-  const connected = (s, label) => Promise.race([
-    new Promise((r) => s.once('connected', r)),
-    new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} socket never connected`)), 20000)),
-  ]);
+  const connected = (s, label) => {
+    s.on('connect_error', (e) => trace('!! socket', label, 'connect_error:', e.message));
+    return Promise.race([
+      new Promise((r) => s.once('connected', r)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} socket never connected`)), 20000)),
+    ]);
+  };
   const watchSocket = socketFor(watcher.token);
   watchSocket.on('room:user_joined', (p) => entrances.push(p));
   trace('-> socket watcher connect');
@@ -1559,7 +1564,7 @@ function loadLivekitService() {
 })().catch((e) => { process.stdout.write(out.join('\n') + '\n'); console.error('E2E CRASH', e); process.exit(1); });
 
 async function socketPhase(tokenA, tokenB, roomId, gifts, A, B, nameA, nameB) {
-  const io = require(SOCKET_IO);
+  const io = ioLib;
   const res = {};
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   // The gift flood in phase E leaves Postgres/Redis work in flight; give it a

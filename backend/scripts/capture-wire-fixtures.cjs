@@ -14,7 +14,7 @@ const API = process.env.E2E_API_URL || 'http://127.0.0.1:4000';
 const OUT_DIR = process.argv[3]
   ? path.resolve(process.argv[3])
   : path.resolve(__dirname, '..', '..', 'android', 'scripts', 'fixtures');
-const SOCKET_IO = path.resolve(__dirname, '..', 'node_modules', 'socket.io', 'client-dist', 'socket.io.js');
+const SOCKET_IO = require('socket.io-client');
 const EVENTS = [
   'room:seat_update',
   'room:listener_count',

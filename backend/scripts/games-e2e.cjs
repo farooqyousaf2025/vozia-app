@@ -12,7 +12,6 @@ const crypto = require('crypto');
 
 const API = process.env.E2E_API_URL || 'http://127.0.0.1:4000';
 const BE_ROOT = path.resolve(__dirname, '..');
-const SOCKET_IO = path.join(BE_ROOT, 'node_modules', 'socket.io', 'client-dist', 'socket.io.js');
 const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_development_only_not_a_real_secret';
 
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
