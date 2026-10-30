@@ -592,3 +592,48 @@ export type RankLevelRow = {
   created_at: Date;
   updated_at: Date;
 };
+
+/** `quest_settings` (migration 0020) — the single row of daily-activity dials. */
+export type QuestSettingsRow = {
+  singleton: boolean;
+  reset_timezone: string;
+  checkin_base_xp: number;
+  checkin_streak_step_xp: number;
+  checkin_max_streak_days: number;
+  updated_at: Date;
+};
+
+/** `daily_quests` (migration 0020) — one task in the daily catalogue. */
+export type DailyQuestRow = {
+  key: string;
+  title: string;
+  description: string;
+  metric: string;
+  target: number;
+  xp_reward: number;
+  is_active: boolean;
+  sort_order: number;
+  created_at: Date;
+  updated_at: Date;
+};
+
+/** `quest_progress` (migration 0020) — one member's run at one quest on one local date. */
+export type QuestProgressRow = {
+  user_id: string;
+  quest_date: Date;
+  quest_key: string;
+  progress: number;
+  completed_at: Date | null;
+  xp_awarded: number;
+  created_at: Date;
+  updated_at: Date;
+};
+
+/** `daily_checkins` (migration 0020) — one row per member per local date. */
+export type DailyCheckinRow = {
+  user_id: string;
+  checkin_date: Date;
+  streak_day: number;
+  xp_awarded: number;
+  created_at: Date;
+};

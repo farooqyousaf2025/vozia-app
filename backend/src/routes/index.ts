@@ -7,6 +7,7 @@ import gameRoutes from './game.routes';
 import giftRoutes from './gift.routes';
 import livekitRoutes from './livekit.routes';
 import paymentsRoutes from './payments.routes';
+import questRoutes from './quest.routes';
 import rankRoutes from './rank.routes';
 import roomRoutes from './room.routes';
 import storeRoutes from './store.routes';
@@ -24,6 +25,9 @@ router.use('/emoji', emojiRoutes);
 // The earned-level ladder. Public for the same reason the picker is: a client reads it before it
 // knows whose badge it is about to draw.
 router.use('/ranks', rankRoutes);
+// Today's quests and the check-in. Separate from /users for the same reason /store is: it is an
+// XP-writing path, not a profile field, and the screen loads before a room is chosen.
+router.use('/quests', questRoutes);
 router.use('/games', gameRoutes);
 router.use('/wallet', walletRoutes);
 router.use('/users', userRoutes);

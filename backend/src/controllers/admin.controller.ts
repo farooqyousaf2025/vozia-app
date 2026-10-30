@@ -27,6 +27,13 @@ import {
   listAdminRanks,
   updateRank,
 } from '../services/rank.service';
+import {
+  createQuest,
+  deleteQuest,
+  listAdminQuests,
+  updateQuest,
+  updateQuestSettings,
+} from '../services/quest.service';
 import { UserRow } from '../types/db';
 import {
   ApiError,
@@ -807,6 +814,68 @@ export const adjustUserXpEndpoint = asyncHandler(async (req: Request, res: Respo
     details: { delta, reason: reason ?? null, xp: user.xp, rank: user.rank },
   });
   res.json({ user });
+});
+
+/**
+ * Daily quests and the check-in dials (migration 0020).
+ *
+ * These rows decide how much experience the *whole platform* can earn per day, which is why
+ * reading them is `user:read` and writing them is `config:manage`. The service never accepts an
+ * experience value on a member route; the only XP these endpoints can cause is the reward an
+ * operator typed here, paid later by a real gift or check-in.
+ */
+export const questsEndpoint = asyncHandler(async (_req: Request, res: Response) => {
+  res.json(await listAdminQuests());
+});
+
+export const createQuestEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const quest = await createQuest(req.body ?? {});
+  await logAction(req, {
+    action: 'QUEST_CREATE',
+    targetType: 'quest',
+    targetId: quest.key,
+    summary: `Added quest "${quest.title}" (${quest.metric} x${quest.target} for ${quest.xpReward} XP)`,
+    details: { quest },
+  });
+  res.status(201).json({ quest });
+});
+
+export const updateQuestEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const key = requireString(req.params.key, 'key', { min: 2, max: 40 });
+  const quest = await updateQuest(key, req.body ?? {});
+  await logAction(req, {
+    action: 'QUEST_UPDATE',
+    targetType: 'quest',
+    targetId: key,
+    summary: `Updated quest "${quest.title}" (${quest.metric} x${quest.target} for ${quest.xpReward} XP, ${quest.isActive ? 'active' : 'retired'})`,
+    details: { changes: req.body ?? {}, quest },
+  });
+  res.json({ quest });
+});
+
+export const deleteQuestEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const key = requireString(req.params.key, 'key', { min: 2, max: 40 });
+  const result = await deleteQuest(key);
+  await logAction(req, {
+    action: 'QUEST_DELETE',
+    targetType: 'quest',
+    targetId: key,
+    summary: `Removed quest ${key}`,
+    details: result,
+  });
+  res.json(result);
+});
+
+export const questSettingsEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const settings = await updateQuestSettings(req.body ?? {});
+  await logAction(req, {
+    action: 'QUEST_SETTINGS_UPDATE',
+    targetType: 'quest_settings',
+    targetId: 'singleton',
+    summary: `Quest reset timezone ${settings.resetTimezone}, check-in ${settings.checkinBaseXp}+${settings.checkinStreakStepXp}/day up to ${settings.checkinMaxStreakDays} days`,
+    details: { changes: req.body ?? {}, settings },
+  });
+  res.json({ settings });
 });
 
 export const withdrawals = asyncHandler(async (req: Request, res: Response) => {

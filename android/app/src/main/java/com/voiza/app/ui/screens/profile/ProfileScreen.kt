@@ -74,6 +74,7 @@ fun ProfileScreen(
     onBack: () -> Unit,
     onOpenWallet: () -> Unit,
     onOpenStore: () -> Unit,
+    onOpenQuests: () -> Unit,
     onLoggedOut: () -> Unit,
     viewModel: AuthViewModel = viewModel(
         factory = voizaViewModelFactory { AuthViewModel() },
@@ -177,8 +178,17 @@ fun ProfileScreen(
 
         // ---- Actions ----
         VoizaButton(
+            text = "Daily quests",
+            onClick = onOpenQuests,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+        )
+        Spacer(Modifier.height(8.dp))
+        VoizaButton(
             text = "Cosmetic store",
             onClick = onOpenStore,
+            gradient = Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670))),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),

@@ -462,6 +462,53 @@ export interface RankInput {
   isActive?: boolean;
 }
 
+// ---- Daily quests + check-in (migration 0020) --------------------------------
+/** What a quest counts. Each one is a server-side event, never a client claim. */
+export type QuestMetric = 'GIFT_SENT' | 'DIAMONDS_SPENT' | 'CHAT_MESSAGE';
+
+/** Platform-wide dials: when the day resets, and how much a check-in pays. */
+export interface QuestSettings {
+  resetTimezone: string;
+  checkinBaseXp: number;
+  checkinStreakStepXp: number;
+  checkinMaxStreakDays: number;
+}
+
+/** One row of the daily catalogue, with today's completion count for the operator. */
+export interface AdminQuest {
+  key: string;
+  title: string;
+  description: string;
+  metric: QuestMetric;
+  target: number;
+  xpReward: number;
+  isActive: boolean;
+  sortOrder: number;
+  /** Members who finished it today — the number to watch after re-tuning a target. */
+  completedToday: number;
+}
+
+export interface AdminQuestsResult {
+  /** The local date the counts are for, in `settings.resetTimezone`. */
+  today: string;
+  settings: QuestSettings;
+  quests: AdminQuest[];
+}
+
+/** Body of POST /api/admin/quests — `key` is required only on create. */
+export interface QuestInput {
+  key?: string;
+  title?: string;
+  description?: string;
+  metric?: QuestMetric;
+  target?: number;
+  xpReward?: number;
+  isActive?: boolean;
+  sortOrder?: number;
+}
+
+export type QuestSettingsInput = Partial<QuestSettings>;
+
 /** Payloads the admin socket channel pushes to the console. */
 export interface SocketSeatUpdate {
   roomId: string;

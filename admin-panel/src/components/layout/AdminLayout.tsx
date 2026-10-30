@@ -51,6 +51,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/decor', label: 'Decoration', icon: <IconSpark className="h-5 w-5" />, permission: 'room:read' },
   { to: '/emoji', label: 'Chat emoji', icon: <IconSmile className="h-5 w-5" />, permission: 'room:read' },
   { to: '/ranks', label: 'Level ladder', icon: <IconTrendUp className="h-5 w-5" />, permission: 'user:read' },
+  { to: '/quests', label: 'Daily quests', icon: <IconSpark className="h-5 w-5" />, permission: 'user:read' },
   { to: '/withdrawals', label: 'Withdrawals', icon: <IconWallet className="h-5 w-5" />, permission: 'withdrawal:review' },
   { to: '/games', label: 'Games', icon: <IconGame className="h-5 w-5" />, permission: 'game:read' },
   { to: '/partners', label: 'Partners', icon: <IconPartners className="h-5 w-5" />, permission: 'business:manage' },

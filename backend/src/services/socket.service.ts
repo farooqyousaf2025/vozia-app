@@ -7,6 +7,7 @@ import { verifyToken } from './token.service';
 import { GiftDto, MiniUser, SeatDto } from '../utils/serialize';
 import { appendChat, appendSystemChat, fetchMiniUser, recomputeListenerCount, seatSnapshot, setHandRaised } from './room.service';
 import { forgetLikes, registerLike } from './like.service';
+import { recordQuestProgressOutside } from './quest.service';
 import { markDisconnected, submitAction } from './game.service';
 
 /**
@@ -217,6 +218,12 @@ export function initSocket(httpServer: HttpServer): Server {
 
         const message = await appendChat(roomId, me.userId, content);
         emitToRoom(roomId, 'room:chat_message', message);
+        // A stored message is the qualifying event for the "join the party" quest. Best effort and
+        // after the ack: unlike a gift, a failed quest counter must not cost a member their chat
+        // line, and the counter is only worth anything if the message itself exists.
+        recordQuestProgressOutside(me.userId, [{ metric: 'CHAT_MESSAGE', amount: 1 }]).catch((err) =>
+          console.warn('[socket] quest progress', err.message),
+        );
         ack?.({ ok: true, message });
       } catch (err) {
         ack?.({ ok: false, error: (err as Error).message });

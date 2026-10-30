@@ -9,6 +9,8 @@ import type {
   AdminEmoji,
   AdminGamesResult,
   AdminIdentity,
+  AdminQuest,
+  AdminQuestsResult,
   AdminRank,
   AdminRoomTheme,
   AdminStats,
@@ -50,6 +52,9 @@ import type {
   ProfileFrame,
   PublishedEmojiCatalogue,
   PublishedLadder,
+  QuestInput,
+  QuestSettings,
+  QuestSettingsInput,
   RankInput,
   RechargeOrder,
   RechargeOrderListResult,
@@ -591,6 +596,35 @@ export const api = {
     return request<{ ok: true; level: string; membersMoved: number }>(`/api/admin/ranks/${level}`, {
       method: 'DELETE',
     });
+  },
+
+  // ---- daily quests + check-in -------------------------------------------------
+  // The catalogue and the dials (migration 0020). Targets and rewards are rows, so tuning the
+  // platform's daily pace is an operation rather than an app release; XP itself still only moves
+  // when a gift or a check-in is recorded server-side.
+  adminQuests(): Promise<AdminQuestsResult> {
+    return request<AdminQuestsResult>('/api/admin/quests');
+  },
+
+  createQuest(input: QuestInput): Promise<{ quest: AdminQuest }> {
+    return request<{ quest: AdminQuest }>('/api/admin/quests', { method: 'POST', body: input });
+  },
+
+  updateQuest(key: string, patch: QuestInput): Promise<{ quest: AdminQuest }> {
+    return request<{ quest: AdminQuest }>(`/api/admin/quests/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      body: patch,
+    });
+  },
+
+  deleteQuest(key: string): Promise<{ ok: true; key: string }> {
+    return request<{ ok: true; key: string }>(`/api/admin/quests/${encodeURIComponent(key)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  updateQuestSettings(patch: QuestSettingsInput): Promise<{ settings: QuestSettings }> {
+    return request<{ settings: QuestSettings }>('/api/admin/quests/settings', { method: 'PUT', body: patch });
   },
 
   // ---- withdrawals ------------------------------------------------------------------

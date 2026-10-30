@@ -5,6 +5,7 @@ import { rateLimit, redis } from '../config/redis';
 import { GiftRow, TransactionRow, UserRow, WithdrawalRow } from '../types/db';
 import { ApiError } from '../utils/http';
 import { awardXp, ensureRankRegistry, xpForEarning, xpForSpend } from './rank.service';
+import { recordQuestProgress } from './quest.service';
 import { GiftDto, toGift, toTransaction, toUser, TransactionDto, UserDto } from '../utils/serialize';
 
 const TX_WITH_PARTIES = `
@@ -125,6 +126,14 @@ export async function sendGift(input: {
         receiver.r_coin_balance + totalRCoins,
       ],
     );
+
+    // Daily quests are counted from the same transaction that moved the diamonds. `quantity` is
+    // gifts sent; `totalDiamonds` is what the spend quest measures. Both are recorded server-side,
+    // so a gift that rolls back advances neither quest nor the XP a finished quest pays.
+    await recordQuestProgress(client, sender.id, [
+      { metric: 'GIFT_SENT', amount: input.quantity },
+      { metric: 'DIAMONDS_SPENT', amount: totalDiamonds },
+    ]);
 
     // Agency commission: tracked as its own ledger row so back-office reporting
     // can attribute a host's earnings without touching the host's balance.

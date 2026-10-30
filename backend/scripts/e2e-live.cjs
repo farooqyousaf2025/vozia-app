@@ -806,14 +806,22 @@ function loadLivekitService() {
   const cheapGift = (((await api('GET', '/api/gifts', {})).json || {}).gifts || [])
     .filter((g) => (g.minVipLevel || 0) === 0 && g.diamondPrice > 0)
     .sort((a, b) => a.diamondPrice - b.diamondPrice)[0];
+  // A first gift of the day also finishes a daily quest (migration 0020), so the sender's total is
+  // the ledger rate *plus* the reward of whatever that same transaction completed. Both parts are
+  // asserted: the rate on the diamonds, and no XP beyond the listed rewards.
+  const questsBeforeGift = (await api('GET', '/api/quests', { token: xpSender.token })).json;
   const xpGift = await api('POST', '/api/gifts/send', {
     token: xpSender.token, body: { giftId: cheapGift.id, receiverId: xpHost.user.id, quantity: 3 },
   });
-  const senderXp = cheapGift.diamondPrice * 3;
+  const questsAfterGift = (await api('GET', '/api/quests', { token: xpSender.token })).json;
+  const questXp = ((questsAfterGift && questsAfterGift.quests) || [])
+    .filter((q) => q.completed && !(((questsBeforeGift && questsBeforeGift.quests) || []).find((p) => p.key === q.key && p.completed)))
+    .reduce((sum, q) => sum + q.xpAwarded, 0);
+  const senderXp = cheapGift.diamondPrice * 3 + questXp;
   const hostXp = Math.floor((cheapGift.rCoinValue * 3) / 2);
   check('rank: the ledger awards experience to both sides of a gift at the published rates',
     xpGift.status === 201 && xpGift.json.sender.xp === senderXp && xpGift.json.receiver.xp === hostXp,
-    { status: xpGift.status, sent: xpGift.json && xpGift.json.sender && xpGift.json.sender.xp, hosted: xpGift.json && xpGift.json.receiver && xpGift.json.receiver.xp });
+    { status: xpGift.status, ledgerXp: cheapGift.diamondPrice * 3, questXp, sent: xpGift.json && xpGift.json.sender && xpGift.json.sender.xp, hosted: xpGift.json && xpGift.json.receiver && xpGift.json.receiver.xp });
   check('rank: the rung in the same response is the one the ladder says that number sits on',
     xpGift.json.sender.rank.level === rankLevelAt(rungs, senderXp) &&
     xpGift.json.sender.rank.name === rungs.find((rung) => rung.level === rankLevelAt(rungs, senderXp)).name,
@@ -1198,6 +1206,9 @@ function loadLivekitService() {
   const grantAudit = await sql(`select count(*) from admin_audit where action='ITEM_GRANT' and target_id='${SHOP}'`);
   check('store: every catalogue write and grant is attributable in the audit log',
     Number(storeAudit) >= 4 && Number(grantAudit) >= 2, { frameRows: storeAudit, grants: grantAudit });
+
+  // ---- H1c. daily quests and the check-in ------------------------------------
+  await questPhase(adminToken, rose);
 
   // ---- H2. seat policy ------------------------------------------------------
   // "A default of 15 speaker seats, configurable by the administrator" is only true if the
@@ -1720,4 +1731,325 @@ async function socketPhase(tokenA, tokenB, roomId, gifts, A, B, nameA, nameB) {
   sb2.close(); sa.close();
   await wait(400);
   return res;
+}
+
+/**
+ * Daily quests and the check-in (migration 0020).
+ *
+ * The brief's rule is that experience is server-authored, so this phase drives both halves: the
+ * member routes only read a day, and what they read comes from events the server recorded itself
+ * (a gift in the ledger, a chat row the socket stored). Everything that should pay XP is checked
+ * against `users.xp` and the per-day rows; everything that should not — a replay, a forged body, a
+ * gift refused for balance — is checked to have paid nothing.
+ */
+async function questPhase(adminToken, rose) {
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const dayIn = (zone) => sql(`select (now() AT TIME ZONE '${zone}')::date::text`);
+  const xpOf = async (id) => Number(await sql(`select xp from users where id='${id}'`));
+  const statusOf = async (token) => (await api('GET', '/api/quests', { token })).json;
+  const questOf = (status, key) => ((status && status.quests) || []).find((q) => q.key === key) || null;
+  const questByMetric = (status, metric) => ((status && status.quests) || []).find((q) => q.metric === metric) || null;
+  const settingsSql = 'select reset_timezone, checkin_base_xp, checkin_streak_step_xp, checkin_max_streak_days from quest_settings where singleton';
+
+  const settingsRaw = await sql(settingsSql);
+  const [tz, baseRaw, stepRaw, maxRaw] = settingsRaw.split('|');
+  const base = Number(baseRaw);
+  const step = Number(stepRaw);
+  const maxDays = Number(maxRaw);
+  const rewardFor = (streakDay) => base + (Math.min(Math.max(1, streakDay), maxDays) - 1) * step;
+
+  const mk = (suffix, who) => login(`+15557${stamp}4${suffix}`, `e2e_${who}_${stamp.slice(-4)}`);
+  const member = await mk('1', 'quinn');
+  const streaker = await mk('2', 'sam');
+  const gapper = await mk('3', 'gia');
+  const chatter = await mk('4', 'cara');
+  const host = await mk('5', 'hank');
+  const gifter = await mk('6', 'gil');
+  check('quests: six fresh members are created for the day',
+    [member, streaker, gapper, chatter, host, gifter].every((u) => u && u.token && u.user && u.created === true),
+    [member, streaker, gapper, chatter, host, gifter].map((u) => u && u.created));
+
+  const M = member.user.id;
+  const activeCount = Number(await sql('select count(*) from daily_quests where is_active'));
+  const ladder = await statusOf(member.token);
+  check('quests: a fresh member reads today as an empty ladder',
+    !!ladder && Array.isArray(ladder.quests) && ladder.quests.length === activeCount &&
+    ladder.quests.every((q) => q.progress === 0 && q.completed === false && q.xpAwarded === 0) &&
+    ladder.completedCount === 0 && ladder.xpEarnedToday === 0 &&
+    ladder.checkIn.available === true && ladder.checkIn.done === false &&
+    ladder.checkIn.streakDay === 0 && ladder.checkIn.xpAwardedToday === 0,
+    ladder && { activeCount, quests: ladder.quests.map((q) => `${q.key}:${q.progress}`), checkIn: ladder.checkIn });
+
+  check('quests: "today" is the operator timezone\'s date, resolved by PostgreSQL',
+    !!ladder && ladder.resetTimezone === tz && ladder.date === await dayIn(tz),
+    { date: ladder && ladder.date, timezone: ladder && ladder.resetTimezone, computed: await dayIn(tz) });
+
+  check('quests: the check-in preview quotes the base reward for a streak of one',
+    !!ladder && ladder.checkIn.nextStreakDay === 1 && ladder.checkIn.nextRewardXp === base &&
+    ladder.checkIn.baseXp === base && ladder.checkIn.streakStepXp === step && ladder.checkIn.maxStreakDays === maxDays,
+    ladder && ladder.checkIn);
+
+  const anonGet = await api('GET', '/api/quests');
+  const anonPost = await api('POST', '/api/quests/checkin', { body: {} });
+  check('quests: the screen and the check-in both require a session',
+    anonGet.status === 401 && anonPost.status === 401, { get: anonGet.status, post: anonPost.status });
+
+  const memberAdminGet = await api('GET', '/api/admin/quests', { token: member.token });
+  const memberAdminPost = await api('POST', '/api/admin/quests', {
+    token: member.token,
+    body: { key: 'e2e-nope', title: 'Nope', metric: 'CHAT_MESSAGE', target: 1, xpReward: 1 },
+  });
+  check('quests: a member can neither read nor edit the catalogue',
+    memberAdminGet.status === 403 && memberAdminPost.status === 403,
+    { get: memberAdminGet.status, post: memberAdminPost.status });
+
+  // A body full of numbers is the whole attack surface of the route, so send one.
+  const xpBeforeCheckin = await xpOf(M);
+  const forged = await api('POST', '/api/quests/checkin', {
+    token: member.token,
+    body: { xpAwarded: 999999, streakDay: 300, progress: 999, level: 99, date: '2099-01-01' },
+  });
+  const xpAfterCheckin = await xpOf(M);
+  check('quests: a check-in ignores a forged body and pays the server\'s base reward',
+    forged.status === 201 && !!forged.json && forged.json.xpAwarded === base &&
+    xpAfterCheckin === xpBeforeCheckin + base &&
+    forged.json.status.checkIn.done === true && forged.json.status.checkIn.available === false &&
+    forged.json.status.checkIn.streakDay === 1 && forged.json.user.xp === xpAfterCheckin,
+    { status: forged.status, awarded: forged.json && forged.json.xpAwarded, xp: [xpBeforeCheckin, xpAfterCheckin] });
+  check('quests: the check-in is one row for the local date, not one per tap',
+    await sql(`select count(*) from daily_checkins where user_id='${M}'`) === '1',
+    await sql(`select checkin_date||'@'||streak_day||'x'||xp_awarded from daily_checkins where user_id='${M}'`));
+
+  const replay = await api('POST', '/api/quests/checkin', { token: member.token, body: {} });
+  check('quests: replaying the check-in is refused and pays nothing',
+    replay.status === 409 && replay.json.error.code === 'already_checked_in' && (await xpOf(M)) === xpAfterCheckin,
+    { status: replay.status, code: replay.json && replay.json.error && replay.json.error.code, xp: await xpOf(M) });
+
+  // Yesterday's row is the only input to today's streak, so seed one and watch the reward step up.
+  await sql(`insert into daily_checkins (user_id, checkin_date, streak_day, xp_awarded)
+             values ('${streaker.user.id}', (now() AT TIME ZONE '${tz}')::date - 1, 3, 0) on conflict do nothing`);
+  const streakPreview = await statusOf(streaker.token);
+  check('quests: a streak carried from yesterday previews its step-up reward',
+    !!streakPreview && streakPreview.checkIn.streakDay === 3 && streakPreview.checkIn.nextStreakDay === 4 &&
+    streakPreview.checkIn.nextRewardXp === rewardFor(4) && streakPreview.checkIn.available === true,
+    streakPreview && streakPreview.checkIn);
+  const streakXp = await xpOf(streaker.user.id);
+  const streakCheckin = await api('POST', '/api/quests/checkin', { token: streaker.token, body: {} });
+  check('quests: checking in continues the streak and pays base plus the step',
+    streakCheckin.status === 201 && !!streakCheckin.json && streakCheckin.json.xpAwarded === rewardFor(4) &&
+    streakCheckin.json.status.checkIn.streakDay === 4 &&
+    (await xpOf(streaker.user.id)) === streakXp + rewardFor(4) &&
+    await sql(`select streak_day from daily_checkins where user_id='${streaker.user.id}' and checkin_date=(now() AT TIME ZONE '${tz}')::date`) === '4',
+    { awarded: streakCheckin.json && streakCheckin.json.xpAwarded, expected: rewardFor(4) });
+
+  await sql(`insert into daily_checkins (user_id, checkin_date, streak_day, xp_awarded)
+             values ('${gapper.user.id}', (now() AT TIME ZONE '${tz}')::date - 2, 5, 0) on conflict do nothing`);
+  const gapPreview = await statusOf(gapper.token);
+  check('quests: a missed day is a gap — the streak restarts rather than resuming',
+    !!gapPreview && gapPreview.checkIn.streakDay === 0 && gapPreview.checkIn.nextStreakDay === 1 &&
+    gapPreview.checkIn.nextRewardXp === base, gapPreview && gapPreview.checkIn);
+  const gapXp = await xpOf(gapper.user.id);
+  const gapCheckin = await api('POST', '/api/quests/checkin', { token: gapper.token, body: {} });
+  check('quests: the restarted streak pays the base reward again',
+    gapCheckin.status === 201 && !!gapCheckin.json && gapCheckin.json.xpAwarded === base &&
+    gapCheckin.json.status.checkIn.streakDay === 1 && (await xpOf(gapper.user.id)) === gapXp + base,
+    { awarded: gapCheckin.json && gapCheckin.json.xpAwarded });
+
+  // ---- chat quest: a stored message is the event -----------------------------
+  const qRoom = await api('POST', '/api/rooms', {
+    token: host.token, body: { title: `E2E Quests ${stamp}`, category: 'CHAT', type: 'PUBLIC' },
+  });
+  const qRoomId = qRoom.json && qRoom.json.room && qRoom.json.room.id;
+  check('quests: the chat quest is driven inside a real room', qRoom.status === 201 && !!qRoomId, { status: qRoom.status });
+
+  const conn = (token) => ioLib('http://127.0.0.1:4000', { transports: ['websocket'], forceNew: true, auth: { token } });
+  // `s.connected` first: a socket can finish its handshake while the caller is still awaiting the
+  // previous one, and `once('connect')` would then wait for an event that already fired.
+  const connected = (s) => (s.connected
+    ? Promise.resolve(true)
+    : Promise.race([new Promise((r) => s.once('connect', r)), wait(20000)]));
+  const ack = (s, ev, payload, ms = 15000) => new Promise((resolve) => {
+    const t = setTimeout(() => resolve({ __timeout: true }), ms);
+    s.emit(ev, payload, (r) => { clearTimeout(t); resolve(r); });
+  });
+  // A reconnected socket is a new server-side connection, and an ack owed to the old one is gone;
+  // retrying the emit is what a real client does, so do it here rather than report a lost packet.
+  const joinRoom = async (s, roomId) => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (!s.connected) await connected(s);
+      const r = await ack(s, 'room:join', { roomId }, 8000);
+      if (!r || !r.__timeout) return r;
+    }
+    return { __timeout: true };
+  };
+  const hostSock = conn(host.token);
+  const chatSock = conn(chatter.token);
+  await connected(hostSock);
+  await connected(chatSock);
+  const jHost = await joinRoom(hostSock, qRoomId);
+  const jChat = await joinRoom(chatSock, qRoomId);
+  check('quests: both members join the room socket', !!(jHost && jHost.ok && jChat && jChat.ok), { jHost, jChat });
+
+  const beforeChats = await statusOf(chatter.token);
+  const chatQuest = questByMetric(beforeChats, 'CHAT_MESSAGE');
+  const giftQuest = questByMetric(beforeChats, 'GIFT_SENT');
+  const spendQuest = questByMetric(beforeChats, 'DIAMONDS_SPENT');
+  check('quests: the seeded ladder arrives with a gift, a spend and a chat quest',
+    !!chatQuest && !!giftQuest && !!spendQuest,
+    beforeChats && beforeChats.quests.map((q) => `${q.key}:${q.metric}x${q.target}`));
+
+  const chatterXpBefore = await xpOf(chatter.user.id);
+  const chats = [];
+  for (let i = 0; i < 3; i += 1) {
+    chats.push(await ack(chatSock, 'room:chat', { roomId: qRoomId, message: `quest probe ${i + 1}` }));
+  }
+  await wait(2500);
+  const afterChats = await statusOf(chatter.token);
+  const chatRow = questOf(afterChats, chatQuest.key);
+  const expectedChat = Math.min(chatQuest.target, 3);
+  const chatDone = expectedChat >= chatQuest.target;
+  check('quests: the chat quest counts the messages the server stored',
+    chats.every((r) => r && r.ok) && !!chatRow && chatRow.progress === expectedChat &&
+    chatRow.completed === chatDone && (chatDone ? chatRow.xpAwarded === chatQuest.xpReward : chatRow.xpAwarded === 0),
+    { acks: chats.map((r) => r && r.ok), progress: chatRow && chatRow.progress, target: chatQuest.target, completed: chatRow && chatRow.completed });
+  const chatterXpAfter = await xpOf(chatter.user.id);
+  check('quests: a finished chat quest pays its reward once, server-side',
+    chatterXpAfter === chatterXpBefore + (chatDone ? chatQuest.xpReward : 0),
+    { before: chatterXpBefore, after: chatterXpAfter, reward: chatQuest.xpReward });
+
+  // ---- gift quest: the ledger transaction is the event -----------------------
+  const catalog = await api('GET', '/api/gifts', {});
+  const allGifts = (catalog.json && (catalog.json.gifts || catalog.json.data)) || [];
+  const cheap = allGifts.filter((g) => (g.minVipLevel || 0) === 0).sort((x, y) => x.diamondPrice - y.diamondPrice)[0] || rose;
+  const price = cheap.diamondPrice;
+  await api('POST', '/api/wallet/recharge', { token: gifter.token, body: { amountDiamonds: price * 4 } });
+  const giftBefore = await statusOf(gifter.token);
+  const giftQ = questByMetric(giftBefore, 'GIFT_SENT');
+  const spendQ = questByMetric(giftBefore, 'DIAMONDS_SPENT');
+  const gifterXp0 = await xpOf(gifter.user.id);
+  const sentGift = await api('POST', '/api/gifts/send', {
+    token: gifter.token,
+    body: { giftId: cheap.id, receiverId: host.user.id, quantity: 2, roomId: qRoomId },
+  });
+  await wait(600);
+  const giftAfter = await statusOf(gifter.token);
+  const giftRow = questOf(giftAfter, giftQ.key);
+  const spendRow = questOf(giftAfter, spendQ.key);
+  const ledgerSpent = Number(await sql(`select coalesce(sum(amount_diamonds),0) from transactions where type='GIFT_SENT' and sender_id='${gifter.user.id}'`));
+  check('quests: the gift quest counts the quantity the ledger recorded',
+    sentGift.status === 201 && !!giftRow && giftRow.progress === Math.min(giftQ.target, 2),
+    { status: sentGift.status, progress: giftRow && giftRow.progress, target: giftQ.target });
+  check('quests: the spend quest counts the diamonds the ledger moved',
+    !!spendRow && spendRow.progress === Math.min(spendQ.target, ledgerSpent) && ledgerSpent === price * 2,
+    { progress: spendRow && spendRow.progress, target: spendQ.target, ledgerSpent, price });
+  const rewardsEarned = (before, after) => ((after && after.quests) || [])
+    .filter((q) => q.completed && !(((before && before.quests) || []).find((p) => p.key === q.key && p.completed)))
+    .reduce((sum, q) => sum + q.xpAwarded, 0);
+  const gifterXp1 = await xpOf(gifter.user.id);
+  check('quests: spending diamonds pays 1 XP per diamond plus any newly finished reward',
+    gifterXp1 === gifterXp0 + ledgerSpent + rewardsEarned(giftBefore, giftAfter),
+    { before: gifterXp0, after: gifterXp1, spent: ledgerSpent, rewards: rewardsEarned(giftBefore, giftAfter) });
+
+  const hostAfterSuccess = await sql(`select xp||'|'||total_gifts_received||'|'||r_coin_balance from users where id='${host.user.id}'`);
+  const refusedGift = await api('POST', '/api/gifts/send', {
+    token: gifter.token,
+    body: { giftId: cheap.id, receiverId: host.user.id, quantity: 999, roomId: qRoomId },
+  });
+  await wait(400);
+  const hostAfterGift = await sql(`select xp||'|'||total_gifts_received||'|'||r_coin_balance from users where id='${host.user.id}'`);
+  check('quests: a gift refused for insufficient balance advances no quest and pays no XP',
+    refusedGift.status === 402 && refusedGift.json.error.code === 'insufficient_balance' &&
+    (await xpOf(gifter.user.id)) === gifterXp1 && hostAfterGift === hostAfterSuccess,
+    { status: refusedGift.status, code: refusedGift.json && refusedGift.json.error && refusedGift.json.error.code, host: [hostAfterSuccess, hostAfterGift] });
+
+  // ---- the catalogue an operator edits ---------------------------------------
+  const adminList = await api('GET', '/api/admin/quests', { token: adminToken });
+  const adminQuests = (adminList.json && adminList.json.quests) || [];
+  const chatCompletedToday = Number((adminQuests.find((q) => q.key === chatQuest.key) || {}).completedToday ?? -1);
+  check('quests: the console reads the catalogue with today\'s completion counts',
+    adminList.status === 200 && !!adminList.json && adminList.json.today === await dayIn(tz) &&
+    adminList.json.settings.resetTimezone === tz &&
+    Array.isArray(adminList.json.quests) && adminQuests.length === activeCount &&
+    adminQuests.every((q) => typeof q.isActive === 'boolean' && typeof q.completedToday === 'number') &&
+    chatCompletedToday >= (chatDone ? 1 : 0),
+    { status: adminList.status, counts: adminQuests.map((q) => `${q.key}:${q.completedToday}`) });
+
+  const qKey = `e2e-q-${stamp}`;
+  const created = await api('POST', '/api/admin/quests', {
+    token: adminToken,
+    body: { key: qKey, title: 'E2E Quest', description: '', metric: 'CHAT_MESSAGE', target: 1, xpReward: 7, sortOrder: 900 },
+  });
+  check('quests: an operator can add a quest and it is live immediately',
+    created.status === 201 && !!created.json && created.json.quest.key === qKey && created.json.quest.isActive === true,
+    { status: created.status, quest: created.json && created.json.quest });
+  const appeared = await statusOf(chatter.token);
+  check('quests: the new quest appears on the phone with zero progress',
+    !!questOf(appeared, qKey) && questOf(appeared, qKey).progress === 0,
+    appeared && appeared.quests.map((q) => `${q.key}:${q.progress}`));
+
+  const chatterXpQ0 = await xpOf(chatter.user.id);
+  const newChat = await ack(chatSock, 'room:chat', { roomId: qRoomId, message: 'quest probe 4' });
+  await wait(2500);
+  const afterNewChat = await statusOf(chatter.token);
+  const newRow = questOf(afterNewChat, qKey);
+  check('quests: the first qualifying event finishes the new quest and pays its reward',
+    newChat && newChat.ok && !!newRow && newRow.progress === 1 && newRow.completed === true &&
+    newRow.xpAwarded === 7 && (await xpOf(chatter.user.id)) === chatterXpQ0 + 7,
+    { ack: newChat && newChat.ok, row: newRow, xp: [chatterXpQ0, await xpOf(chatter.user.id)] });
+
+  const inUse = await api('DELETE', `/api/admin/quests/${qKey}`, { token: adminToken });
+  check('quests: a quest with paid progress cannot be deleted',
+    inUse.status === 409 && inUse.json.error.code === 'quest_in_use',
+    { status: inUse.status, code: inUse.json && inUse.json.error && inUse.json.error.code });
+  const retired = await api('PUT', `/api/admin/quests/${qKey}`, { token: adminToken, body: { isActive: false } });
+  const hidden = await statusOf(chatter.token);
+  check('quests: retiring is the reversible option — the phone loses it, the progress row stays',
+    retired.status === 200 && !!retired.json && retired.json.quest.isActive === false && !questOf(hidden, qKey) &&
+    await sql(`select count(*) from quest_progress where user_id='${chatter.user.id}' and quest_key='${qKey}'`) === '1',
+    { status: retired.status, active: retired.json && retired.json.quest.isActive, listed: !!questOf(hidden, qKey) });
+
+  await sql(`delete from quest_progress where user_id='${chatter.user.id}' and quest_key='${qKey}'`);
+  const removed = await api('DELETE', `/api/admin/quests/${qKey}`, { token: adminToken });
+  check('quests: once no progress references it, the quest can be removed',
+    removed.status === 200 && !!removed.json && removed.json.ok === true &&
+    await sql(`select count(*) from daily_quests where key='${qKey}'`) === '0',
+    { status: removed.status, body: removed.json });
+
+  // ---- the reset dial --------------------------------------------------------
+  const badZone = await api('PUT', '/api/admin/quests/settings', { token: adminToken, body: { resetTimezone: 'Mars/Olympus' } });
+  check('quests: an unresolvable timezone is refused and changes nothing',
+    badZone.status === 400 && badZone.json.error.code === 'quest_timezone_unknown' &&
+    (await sql(settingsSql)) === settingsRaw,
+    { status: badZone.status, code: badZone.json && badZone.json.error && badZone.json.error.code });
+
+  const altZone = (await dayIn('Pacific/Kiritimati')) !== (await dayIn(tz)) ? 'Pacific/Kiritimati' : 'Pacific/Pago_Pago';
+  const moved = await api('PUT', '/api/admin/quests/settings', { token: adminToken, body: { resetTimezone: altZone } });
+  const movedStatus = await statusOf(member.token);
+  check('quests: moving the reset zone moves "today" for every phone',
+    moved.status === 200 && !!moved.json && moved.json.settings.resetTimezone === altZone &&
+    !!movedStatus && movedStatus.resetTimezone === altZone &&
+    movedStatus.date === await dayIn(altZone) && movedStatus.date !== (ladder && ladder.date),
+    { from: ladder && ladder.date, to: movedStatus && movedStatus.date, zone: altZone });
+
+  const restored = await api('PUT', '/api/admin/quests/settings', {
+    token: adminToken,
+    body: { resetTimezone: tz, checkinBaseXp: base, checkinStreakStepXp: step, checkinMaxStreakDays: maxDays },
+  });
+  const backTo = await statusOf(member.token);
+  check('quests: the dials are put back exactly as the run found them',
+    restored.status === 200 && !!restored.json && restored.json.settings.resetTimezone === tz &&
+    restored.json.settings.checkinBaseXp === base && restored.json.settings.checkinStreakStepXp === step &&
+    restored.json.settings.checkinMaxStreakDays === maxDays &&
+    !!backTo && backTo.resetTimezone === tz && backTo.date === await dayIn(tz) &&
+    (await sql(settingsSql)) === settingsRaw,
+    { settings: restored.json && restored.json.settings });
+
+  const questAudit = await sql(`select count(*) from admin_audit where action in ('QUEST_CREATE','QUEST_UPDATE','QUEST_DELETE') and target_id='${qKey}'`);
+  const settingsAudit = await sql(`select count(*) from admin_audit where action='QUEST_SETTINGS_UPDATE' and target_id='singleton'`);
+  check('quests: every catalogue change and dial move is in the audit log',
+    Number(questAudit) === 3 && Number(settingsAudit) >= 2, { quest: questAudit, settings: settingsAudit });
+
+  hostSock.close();
+  chatSock.close();
+  await wait(300);
 }

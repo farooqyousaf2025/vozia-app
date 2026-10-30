@@ -5,7 +5,12 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.voiza.app.data.mapper.GameMappersKt;
 import com.voiza.app.data.mapper.MappersKt;
+import com.voiza.app.data.mapper.QuestMappersKt;
 import com.voiza.app.data.remote.dto.*;
+import com.voiza.app.domain.model.CheckInResult;
+import com.voiza.app.domain.model.CheckInState;
+import com.voiza.app.domain.model.DailyQuest;
+import com.voiza.app.domain.model.QuestsToday;
 import com.voiza.app.domain.model.GameHistoryRow;
 import com.voiza.app.domain.model.EmojiCatalogue;
 import com.voiza.app.domain.model.EmojiOption;
@@ -321,6 +326,64 @@ public class DtosGsonHarness {
                             + "\"userType\":\"USER\",\"status\":\"ACTIVE\"}}", UserEnvelope.class).getUser());
             if (bare.getProfileFrame() != null) throw new IllegalStateException("absent frame became " + bare.getProfileFrame());
             if (bare.getEntryEffect() != null) throw new IllegalStateException("absent flourish became " + bare.getEntryEffect());
+        });
+
+        System.out.println("\n--- daily quests and the check-in (migration 0020) ---");
+
+        t("GET /api/quests       -> QuestsToday -> day + quests + this member's check-in", () -> {
+            QuestsToday today = QuestMappersKt.toDomain(
+                    G.fromJson(body(rest, "questsBefore"), QuestsTodayDto.class));
+            if (today.getDate().isEmpty()) throw new IllegalStateException("the status carried no day");
+            if (today.getResetTimezone().isEmpty()) {
+                throw new IllegalStateException("the status carried no reset timezone");
+            }
+            if (today.getQuests().isEmpty()) throw new IllegalStateException("no quests were published");
+            boolean sawCompleted = false;
+            for (DailyQuest quest : today.getQuests()) {
+                if (quest.getKey().isEmpty() || quest.getTitle().isEmpty()) {
+                    throw new IllegalStateException("a quest lost its key or title");
+                }
+                if (quest.getTarget() <= 0) throw new IllegalStateException(quest.getKey() + " has no target");
+                if (quest.getXpReward() <= 0) throw new IllegalStateException(quest.getKey() + " pays no XP");
+                if (quest.getProgress() < 0 || quest.getFraction() < 0f || quest.getFraction() > 1f) {
+                    throw new IllegalStateException(quest.getKey() + " has an impossible progress/fraction");
+                }
+                // XP is only ever awarded at completion, so a counter without it paying anything
+                // means the mapper dropped a field the phone would print.
+                if (!quest.getCompleted() && quest.getXpAwarded() != 0) {
+                    throw new IllegalStateException(quest.getKey() + " reported XP before completing");
+                }
+                if (quest.getCompleted() && quest.getXpAwarded() > 0) sawCompleted = true;
+            }
+            // The capture sent gifts before reading this, so the gift quest must be finished; a
+            // false here would mean progress was not recorded or the completed flag is not shipped.
+            if (!sawCompleted) throw new IllegalStateException("no quest completed after gifts were sent");
+            CheckInState checkIn = today.getCheckIn();
+            if (checkIn == null) throw new IllegalStateException("the status carried no check-in");
+            if (checkIn.getBaseXp() <= 0) throw new IllegalStateException("check-in pays nothing");
+            if (checkIn.getMaxStreakDays() < 1) throw new IllegalStateException("the streak cap is below one day");
+            if (checkIn.getNextRewardXp() < checkIn.getBaseXp()) {
+                throw new IllegalStateException("the next check-in pays less than the base");
+            }
+        });
+
+        t("POST /api/quests/checkin -> reward + status.done + the account that earned it", () -> {
+            CheckInResult result = QuestMappersKt.toDomain(
+                    G.fromJson(body(rest, "questsCheckIn"), CheckInResponseDto.class));
+            if (result.getXpAwarded() <= 0) throw new IllegalStateException("check-in paid no XP");
+            QuestsToday status = result.getStatus();
+            if (status == null || status.getCheckIn() == null) {
+                throw new IllegalStateException("the claim carried no status");
+            }
+            CheckInState checkIn = status.getCheckIn();
+            if (!checkIn.getDone()) throw new IllegalStateException("the claim did not close today");
+            if (checkIn.getAvailable()) throw new IllegalStateException("today is still claimable after claiming");
+            if (checkIn.getStreakDay() < 1) throw new IllegalStateException("the streak did not start");
+            // The paid reward is what the phone prints, so it must agree with the transaction.
+            if (result.getXpAwarded() != checkIn.getXpAwardedToday()) {
+                throw new IllegalStateException("paid " + result.getXpAwarded()
+                        + " but the status says " + checkIn.getXpAwardedToday());
+            }
         });
 
         System.out.println("\n--- socket events the app parses ---");

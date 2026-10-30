@@ -101,6 +101,16 @@ router.post('/ranks', requirePermission('config:manage'), admin.createRankEndpoi
 router.put('/ranks/:level', requirePermission('config:manage'), admin.updateRankEndpoint);
 router.delete('/ranks/:level', requirePermission('config:manage'), admin.deleteRankEndpoint);
 
+// Daily quests (migration 0020). Reading the catalogue is a `user:read` concern — an operator
+// looking at a member's experience should see what pays it — while changing a target or a reward
+// sets the pace of the whole platform, so it is `config:manage`. The settings route is registered
+// before `/:key` so "settings" is never read as a quest key.
+router.get('/quests', requirePermission('user:read'), admin.questsEndpoint);
+router.put('/quests/settings', requirePermission('config:manage'), admin.questSettingsEndpoint);
+router.post('/quests', requirePermission('config:manage'), admin.createQuestEndpoint);
+router.put('/quests/:key', requirePermission('config:manage'), admin.updateQuestEndpoint);
+router.delete('/quests/:key', requirePermission('config:manage'), admin.deleteQuestEndpoint);
+
 router.get('/withdrawals', requirePermission('withdrawal:review'), admin.withdrawals);
 router.post('/withdrawals/:id/review', requirePermission('withdrawal:review'), admin.reviewWithdrawalEndpoint);
 

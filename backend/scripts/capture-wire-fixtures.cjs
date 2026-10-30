@@ -151,7 +151,7 @@ function redact(value) {
   // fans gifts out as `room:gift_animated` and, per gift.controller.ts, appends a
   // SYSTEM chat row (user:null) alongside it, so the gift sends below are also
   // what puts a null-user chat message into the fixture.
-  const io = require(SOCKET_IO);
+  const io = SOCKET_IO;
   const socket = io(API, { transports: ['websocket'], forceNew: true, auth: { token: host.token } });
   const raw = {};
   for (const ev of EVENTS) socket.on(ev, (payload) => { (raw[ev] = raw[ev] || []).push(payload); });
@@ -207,6 +207,13 @@ function redact(value) {
     token: host.token,
     body: { title: `Wire Room Edited ${stamp}`, description: 'captured profile', language: 'en', region: 'BD', rules: 'mic off when not on the seat' },
   });
+  // Daily quests for a member who has already sent gifts in this capture, so the status carries a
+  // completed row, a partial counter and the check-in state in one payload. The check-in is then
+  // claimed, because `done: true` and the paid reward only exist after the transaction ran.
+  const questsBefore = await api('GET', '/api/quests', H);
+  const questsCheckIn = await api('POST', '/api/quests/checkin', H);
+  rest.questsBefore = questsBefore;
+  rest.questsCheckIn = questsCheckIn;
   // `capacityRoom` was opened only to capture a default-capacity envelope; no need to leave it live.
   await api('POST', `/api/rooms/${rest.capacityRoom.body.room.id}/close`, H);
   await wait(2500);
@@ -222,7 +229,7 @@ function redact(value) {
   fs.writeFileSync(path.join(OUT_DIR, 'wire-rest.json'), JSON.stringify(redact(rest), null, 1));
   fs.writeFileSync(path.join(OUT_DIR, 'wire-socket.json'), JSON.stringify(redact(raw), null, 1));
   console.log(`REST: ${Object.entries(rest).filter(([, v]) => v && v.status).map(([k, v]) => `${k}=${v.status}`).join(' ')}`);
-  console.log(`side effects: recharge=${recharge.status} theme-buy=${themePurchase.status} buy=${storePurchase.status} gift->seat=${toSeated.status} gift->audience=${toAudience.status}`);
+  console.log(`side effects: recharge=${recharge.status} theme-buy=${themePurchase.status} buy=${storePurchase.status} gift->seat=${toSeated.status} gift->audience=${toAudience.status} checkin=${questsCheckIn.status}`);
   console.log(`socket events captured: ${EVENTS.filter((e) => raw[e] && raw[e].length).map((e) => `${e}×${raw[e].length}`).join(' ') || '(none)'}`);
   console.log(`wrote ${path.join(OUT_DIR, 'wire-rest.json')}`);
   console.log(`wrote ${path.join(OUT_DIR, 'wire-socket.json')}`);

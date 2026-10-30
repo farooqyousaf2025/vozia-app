@@ -16,6 +16,7 @@ import LoginPage from './pages/LoginPage';
 import MediaPage from './pages/MediaPage';
 import OverviewPage from './pages/OverviewPage';
 import PartnersPage from './pages/PartnersPage';
+import QuestsPage from './pages/QuestsPage';
 import RanksPage from './pages/RanksPage';
 import RechargesPage from './pages/RechargesPage';
 import RoomConsolePage from './pages/RoomConsolePage';
@@ -72,6 +73,7 @@ export default function App() {
         <Route path="decor" element={<RequirePermission permission="room:read"><DecorPage /></RequirePermission>} />
         <Route path="emoji" element={<RequirePermission permission="room:read"><EmojiPage /></RequirePermission>} />
         <Route path="ranks" element={<RequirePermission permission="user:read"><RanksPage /></RequirePermission>} />
+        <Route path="quests" element={<RequirePermission permission="user:read"><QuestsPage /></RequirePermission>} />
         <Route path="withdrawals" element={<RequirePermission permission="withdrawal:review"><WithdrawalsPage /></RequirePermission>} />
         <Route path="games" element={<RequirePermission permission="game:read"><GamesPage /></RequirePermission>} />
         <Route path="partners" element={<RequirePermission permission="business:manage"><PartnersPage /></RequirePermission>} />

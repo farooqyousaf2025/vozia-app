@@ -2,6 +2,7 @@ package com.voiza.app.domain.repository
 
 import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.domain.model.ChatMessage
+import com.voiza.app.domain.model.CheckInResult
 import com.voiza.app.domain.model.EmojiCatalogue
 import com.voiza.app.domain.model.GameDefinition
 import com.voiza.app.domain.model.GameHistoryRow
@@ -9,6 +10,7 @@ import com.voiza.app.domain.model.GameSession
 import com.voiza.app.domain.model.Gift
 import com.voiza.app.domain.model.Leaderboard
 import com.voiza.app.domain.model.MiniUser
+import com.voiza.app.domain.model.QuestsToday
 import com.voiza.app.domain.model.RankBoard
 import com.voiza.app.domain.model.Room
 import com.voiza.app.domain.model.RoomJoinResult
@@ -193,6 +195,21 @@ interface StoreRepository {
 
     /** Take off whatever of this kind is worn. */
     suspend fun unequip(kind: StoreItemKind): ApiResult<User>
+}
+
+/**
+ * Daily activity (migration 0020). Both calls are the member's own.
+ *
+ * Nothing here takes a progress value, a reward or an experience total: a quest advances only when
+ * a gift posts or a chat row is stored, and the check-in reward is a column the server reads inside
+ * its transaction.
+ */
+interface QuestRepository {
+    /** Today's quests, the day in the reset timezone, and the check-in state. */
+    suspend fun today(): ApiResult<QuestsToday>
+
+    /** Claim today's check-in; the response carries the refreshed status and the account. */
+    suspend fun checkIn(): ApiResult<CheckInResult>
 }
 
 /**

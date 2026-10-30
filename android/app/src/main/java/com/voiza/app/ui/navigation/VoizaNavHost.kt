@@ -13,6 +13,7 @@ import com.voiza.app.ui.screens.game.GameScreen
 import com.voiza.app.ui.screens.home.CreateRoomScreen
 import com.voiza.app.ui.screens.home.HomeScreen
 import com.voiza.app.ui.screens.profile.ProfileScreen
+import com.voiza.app.ui.screens.quests.QuestsScreen
 import com.voiza.app.ui.screens.room.PartyRoomScreen
 import com.voiza.app.ui.screens.store.StoreScreen
 import com.voiza.app.ui.screens.wallet.WalletScreen
@@ -126,11 +127,16 @@ fun VoizaNavHost(
             )
         }
 
+        composable(Routes.QUESTS) {
+            QuestsScreen(onBack = { navController.popBackStack() })
+        }
+
         composable(Routes.PROFILE) {
             ProfileScreen(
                 onBack = { navController.popBackStack() },
                 onOpenWallet = { navController.navigate(Routes.WALLET) },
                 onOpenStore = { navController.navigate(Routes.STORE) },
+                onOpenQuests = { navController.navigate(Routes.QUESTS) },
                 onLoggedOut = {
                     navController.navigate(Routes.AUTH) {
                         popUpTo(0) { inclusive = true }

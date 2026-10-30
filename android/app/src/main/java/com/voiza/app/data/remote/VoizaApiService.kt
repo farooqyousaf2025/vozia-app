@@ -1,6 +1,7 @@
 package com.voiza.app.data.remote
 
 import com.voiza.app.data.remote.dto.AuthResponse
+import com.voiza.app.data.remote.dto.CheckInResponseDto
 import com.voiza.app.data.remote.dto.CreateGameBody
 import com.voiza.app.data.remote.dto.CreateRoomBody
 import com.voiza.app.data.remote.dto.EmojiCatalogueDto
@@ -20,6 +21,7 @@ import com.voiza.app.data.remote.dto.LiveKitTokenDto
 import com.voiza.app.data.remote.dto.OtpRequestBody
 import com.voiza.app.data.remote.dto.OtpResponse
 import com.voiza.app.data.remote.dto.OkResponse
+import com.voiza.app.data.remote.dto.QuestsTodayDto
 import com.voiza.app.data.remote.dto.RechargeBody
 import com.voiza.app.data.remote.dto.RechargeResponse
 import com.voiza.app.data.remote.dto.RoomDetailResponse
@@ -220,6 +222,23 @@ interface VoizaApiService {
     /** Take it off; the key is not part of this call because only one item of a kind is worn. */
     @POST("api/store/unequip")
     suspend fun unequipItem(@Body body: StoreItemBody): UserEnvelope
+
+    // ---- Daily quests ------------------------------------------------------
+
+    /**
+     * Today's quests, the day in the platform's reset timezone, and this member's check-in state.
+     * Progress is read-only here: only a gift that posted in the ledger or a chat row the room
+     * service stored can move it.
+     */
+    @GET("api/quests")
+    suspend fun questsToday(): QuestsTodayDto
+
+    /**
+     * Claim today's check-in. The body is empty on purpose — the reward, the streak and whether
+     * today is still open are all decided inside the server's transaction.
+     */
+    @POST("api/quests/checkin")
+    suspend fun checkIn(): CheckInResponseDto
 
     // ---- Games -------------------------------------------------------------
 
