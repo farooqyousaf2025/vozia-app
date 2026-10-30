@@ -122,6 +122,11 @@ jobs:
           DATABASE_URL: postgres://voiza:voiza@localhost:5432/voiza
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: ci-only-jwt-secret-not-a-default
+          # The suite has its own 12-minute watchdog and per-request timeouts; this cap
+          # is the backstop for a stuck process. Actions only publishes a job log once
+          # the step ends, so without a cap a hang would stay invisible for hours.
+          E2E_TRACE: '1'
+        timeout-minutes: 15
         run: npm run test:e2e
 
       # Two more live suites run against the same API, each as its own step so a red
@@ -139,6 +144,7 @@ jobs:
           DATABASE_URL: postgres://voiza:voiza@localhost:5432/voiza
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: ci-only-jwt-secret-not-a-default
+        timeout-minutes: 15
         run: npm run test:business
 
       - name: Games engine suite (fees, settlement, disputes)
@@ -150,6 +156,7 @@ jobs:
           # The suite signs its own webhook fixtures; this is the development default the
           # backend also falls back to, spelled out so the step cannot drift from it.
           STRIPE_WEBHOOK_SECRET: whsec_development_only_not_a_real_secret
+        timeout-minutes: 20
         run: npm run test:games
 
       - name: API log on failure

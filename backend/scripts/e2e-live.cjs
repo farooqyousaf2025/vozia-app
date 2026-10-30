@@ -30,6 +30,20 @@ const SECRET = process.env.LIVEKIT_API_SECRET || 'voiza-dev-secret-key-change-me
 const out = [];
 const check = (n, p, d) => out.push(`${p ? 'PASS' : 'FAIL'}  ${n}${d !== undefined ? `  :: ${JSON.stringify(d).slice(0, 240)}` : ''}`);
 
+// CI only publishes a job log once the step ends, so a request that never answers
+// would idle for hours and tell us nothing. E2E_TRACE names every call, and the
+// watchdog ends the run with the checks collected so far instead of hanging.
+const TRACE = process.env.E2E_TRACE === '1';
+const trace = (...a) => { if (TRACE) console.error('[e2e]', ...a); };
+const REQUEST_TIMEOUT_MS = Number(process.env.E2E_REQUEST_TIMEOUT_MS || 120000);
+const WATCHDOG_MS = Number(process.env.E2E_WATCHDOG_MS || 720000);
+const watchdog = setTimeout(() => {
+  process.stdout.write(`${out.join('\n')}\n`);
+  console.error(`E2E WATCHDOG: no result after ${Math.round(WATCHDOG_MS / 60000)} minutes, ${out.length} checks collected`);
+  process.exit(2);
+}, WATCHDOG_MS);
+
+
 let poolPromise = null;
 function db() {
   if (!poolPromise) {
@@ -56,11 +70,21 @@ async function sql(q) {
 }
 
 async function api(method, p, { token, body } = {}) {
-  const res = await fetch(API + p, {
-    method,
-    headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const started = Date.now();
+  trace('->', method, p);
+  let res;
+  try {
+    res = await fetch(API + p, {
+      method,
+      headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch (e) {
+    trace('!!', method, p, 'failed after', Date.now() - started, 'ms:', e.name, e.message);
+    throw e;
+  }
+  trace('<-', method, p, res.status, `${Date.now() - started}ms`);
   let json = null;
   try { json = await res.json(); } catch { /* empty */ }
   return { status: res.status, json };
@@ -74,7 +98,7 @@ async function api(method, p, { token, body } = {}) {
 async function stripePost(payload, { signature } = {}) {
   const headers = { 'content-type': 'application/json' };
   if (signature) headers['stripe-signature'] = signature;
-  const res = await fetch(API + '/api/payments/stripe/webhook', { method: 'POST', headers, body: payload });
+  const res = await fetch(API + '/api/payments/stripe/webhook', { method: 'POST', headers, body: payload, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
   let json = null;
   try { json = await res.json(); } catch { /* empty */ }
   return { status: res.status, json };
@@ -218,8 +242,11 @@ function loadLivekitService() {
   // validator is POST /rtc/validate (v1.13 has no /rtc/v1/verify/ route); it runs
   // the same auth + grant + room-existence checks a real client join goes through.
   const validate = async (token, qs = '') => {
+    trace('-> SFU /rtc/validate', qs || '');
     const r = await fetch(`http://127.0.0.1:7880/rtc/validate${qs}`, {
-      method: 'POST', headers: { authorization: `Bearer ${token}` },
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     return { status: r.status, body: (await r.text()).slice(0, 120) };
   };
@@ -244,6 +271,7 @@ function loadLivekitService() {
   // Exercise the backend's own LiveKit service module (not a reimplementation):
   // admin API auth for createRoom/listRooms/updateParticipant.
   const lkSvc = loadLivekitService();
+  trace('-> SFU admin listRooms');
   const rooms = await lkSvc.livekitRooms().listRooms();
   const roomNames = rooms.map((r) => r.name);
   check('livekit: backend API key/secret is authorised on the SFU admin API', roomNames.includes(lk.roomName), { rooms: roomNames.slice(0, 8) });
@@ -340,6 +368,7 @@ function loadLivekitService() {
       method: 'POST',
       headers: { 'content-type': contentType, authorization: bare ? jwt : `Bearer ${jwt}` },
       body: payload,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     return { status: res.status, body: (await res.text()).slice(0, 140) };
   };
@@ -1063,13 +1092,19 @@ function loadLivekitService() {
   const delay = (ms) => new Promise((r) => setTimeout(r, ms));
   const socketFor = (token) => ioLib('http://127.0.0.1:4000', { transports: ['websocket'], forceNew: true, auth: { token } });
   const entrances = [];
+  const connected = (s, label) => Promise.race([
+    new Promise((r) => s.once('connected', r)),
+    new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} socket never connected`)), 20000)),
+  ]);
   const watchSocket = socketFor(watcher.token);
   watchSocket.on('room:user_joined', (p) => entrances.push(p));
-  await new Promise((r) => watchSocket.once('connected', r));
+  trace('-> socket watcher connect');
+  await connected(watchSocket, 'watcher');
   watchSocket.emit('room:join', { roomId: shopRoomId }, () => {});
   await delay(400);
   const wearerSocket = socketFor(shopUser.token);
-  await new Promise((r) => wearerSocket.once('connected', r));
+  trace('-> socket wearer connect');
+  await connected(wearerSocket, 'wearer');
   wearerSocket.emit('room:join', { roomId: shopRoomId }, () => {});
   await delay(1200);
   const banner = entrances.find((p) => p.user && p.user.id === SHOP);
