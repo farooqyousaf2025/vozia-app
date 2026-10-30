@@ -44,14 +44,17 @@ jobs:
 
       livekit:
         image: livekit/livekit-server:v1.8.1
-        # --dev mints no auth requirement for the HTTP API used by the suite and
-        # pins the key pair the backend defaults to (src/config/env.ts).
-        # A service block accepts docker `options`, not `args`: the container
-        # command goes at the end of that string. `args` made the whole workflow
-        # unparseable, so every run failed with zero jobs before it ever started.
-        options: >-
-          --dev --bind 0.0.0.0
-          --keys "voiza-dev-access-key=voiza-dev-secret-key-change-me-32chars"
+        # A service block accepts docker flags in `options` but no container command
+        # line, so the server is configured through the LIVEKIT_* variables instead —
+        # the documented way to run this image. The key pair must equal the backend's
+        # development defaults (src/config/env.ts): the e2e suite asserts the SFU
+        # accepts backend-issued tokens, refuses publish rights for audience tokens
+        # and answers 401 for anything signed with another secret. `--dev` is not
+        # needed once keys are explicit.
+        env:
+          LIVEKIT_KEYS: '{"voiza-dev-access-key": "voiza-dev-secret-key-change-me-32chars"}'
+          LIVEKIT_BIND_ADDRESSES: '["0.0.0.0"]'
+          LIVEKIT_RTC_USE_EXTERNAL_IP: 'false'
         ports: ['7880:7880', '7881:7881']
 
     steps:
@@ -181,8 +184,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
-
+      # No setup-android step: ubuntu-latest already carries the SDK and build tools
+      # under /usr/local/lib/android/sdk with ANDROID_HOME set, and the action's own
+      # bootstrap tries to install the retired `tools` package, which fails.
       - uses: gradle/actions/setup-gradle@v4
 
       # The repo is authored on Windows, where the filesystem has no exec bit, so
