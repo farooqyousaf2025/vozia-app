@@ -591,11 +591,13 @@ out per `PAID` settlement — with the counterparty always the *other* side of t
 `GET /api/admin/accounts/reconcile` asks whether each account can explain itself. An ERROR is a
 contradiction between two tables, never a comparison of an account against the number the view just
 read from it: `account_source_missing`, `frozen_exceeds_available`, `payable_state_conflict`,
-`withdrawal_state_conflict`, `withdrawal_paid_step_missing`, `journal_entry_invalid`. INFO findings
-record what the book knows it cannot yet prove — `platform_revenue_not_booked` (gift spread and
-lucky-box tax are implicit residuals, fixed in #55) and `account_not_yet_opened`. The two named
-money gaps, an approved withdrawal with no paid step and unjournaled platform revenue, are real and
-are open work items, not artefacts of the query.
+`withdrawal_state_conflict`, `withdrawal_paid_step_missing`, `journal_entry_invalid` and — since 0031 —
+`platform_revenue_not_booked`, which counts gifts and settled games whose spread has no journal entry
+(see "What a gift keeps is now in the book"). The INFO findings are both true-but-unbooked figures the
+operator needs to see rather than trust: `opening_not_explained_by_ledger`, a seeded opening balance the
+ledger never moved, and `account_not_yet_opened`, a book that is legitimately empty. The one named money
+gap left, an approved withdrawal with no paid step, is real and is open work (#53), not an artefact of
+the query.
 
 ### The endpoints
 
@@ -672,7 +674,8 @@ inside those files were correct — the numbers, the BOM and the CSV were never 
 archives were not standards-conformant, so any workbook exported before that fix should be
 re-downloaded rather than repaired.
 
-Not yet built: the PAID step on withdrawals (#53) and journaling for gift spread and box tax (#55).
+Not yet built: the PAID step on withdrawals (#53), and booking the coin *issuance* side of demo-mode
+recharges and admin balance grants, which move wallets without a journal line (#60).
 
 ## The operator roster is a switch, not a bin (migration 0030)
 
@@ -738,6 +741,78 @@ which the guards apply as `SUPER_ADMIN`, and a screen that shows only the normal
 an account whose stored value still needs migrating.
 
 
+## What a gift keeps is now in the book (migration 0031)
+
+Two money paths have always taken a cut and never said so. A gift pulls diamonds from a sender and
+banks R-coins to a receiver in one ledger row; the difference is the platform's — the catalogue spread
+on a flat gift (Teddy: 50 diamonds in, 45 out) or the tax drawn on a lucky box. A settled game keeps
+its entry fees minus whatever the prize ladder distributed. Both moved coins; neither was worth a
+journal line, so `GET /api/admin/accounts/reconcile` reported an empty revenue account beside a ledger
+showing millions of diamonds spent.
+
+**One rate, owned by the operator.** Pricing a coin in a money book needs a money value for a coin, and
+the platform had exactly one — `STRIPE_CENTS_PER_DIAMOND`, inside the payment provider's configuration,
+describing only what a top-up pack costs. It moves to `system_config` as `accounts.coinValue`
+`{"minorPerCoin": 10}`, alongside the withdrawal and promotional switches 0029 seeded, with the default
+set to the number the code hardcodes today. One row and one number, read by both the write path and the
+backfill, is what makes a derived-versus-booked comparison honest: if the writer used `env` and the SQL
+used config, changing the rate would make the reconciler cry wolf. `0` is a meaningful value — the book
+does not value coins — and the writers then post nothing rather than inventing a rate.
+
+The rate is read with the caller's `PoolClient`, not through `readConfig()`: that helper takes a
+connection from the pool, and a money transaction already holds one, so using it here would put a second
+connection on the critical path of every gift send and stall the pool under load.
+
+**Three legs per entry.** `GIFT_TAX` is keyed on `transactions.id`, `GAME_TAKE` on the `game_sessions.id`
+whose settlement produced it, and the book's `UNIQUE (source_kind, source_id)` index is the idempotency
+key:
+
+| Leg | Direction | What it states |
+|---|---|---|
+| `COIN_LIABILITY` | DEBIT `released × face` | the diamonds that left circulation |
+| `COIN_LIABILITY` | CREDIT `minted × face` | the R-coins created in their place |
+| `PLATFORM_REVENUE` | CREDIT `spread × face` | what the platform kept |
+
+A gift with no spread books nothing — Rose is 1:1, and two liability lines that only cancel each other
+are noise, not a record. A quantity of three books one entry for the whole send, and a retried send —
+same `idempotencyKey`, so the same transaction id — answers the original receipt and adds no second
+entry.
+
+**A negative spread is a loss, and it is booked as one.** `validateLuckyBox` bounds the *expected*
+payout of a box, not the drawn one: a 20x tail can pay out more than the pool its price bought. That
+gap is real money leaving the platform, so the revenue line becomes a DEBIT. Dropping it would report
+the platform as having kept a spread it actually paid for, which is the more expensive mistake.
+
+**History was backfilled, not forgiven.** The migration's second statement walks every completed gift
+and every settled session with no entry, writes `JR-BF-` references, and lands on a `PLATFORM_REVENUE`
+balance that equals the ledger's own spread at the configured rate (2,577 entries on the development
+database, one of them a genuine box loss). It is idempotent twice over: the `missing` CTE only selects
+rows without an entry, and the unique index rejects a second one.
+
+**The writer is atomic, and had to be.** `postJournal()` used to look up and insert the header over the
+pool while its lines went through the caller's client. A send that rolled back afterwards — an
+unaffordable gift, a failed guard — would therefore commit a header with no lines, which is exactly the
+"credit committed, journal missing" failure the function exists to prevent. Both now use the caller's
+client, and `node scripts/revenue-e2e.cjs` asserts the stronger property over the whole book: every
+`GIFT_TAX` entry names a transaction that exists, before and after a refused send.
+
+### What the reconciler says now
+
+`platform_revenue_not_booked` was an INFO finding that asked whether the revenue account balance was
+zero — a proxy that went quiet as soon as one entry existed, and forgave all of history. It is now an
+ERROR that counts rows: completed gifts whose diamonds and R-coins differ, plus settled games whose pool
+and payout differ, each without a journal entry. The count is in **coins, never minor units**, because
+multiplying history by today's face value would report an amount the journal never posted. With the
+spread booked as it is written, that finding has nothing to say.
+
+One consequence is worth stating before someone meets it in a report: `COIN_LIABILITY` is now a running
+total rather than a pile of credits, so a stack that minted diamonds through demo-mode
+`POST /api/wallet/recharge` or `POST /admin/users/:id/balance` — paths that create no recharge order and
+therefore no journal line — shows a negative balance. The debit side is correct; the issuance side was
+never booked. Closing that is #60's job (promotional grants need the same treatment), and it is visible
+on any development database long before it would be on one running real payment orders.
+
+
 ## The socket speaks for a member, and a password is guessed slowly
 
 `joinRoom` is the moderation gate: it refuses a closed room, a banned account and a
@@ -797,7 +872,7 @@ Two behaviours worth knowing before pointing a test account at this:
 ## Tests
 
 `npm run test:e2e` drives a *running* stack (PostgreSQL + Redis + LiveKit + this API)
-through 398 checks: OTP auth, wallet ledger double-spend under concurrency, seat
+through 401 checks: OTP auth, wallet ledger double-spend under concurrency, seat
 row-lock contention, the seat policy (the published default, a room created with no
 capacity, a refused over-the-max request, an admin rewrite that lands in `admin_audit`,
 seats beyond the old hardcoded nine taken and refused, and a 64-seat room accepted by
@@ -825,11 +900,12 @@ written into the receipt, a replay answering the roll it already bought, and the
 same numbers the ledger paid. It exits non-zero on
 any failure.
 
-`npm run test:games` (67) and `npm run test:business` (87) run against the same stack:
+`npm run test:games` (69) and `npm run test:business` (87) run against the same stack:
 the game lifecycle, pinned rule versions, fees, at-most-once settlement, timeout
-forfeit, disputes and the three drivers; then BD/coin-seller accounts and scopes, the
-nine-step recharge, one-time credit, commission versions and statements, reversals and
-reconciliation.
+forfeit, disputes and the three drivers, and since 0031 the journal leg of a settled pool — one
+entry, priced at the configured face value, and no entry at all for a free match; then BD/coin-seller
+accounts and scopes, the nine-step recharge, one-time credit, commission versions and statements,
+reversals and reconciliation, with the revenue account pinned to holding only the coin spread.
 
 `npm run test:accounts` (58) and `npm run test:operators` (44) need that stack running too. The
 accounts suite walks the whole book rather than a page of it: the projection identity
@@ -849,6 +925,21 @@ the `role` claim. The rest cover the roster shape and search, the role catalogue
 second super-admin on either side of it, the schema's own flag/timestamp check, and that every write
 is audited by its own verb with the right actor. It leaves the four operators it created disabled — it
 cannot remove them, which is the reason the feature exists — so run it against a development database.
+
+`npm run test:revenue` (25) is the 0031 suite, and it is the only one that reads the journal rather than
+the wallet. The checks worth reading first are the two that bookkeeping lives or dies on: that a send
+the sender could not afford leaves **no** entry behind, orphan header included — which holds only
+because the writer is atomic — and that each of twelve lucky-box draws books an entry whose numbers come
+from the roll that receipt records, not from the box's advertised average — and when a roll lands past
+the pool, that the entry's revenue leg is a DEBIT, which the run has watched happen for real rather than
+only proving it with a hand-made overpaying gift.
+The rest price a Teddy send against the catalogue (not against the ledger row, which would be a
+tautology), confirm the revenue account moved by exactly the spread, confirm a 1:1 gift books nothing,
+confirm a three-gift tap books one entry and a retry of the same `idempotencyKey` books it once, then
+close the whole book: no unbooked gift or game anywhere, revenue equal to the ledger's spread at the
+configured rate, no `platform_revenue_not_booked`, Σdebits = Σcredits, and the entry visible on
+`GET /admin/accounts/PLATFORM_REVENUE/movements`. It creates two probe gifts and deletes them, and sends
+from time-stamped phone numbers, so it needs a development database too.
 
 `npm run test:wire-fixtures` and `npm run test:game-wire-fixtures` capture the live REST,
 socket and game-board payloads into `android/scripts/fixtures/`, which

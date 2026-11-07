@@ -336,6 +336,27 @@ const resetShipped = () => sql(`update game_definitions set ${SHIPPED} where key
     !!allocation && Number(allocation.gross_amount) === 202 && Number(allocation.platform_share) === 1 && Number(allocation.rules_version) === rules.rulesVersion,
     { allocation });
 
+  // Migration 0031 books what the match kept. The pool leaves the players as a released liability, the
+  // ladder mints a smaller one, and the difference is revenue at the face value the operator set — so
+  // the entry is checked against the settlement row, not against the numbers that wrote it.
+  const face = Number((await sql(`select (value->>'minorPerCoin')::int f from system_config where key='accounts.coinValue'`)).rows[0].f);
+  const takeLines = (await sql(
+    `select l.account_code a, l.direction d, l.amount_cents::bigint c
+       from fin_journal_entries e join fin_journal_lines l on l.entry_id = e.id
+      where e.source_kind = 'GAME_TAKE' and e.source_id = '${pid}' order by l.direction, l.account_code`,
+  )).rows;
+  const takeCount = Number(await scalar(`select count(*) from fin_journal_entries where source_kind='GAME_TAKE' and source_id='${pid}'`));
+  const line = (a, d) => Number(takeLines.find((r) => r.a === a && r.d === d)?.c ?? -1);
+  check('journal: the settled pool writes one entry, priced at the configured face value',
+    takeCount === 1 && takeLines.length === 3 && face > 0
+      && line('COIN_LIABILITY', 'DEBIT') === pool * face
+      && line('COIN_LIABILITY', 'CREDIT') === Number(book.distributed) * face
+      && line('PLATFORM_REVENUE', 'CREDIT') === (pool - Number(book.distributed)) * face,
+    { takeCount, face, lines: takeLines.map((r) => `${r.a}:${r.d}:${r.c}`) });
+  check('journal: the free match took nothing and so booked nothing',
+    Number(await scalar(`select count(*) from fin_journal_entries where source_kind='GAME_TAKE' and source_id='${sid}'`)) === 0,
+    { freeSession: sid });
+
   const pinned = (await sql(`select rules::text r, rules_version from game_sessions where id = '${pid}'`)).rows[0];
   const snapshot = Number(await scalar(`select count(*) from game_rule_snapshots where game_key='TIC_TAC_TOE' and rules_version = ${rules.rulesVersion}`));
   check('versioning: the session carries the rules it was played under, and the table keeps them',

@@ -6,8 +6,9 @@
 //
 // First, the face value of coins issued is not revenue. Cash arrives in
 // PROVIDER_COLLECTIONS, the coins the platform still owes the holder sit in COIN_LIABILITY,
-// and only the net after provider fees and commission becomes PLATFORM_REVENUE. A trial balance
-// that pretends otherwise would overstate the business by every unredeemed coin.
+// and only what remains becomes PLATFORM_REVENUE — the net of a collection after provider
+// fees, and since migration 0031 the coin spread each gift and each settled game kept. A trial
+// balance that pretends otherwise would overstate the business by every unredeemed coin.
 //
 // Second, the reconciliation report is not a summary of what the services said. Each check is a
 // count of offending rows read straight out of the tables, so a zero means "I looked for a
@@ -38,7 +39,7 @@ const KIND_TONES: Record<string, BadgeTone> = {
   EQUITY: 'violet',
 };
 
-const SOURCE_KINDS = ['RECHARGE_ORDER', 'COMMISSION_ACCRUAL', 'SETTLEMENT', 'REVERSAL', 'ADJUSTMENT'];
+const SOURCE_KINDS = ['RECHARGE_ORDER', 'COMMISSION_ACCRUAL', 'SETTLEMENT', 'REVERSAL', 'ADJUSTMENT', 'GIFT_TAX', 'GAME_TAKE'];
 
 export default function FinancePage() {
   const toast = useToast();

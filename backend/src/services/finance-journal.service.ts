@@ -25,7 +25,16 @@ export type JournalLine = {
 };
 
 export type JournalInput = {
-  sourceKind: 'RECHARGE_ORDER' | 'COMMISSION_ACCRUAL' | 'SETTLEMENT' | 'REVERSAL' | 'ADJUSTMENT';
+  sourceKind:
+    | 'RECHARGE_ORDER'
+    | 'COMMISSION_ACCRUAL'
+    | 'SETTLEMENT'
+    | 'REVERSAL'
+    | 'ADJUSTMENT'
+    // The two coin spreads (0031): what a gift took and did not hand over, and what a settled game
+    // kept from its pool.
+    | 'GIFT_TAX'
+    | 'GAME_TAKE';
   sourceId: string;
   memo?: string | null;
   currency?: string;
@@ -112,37 +121,124 @@ export async function postJournal(
   }
 
   const currency = input.currency ?? 'pkr';
-  const existing = await one<{ id: string; reference: string }>(
+  // Read and write on the caller's client, never the pool: an entry looked up or inserted on a second
+  // connection would commit even when the caller's transaction rolls back, and a header with no lines
+  // is exactly the "credit committed, journal missing" failure this function exists to prevent.
+  const existing = await client.query<{ id: string; reference: string }>(
     'SELECT id, reference FROM fin_journal_entries WHERE source_kind = $1 AND source_id = $2',
     [input.sourceKind, input.sourceId],
   );
-  if (existing) return { ...existing, posted: false };
+  if (existing.rows[0]) return { ...existing.rows[0], posted: false };
 
-  const entry = await one<{ id: string; reference: string }>(
+  const entry = await client.query<{ id: string; reference: string }>(
     `INSERT INTO fin_journal_entries (reference, source_kind, source_id, memo, currency, created_by)
      VALUES ($1,$2,$3,$4,$5,$6)
      ON CONFLICT (source_kind, source_id) DO NOTHING
      RETURNING id, reference`,
     [shortCode('JR'), input.sourceKind, input.sourceId, input.memo ?? null, currency, input.createdBy ?? null],
   );
-  if (!entry) {
+  const posted = entry.rows[0];
+  if (!posted) {
     // Lost the race to a concurrent retry of the same step; re-read what it committed.
-    const raced = await one<{ id: string; reference: string }>(
+    const raced = await client.query<{ id: string; reference: string }>(
       'SELECT id, reference FROM fin_journal_entries WHERE source_kind = $1 AND source_id = $2',
       [input.sourceKind, input.sourceId],
     );
-    if (!raced) throw ApiError.conflict('Journal entry could not be written');
-    return { ...raced, posted: false };
+    if (!raced.rows[0]) throw ApiError.conflict('Journal entry could not be written');
+    return { ...raced.rows[0], posted: false };
   }
 
   for (const line of lines) {
     await client.query(
       `INSERT INTO fin_journal_lines (entry_id, account_code, direction, amount_cents, currency)
        VALUES ($1,$2,$3,$4,$5)`,
-      [entry.id, line.accountCode, line.direction, line.amountCents, currency],
+      [posted.id, line.accountCode, line.direction, line.amountCents, currency],
     );
   }
-  return { ...entry, posted: true };
+  return { ...posted, posted: true };
+}
+
+/**
+ * The `system_config` row that says what one coin is worth in the money book (migration 0031).
+ *
+ * A gift spread and a game pool are counted in coins; the revenue account is kept in minor units.
+ * The one number that converts them used to live inside the Stripe configuration, where it only
+ * described what a top-up costs, so it moved here — the same table the withdrawal and promotional
+ * switches already live in, and the reason a SQL backfill can state amounts as well as this service
+ * can.
+ */
+export const COIN_VALUE_CONFIG_KEY = 'accounts.coinValue';
+
+/** Minor units per coin, or 0 when the operator has decided the book does not value coins at all. */
+export async function coinFaceMinor(client: PoolClient): Promise<number> {
+  const row = await client.query<{ value: { minorPerCoin?: unknown } }>(
+    'SELECT value FROM system_config WHERE key = $1',
+    [COIN_VALUE_CONFIG_KEY],
+  );
+  const configured = Number(row.rows[0]?.value?.minorPerCoin);
+  return Number.isInteger(configured) && configured > 0 ? configured : 0;
+}
+
+export type CoinSpreadInput = {
+  sourceKind: 'GIFT_TAX' | 'GAME_TAKE';
+  /** The ledger row or session the spread came from — the idempotency key of this entry. */
+  sourceId: string;
+  memo: string;
+  /** Coins that left a wallet, so the platform no longer owes their holder anything for them. */
+  coinsReleased: number;
+  /** Coins minted into a wallet by the same flow, which the platform now owes. */
+  coinsMinted: number;
+  createdBy?: string | null;
+};
+
+/**
+ * Book the difference between coins taken and coins handed over.
+ *
+ * Three lines, because two things and not one happened: the liability for the spent coins is
+ * released (DEBIT), a new liability for the minted coins is recognised (CREDIT), and the gap between
+ * them is the platform's take. A lucky box that rolled its 20x tail mints more than the pool its
+ * price bought, and that gap is a DEBIT to revenue rather than something to skip — the alternative is
+ * a book that reports a profit on the exact sends that lost money.
+ *
+ * Nothing here is derived from a request body: callers pass the same server-computed figures they
+ * just wrote into `transactions`, and the entry is keyed on the same id, so a replayed gift or a
+ * second settle of a match posts nothing.
+ */
+export async function postCoinSpread(
+  client: PoolClient,
+  input: CoinSpreadInput,
+): Promise<{ posted: boolean; reference?: string }> {
+  if (!Number.isInteger(input.coinsReleased) || !Number.isInteger(input.coinsMinted)) {
+    throw ApiError.badRequest('A coin spread needs whole coin counts', 'bad_coin_spread');
+  }
+  if (input.coinsReleased < 0 || input.coinsMinted < 0) {
+    throw ApiError.badRequest('A coin spread cannot be counted in negatives', 'bad_coin_spread');
+  }
+
+  const face = await coinFaceMinor(client);
+  const released = input.coinsReleased * face;
+  const minted = input.coinsMinted * face;
+  const spread = released - minted;
+  // No rate, no coins, or an even swap (a Rose banks exactly the diamond it cost): in every case
+  // there is no platform amount to state, and an entry whose two liability lines cancel is noise.
+  if (released === 0 || spread === 0) return { posted: false };
+
+  const entry = await postJournal(client, {
+    sourceKind: input.sourceKind,
+    sourceId: input.sourceId,
+    memo: input.memo.slice(0, 300),
+    createdBy: input.createdBy ?? null,
+    lines: [
+      { accountCode: FIN_ACCOUNTS.coinLiability, direction: 'DEBIT', amountCents: released },
+      { accountCode: FIN_ACCOUNTS.coinLiability, direction: 'CREDIT', amountCents: minted },
+      {
+        accountCode: FIN_ACCOUNTS.platformRevenue,
+        direction: spread > 0 ? 'CREDIT' : 'DEBIT',
+        amountCents: Math.abs(spread),
+      },
+    ],
+  });
+  return { posted: entry.posted, reference: entry.reference };
 }
 
 /** Balance of one account over a window, in minor units. Positive means its normal side grew. */

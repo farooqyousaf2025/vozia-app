@@ -5,6 +5,7 @@ import { many, one, query, withTransaction } from '../config/db';
 import { rateLimit, redis } from '../config/redis';
 import { GiftBoxOutcomeRow, GiftRow, TransactionRow, UserRow, WithdrawalRow } from '../types/db';
 import { ApiError } from '../utils/http';
+import { postCoinSpread } from './finance-journal.service';
 import { LuckyRollDto, rollLuckyBox, toBoxOutcomes } from './lucky-box.service';
 import { awardXp, ensureRankRegistry, xpForEarning, xpForSpend } from './rank.service';
 import { recordQuestProgress } from './quest.service';
@@ -355,6 +356,19 @@ export async function sendGift(input: {
         receiver.r_coin_balance + totalRCoins,
       ],
     );
+
+    // The book's half of the row just posted. The diamonds the sender burnt were a liability the
+    // platform owed its holder; the R-coins the receiver banks are a new one; and the gap between
+    // them — the catalogue spread on a flat gift, the drawn tax on a lucky box, and a loss when a box
+    // rolls past its pool — is the take this service has always had and never stated. Keyed on the
+    // ledger row, so a retried send describes the gift once.
+    await postCoinSpread(client, {
+      sourceKind: 'GIFT_TAX',
+      sourceId: txRes.rows[0].id,
+      memo: `${gift.name} x${input.quantity}: ${totalDiamonds} diamonds spent, ${totalRCoins} R-coins banked`,
+      coinsReleased: totalDiamonds,
+      coinsMinted: totalRCoins,
+    });
 
     // Daily quests are counted from the same transaction that moved the diamonds. `quantity` is
     // gifts sent; `totalDiamonds` is what the spend quest measures. Both are recorded server-side,

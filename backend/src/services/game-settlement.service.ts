@@ -2,6 +2,7 @@ import { PoolClient } from 'pg';
 import { GameDefinitionRow, GameParticipantRow, GameSessionRow, PinnedGameRules } from '../types/db';
 import { ApiError } from '../utils/http';
 import { GameStandings } from '../games/types';
+import { postCoinSpread } from './finance-journal.service';
 import { PostedGameMove, postGameMoves } from './ledger.service';
 
 /**
@@ -193,6 +194,19 @@ export async function settleSession(
     `UPDATE game_settlements SET distributed = $2, payouts = $3::jsonb WHERE session_id = $1`,
     [session.id, distributed, JSON.stringify(payouts)],
   );
+
+  // What the players paid and did not get back is the platform's, and the book says so beside the
+  // settlement row that proves it: the entry fees leave one set of wallets as a released liability,
+  // the prizes re-mint a smaller one, and the gap is the commission plus whatever the ladder did not
+  // reach. Keyed on the session, which `game_settlements` already makes unique, so this describes a
+  // match once even if the caller somehow arrives here twice.
+  await postCoinSpread(client, {
+    sourceKind: 'GAME_TAKE',
+    sourceId: session.id,
+    memo: `${session.game_key} pool: ${grossPool} diamonds in, ${distributed} paid out`,
+    coinsReleased: grossPool,
+    coinsMinted: distributed,
+  });
   await client.query(
     `UPDATE game_sessions
         SET status = 'COMPLETED', settlement_status = 'SETTLED', ended_at = now(),

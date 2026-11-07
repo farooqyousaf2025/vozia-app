@@ -366,7 +366,7 @@ fresh token. Turning approval off cancels the queue rather than stranding it. Se
 
 ## Verification
 
-* `cd backend && npm run test:e2e` — 154 checks against a running stack (real Postgres,
+* `cd backend && npm run test:e2e` — 401 checks against a running stack (real Postgres,
   Redis, LiveKit and this API): OTP auth, ledger double-spend under concurrency, seat
   row-lock contention, the seat policy (a new room gets the administrator's default, a
   rewrite is audited, and a guest can take a seat far beyond the old hardcoded nine),
@@ -387,7 +387,13 @@ fresh token. Turning approval off cancels the queue rather than stranding it. Se
 * `cd backend && npm run test:sms` and `npm run test:payments` — 16 and 29 checks with
   `fetch` replaced by a recorder, so no account is needed: the exact Twilio form POST
   and Basic header, Vonage's `200`-with-`status:"1"` trap, the Stripe intent body, and
-  every webhook-signature rejection. Together with the e2e suite that is 199 checks.
+  every webhook-signature rejection. Together with the e2e suite that is 446 checks.
+* `cd backend && npm run test:business` (87), `test:games` (69), `test:accounts` (58),
+  `test:operators` (44) and `test:revenue` (25) cover the money book rather than the party: the
+  nine-step recharge and its commission versions, the three game drivers and at-most-once
+  settlement, the purpose-account projection and its exports, the operator roster's live re-read
+  of every switch, and — since migration 0031 — the journal entry each gift's spread and each
+  settled game's pool now writes, priced at `system_config.accounts.coinValue`.
 * `cd backend && npm run test:social` — 24 checks over the migration-0022 edges with no
   database: the report/status/decision vocabularies, every validator's trim-and-refuse
   behaviour (details, resolution, block reason, announcement, transfer note, UUIDs), and

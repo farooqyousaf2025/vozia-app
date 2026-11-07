@@ -541,14 +541,27 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     { debits: trial.json && trial.json.trial.totalDebits, credits: trial.json && trial.json.trial.totalCredits });
 
   const liability = await api('GET', '/api/admin/business/finance/balance/COIN_LIABILITY', { token: finance.token });
+  const coinsCredited = Number(await scalar(
+    `select coalesce(sum(l.amount_cents), 0)::text
+       from fin_journal_entries e join fin_journal_lines l on l.entry_id = e.id
+      where e.source_kind = 'RECHARGE_ORDER' and l.account_code = 'COIN_LIABILITY' and l.direction = 'CREDIT'`,
+  ));
   check('journal: issued coins sit as a liability, not as revenue',
-    liability.status === 200 && Number(liability.json.account.balance) > 0,
-    { balance: liability.json && liability.json.account.balance });
+    liability.status === 200 && coinsCredited > 0, { creditedCents: coinsCredited, accountBalance: liability.json && liability.json.account.balance });
 
   const revenue = await api('GET', '/api/admin/business/finance/balance/PLATFORM_REVENUE', { token: finance.token });
-  check('journal: nothing has been recognised as revenue from coin face value',
-    revenue.status === 200 && Number(revenue.json.account.balance) === 0,
-    { balance: revenue.json && revenue.json.account.balance });
+  const revenueKinds = (await sql(
+    `select distinct e.source_kind as k
+       from fin_journal_entries e join fin_journal_lines l on l.entry_id = e.id
+      where l.account_code = 'PLATFORM_REVENUE' order by k`,
+  )).rows.map((r) => r.k);
+  // What this suite is really claiming: the recharge-and-commission book never calls money its own
+  // revenue — provider fees and partner payouts sit on their own accounts — so the only thing this
+  // account has ever held is the coin spread migration 0031 started booking (GIFT_TAX, GAME_TAKE).
+  check('journal: the revenue account holds only the coin spread, never recharge or commission money',
+    revenue.status === 200 && revenueKinds.join(',') === 'GAME_TAKE,GIFT_TAX', {
+      kinds: revenueKinds, balance: revenue.json && revenue.json.account.balance,
+    });
 
   const unbalanced = await scalar(
     `select count(*) from (

@@ -978,25 +978,42 @@ export async function reconcileAccounts(): Promise<{ generatedAt: string; findin
     });
   }
 
-  // The gap the reports have been missing: a gift spends diamonds and credits R-coins in the same
-  // row, and nothing books the difference as revenue. Both figures are reported separately because
-  // they are different units and there is no honest number to add them into. INFO, because it is
-  // true and because closing it is a write-path change (T2), not a query.
-  const revenue = await one<{ balance: string | number; diamonds: string | number; rcoins: string | number }>(
-    `SELECT (SELECT balance_minor FROM purpose_account_balances WHERE account_code = 'PLATFORM_REVENUE') AS balance,
-            (SELECT COALESCE(SUM(amount_diamonds), 0) FROM transactions
-              WHERE type = 'GIFT_SENT' AND status = 'COMPLETED') AS diamonds,
-            (SELECT COALESCE(SUM(amount_r_coins), 0) FROM transactions
-              WHERE type = 'GIFT_SENT' AND status = 'COMPLETED') AS rcoins`,
+  // A gift takes diamonds and banks R-coins in one ledger row, and the difference is the platform's
+  // take; a settled game keeps whatever its prize ladder did not distribute. Both now write a journal
+  // entry keyed on that same row or session (0031), so a spread with no entry is a write that went
+  // around the book — which is why this is counted in coins, not in minor units. Multiplying the
+  // ledger by today's face value would report a number the journal never posted, and the face value
+  // is an operator dial.
+  const unbooked = await one<{
+    giftRows: string | number;
+    giftCoins: string | number;
+    gameRows: string | number;
+    gameCoins: string | number;
+  }>(
+    `SELECT COUNT(*)::text AS gift_rows,
+            COALESCE(SUM(t.amount_diamonds - t.amount_r_coins), 0)::text AS gift_coins,
+            (SELECT COUNT(*)::text FROM game_settlements gs
+              WHERE gs.status = 'SETTLED' AND gs.gross_pool <> gs.distributed
+                AND NOT EXISTS (SELECT 1 FROM fin_journal_entries e
+                                 WHERE e.source_kind = 'GAME_TAKE' AND e.source_id = gs.session_id::text)) AS game_rows,
+            (SELECT COALESCE(SUM(gs.gross_pool - gs.distributed), 0)::text FROM game_settlements gs
+              WHERE gs.status = 'SETTLED' AND gs.gross_pool <> gs.distributed
+                AND NOT EXISTS (SELECT 1 FROM fin_journal_entries e
+                                 WHERE e.source_kind = 'GAME_TAKE' AND e.source_id = gs.session_id::text)) AS game_coins
+       FROM transactions t
+      WHERE t.type = 'GIFT_SENT' AND t.status = 'COMPLETED' AND t.amount_diamonds <> t.amount_r_coins
+        AND NOT EXISTS (SELECT 1 FROM fin_journal_entries e
+                         WHERE e.source_kind = 'GIFT_TAX' AND e.source_id = t.id::text)`,
   );
-  if (revenue && minor(revenue.balance) === 0 && (minor(revenue.diamonds) > 0 || minor(revenue.rcoins) > 0)) {
+  if (unbooked && minor(unbooked.giftRows) + minor(unbooked.gameRows) > 0) {
     findings.push({
       code: 'platform_revenue_not_booked',
-      severity: 'INFO',
+      severity: 'ERROR',
       accountCode: 'PLATFORM_REVENUE',
       currency: null,
-      amountMinor: 0,
-      detail: `${minor(revenue.diamonds)} diamonds spent and ${minor(revenue.rcoins)} R-coins credited on gifts with no revenue entry in the journal`,
+      amountMinor: minor(unbooked.giftCoins) + minor(unbooked.gameCoins),
+      detail: `${minor(unbooked.giftRows)} gift row(s) spread ${minor(unbooked.giftCoins)} coins and ` +
+        `${minor(unbooked.gameRows)} settled game(s) kept ${minor(unbooked.gameCoins)} coins with no journal entry`,
     });
   }
 
