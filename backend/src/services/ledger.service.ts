@@ -5,6 +5,7 @@ import { many, one, query, withTransaction } from '../config/db';
 import { rateLimit, redis } from '../config/redis';
 import { GiftBoxOutcomeRow, GiftRow, TransactionRow, UserRow, WithdrawalRow } from '../types/db';
 import { ApiError } from '../utils/http';
+import { accrueAgencyCommission, commissionBpsLabel, commissionMembership } from './agency.service';
 import { readConfig } from './business.service';
 import { postCoinSpread } from './finance-journal.service';
 import { LuckyRollDto, rollLuckyBox, toBoxOutcomes } from './lucky-box.service';
@@ -379,17 +380,15 @@ export async function sendGift(input: {
       { metric: 'DIAMONDS_SPENT', amount: totalDiamonds },
     ]);
 
-    // Agency commission: tracked as its own ledger row so back-office reporting
-    // can attribute a host's earnings without touching the host's balance.
+    // Agency commission: tracked as its own ledger row so back-office reporting can attribute a
+    // host's earnings, and — since 0033 — booked as a journal line so the agency's account says what
+    // the platform owes. The host is paid neither more nor less by it: the R-coins named here left no
+    // wallet, which is why `coin_movements` counts this row as zero and why the amount needs a money
+    // book of its own rather than another coin projection.
     let commission: TransactionRow | null = null;
-    const membership = await client.query<{ agency_id: string; commission_bps: number }>(
-      `SELECT ah.agency_id, ah.commission_bps FROM agency_hosts ah
-        WHERE ah.host_user_id = $1 AND ah.status = 'ACTIVE' LIMIT 1`,
-      [receiver.id],
-    );
-    if (membership.rows[0] && totalRCoins > 0) {
-      const { agency_id, commission_bps } = membership.rows[0];
-      const commissionAmount = Math.floor((totalRCoins * commission_bps) / 10_000);
+    const membership = await commissionMembership(client, receiver.id);
+    if (membership && totalRCoins > 0) {
+      const commissionAmount = Math.floor((totalRCoins * membership.commissionBps) / 10_000);
       if (commissionAmount > 0) {
         const rows = await client.query<TransactionRow>(
           `INSERT INTO transactions (type, status, receiver_id, amount_r_coins, room_id, agency_id, meta)
@@ -398,11 +397,21 @@ export async function sendGift(input: {
             receiver.id,
             commissionAmount,
             input.roomId ?? null,
-            agency_id,
-            JSON.stringify({ sourceGiftId: gift.id, commissionBps: commission_bps }),
+            membership.agencyId,
+            JSON.stringify({
+              sourceGiftId: gift.id,
+              commissionBps: membership.commissionBps,
+              rateSource: membership.rateSource,
+            }),
           ],
         );
         commission = rows.rows[0];
+        await accrueAgencyCommission(client, {
+          commissionTransactionId: commission.id,
+          agencyId: membership.agencyId,
+          coins: commissionAmount,
+          memo: `${membership.agencyName} — ${commissionBpsLabel(membership)} of ${gift.name} x${input.quantity} (${commissionAmount} R-coins)`,
+        });
       }
     }
 

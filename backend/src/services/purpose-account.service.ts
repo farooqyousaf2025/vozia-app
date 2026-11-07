@@ -2,6 +2,7 @@ import { PoolClient } from 'pg';
 import { many, one, withTransaction } from '../config/db';
 import { ApiError } from '../utils/http';
 import { recordAudit } from './audit.service';
+import { coinFaceMinor, FIN_ACCOUNTS } from './finance-journal.service';
 
 /**
  * Purpose accounts — the accounting window onto money Voiza already holds elsewhere.
@@ -68,14 +69,25 @@ const PAYABLE_CATEGORIES: Record<'BD_MANAGER' | 'COIN_SELLER', { beneficiary: 'B
 
 const KEY_PATTERN = /^[\w.-]{8,80}$/;
 
-/** node-pg hands int8 and numeric back as strings so a large amount cannot lose precision. */
-function minor(value: string | number | null | undefined): number {
+/**
+ * node-pg hands int8 and numeric back as strings so a large amount cannot lose precision.
+ *
+ * Exported because every other screen that reads the projection — agency positions, partner
+ * statements — has to convert the same columns the same way, and a second parser is a second
+ * answer to "what is this account worth".
+ */
+export function minor(value: string | number | null | undefined): number {
   if (value === null || value === undefined) return 0;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-type BalanceRow = {
+/**
+ * The projection's row shape. Exported because a screen that reads agency or partner positions
+ * through a query of its own still has to map the money columns the same way this file does, and
+ * two definitions of "available" is how a report starts disagreeing with the account it describes.
+ */
+export type BalanceRow = {
   account_code: string;
   name: string;
   category: AccountCategory;
@@ -184,7 +196,7 @@ export type AccountMovementDto = {
   counterparty: string | null;
 };
 
-function toAccountDto(row: BalanceRow): PurposeAccountDto {
+export function toAccountDto(row: BalanceRow): PurposeAccountDto {
   const available = minor(row.available_minor);
   const pending = minor(row.pending_minor);
   const approved = minor(row.approved_minor);
@@ -288,8 +300,14 @@ export async function ensureUserAccounts(userId: string, client?: PoolClient): P
   return withTransaction(run);
 }
 
-/** Open a partner or agency account from the row that already describes the owner. */
-async function ensureOwnerAccount(client: PoolClient, category: AccountCategory, ownerId: string): Promise<void> {
+/**
+ * Open a partner or agency account from the row that already describes the owner.
+ *
+ * Exported because the gift path needs it (0033): `fin_journal_lines.account_code` references
+ * `fin_accounts`, so the accrual an agency earns on its host's first gift has to open the account in
+ * the same transaction that books it — an accounting row cannot be a reason to refuse a send.
+ */
+export async function ensureOwnerAccount(client: PoolClient, category: AccountCategory, ownerId: string): Promise<void> {
   if (PAYABLE_CATEGORIES[category as 'BD_MANAGER' | 'COIN_SELLER']) {
     const payable = PAYABLE_CATEGORIES[category as 'BD_MANAGER' | 'COIN_SELLER'];
     const partner = (
@@ -902,6 +920,110 @@ export async function reconcileAccounts(): Promise<{ generatedAt: string; findin
     });
   }
 
+  // An agency's payable (0033) has the same three-way shape, but its parts are in four tables instead
+  // of two: the batch states an amount, its claim rows add up to it, the hold reserves it on the
+  // account, and the payout debits it from the book. Each of the three checks below compares two of
+  // those, so a batch can only pass by describing the same money everywhere. Written against the
+  // tables rather than the view, because a view that agrees with itself proves nothing.
+  const claimMismatch = await many<{
+    reference: string;
+    amount: string | number;
+    claimed: string | number;
+    entries: string | number;
+  }>(
+    `SELECT s.reference, s.amount_minor AS amount, COALESCE(SUM(i.amount_minor), 0) AS claimed,
+            COUNT(i.entry_id)::text AS entries
+       FROM agency_settlements s
+       LEFT JOIN agency_settlement_items i ON i.settlement_id = s.id
+      WHERE s.status <> 'VOID'
+      GROUP BY s.id, s.reference, s.amount_minor
+     HAVING s.amount_minor <> COALESCE(SUM(i.amount_minor), 0)
+      LIMIT 50`,
+  );
+  for (const row of claimMismatch) {
+    findings.push({
+      code: 'settlement_claim_mismatch',
+      severity: 'ERROR',
+      accountCode: null,
+      currency: 'pkr',
+      amountMinor: minor(row.amount) - minor(row.claimed),
+      detail: `batch ${row.reference} states ${minor(row.amount)} but its ${minor(row.entries)} claim(s) total ${minor(row.claimed)}`,
+    });
+  }
+
+  // The journal is the only record that the agency was actually paid, so a PAID batch must have
+  // exactly one entry whose agency-side debit is the batch amount — and a batch in any other state
+  // must have none, because recording the transfer before it happens would let the next reconciler
+  // conclude the money left.
+  const bookingMismatch = await many<{
+    reference: string;
+    status: string;
+    amount: string | number;
+    debited: string | number;
+  }>(
+    `SELECT s.reference, s.status::text AS status, s.amount_minor AS amount,
+            COALESCE((SELECT SUM(l.amount_cents)
+                        FROM fin_journal_entries e
+                        JOIN fin_journal_lines l ON l.entry_id = e.id
+                       WHERE e.source_kind = 'AGENCY_SETTLEMENT' AND e.source_id = s.id::text
+                         AND l.account_code = a.code AND l.direction = 'DEBIT'), 0) AS debited
+       FROM agency_settlements s
+       LEFT JOIN fin_accounts a ON a.owner_id = s.agency_id AND a.category = 'AGENCY'
+      WHERE (s.status = 'PAID' AND ((SELECT COUNT(*) FROM fin_journal_entries e
+                                     WHERE e.source_kind = 'AGENCY_SETTLEMENT' AND e.source_id = s.id::text) <> 1
+                                OR COALESCE((SELECT SUM(l.amount_cents)
+                                              FROM fin_journal_entries e
+                                              JOIN fin_journal_lines l ON l.entry_id = e.id
+                                             WHERE e.source_kind = 'AGENCY_SETTLEMENT' AND e.source_id = s.id::text
+                                               AND l.account_code = a.code AND l.direction = 'DEBIT'), 0) <> s.amount_minor))
+         OR (s.status <> 'PAID' AND EXISTS (SELECT 1 FROM fin_journal_entries e
+                                            WHERE e.source_kind = 'AGENCY_SETTLEMENT' AND e.source_id = s.id::text))
+      LIMIT 50`,
+  );
+  for (const row of bookingMismatch) {
+    findings.push({
+      code: row.status === 'PAID' ? 'settlement_payout_unbooked' : 'settlement_booked_early',
+      severity: 'ERROR',
+      accountCode: null,
+      currency: 'pkr',
+      amountMinor: minor(row.amount) - minor(row.debited),
+      detail:
+        row.status === 'PAID'
+          ? `batch ${row.reference} paid ${minor(row.amount)} but the book moved ${minor(row.debited)} for it`
+          : `batch ${row.reference} is ${row.status} but the book already describes its payout`,
+    });
+  }
+
+  // What the raise step refuses: claims larger than the payable. Reaching here means the guard was
+  // walked around — a hold released by hand, a batch paid twice, an entry inserted directly.
+  const overClaimed = await many<{ code: string; currency: string; position: string | number; claimed: string | number }>(
+    `SELECT a.code, a.currency,
+            COALESCE(j.credits, 0) - COALESCE(j.debits, 0) AS position,
+            COALESCE(h.open_minor, 0) + COALESCE(h.frozen_minor, 0) AS claimed
+       FROM fin_accounts a
+       LEFT JOIN (SELECT l.account_code,
+                         SUM(l.amount_cents) FILTER (WHERE l.direction = 'CREDIT') AS credits,
+                         SUM(l.amount_cents) FILTER (WHERE l.direction = 'DEBIT')  AS debits
+                    FROM fin_journal_lines l GROUP BY l.account_code) j ON j.account_code = a.code
+       LEFT JOIN (SELECT c.account_code,
+                         SUM(c.amount_minor) FILTER (WHERE c.kind = 'FROZEN')   AS frozen_minor,
+                         SUM(c.amount_minor) FILTER (WHERE c.kind <> 'FROZEN')  AS open_minor
+                    FROM account_holds c WHERE c.status = 'OPEN' GROUP BY c.account_code) h ON h.account_code = a.code
+      WHERE a.category = 'AGENCY'
+        AND COALESCE(h.open_minor, 0) + COALESCE(h.frozen_minor, 0)
+            > COALESCE(j.credits, 0) - COALESCE(j.debits, 0)`,
+  );
+  for (const row of overClaimed) {
+    findings.push({
+      code: 'agency_claim_exceeds_payable',
+      severity: 'ERROR',
+      accountCode: row.code,
+      currency: row.currency,
+      amountMinor: minor(row.claimed) - minor(row.position),
+      detail: `${minor(row.claimed)} ${row.currency} claimed by open holds against a payable of ${minor(row.position)} — some batch has no money behind it`,
+    });
+  }
+
   // The withdrawal pipeline: the request row and its ledger row must tell one story. Since 0032 the
   // ledger follows the request one step behind — the money leaves the wallet when the host asks
   // (escrow), so PENDING and APPROVED both sit on a PENDING ledger row, and only a recorded payout
@@ -1016,6 +1138,59 @@ export async function reconcileAccounts(): Promise<{ generatedAt: string; findin
       amountMinor: minor(unbooked.giftCoins) + minor(unbooked.gameCoins),
       detail: `${minor(unbooked.giftRows)} gift row(s) spread ${minor(unbooked.giftCoins)} coins and ` +
         `${minor(unbooked.gameRows)} settled game(s) kept ${minor(unbooked.gameCoins)} coins with no journal entry`,
+    });
+  }
+
+  // The agency accrual (0033) is the third writer in this family, and the only one whose entry is
+  // not platform revenue: an agency's share of a gift is an expense the platform owes somebody
+  // outside it. Same reason to check it — a commission row with no entry is an agency being promised
+  // a share the book has never seen — and one case where nothing *should* be booked: a book that
+  // does not value coins cannot price an accrual, so the rows are reported and not counted as a
+  // contradiction. That is also why an accrual is never valued here by guessing a rate.
+  const face = await coinFaceMinor();
+  const unaccrued = await one<{ rows: string | number; coins: string | number }>(
+    `SELECT COUNT(*)::text AS rows, COALESCE(SUM(t.amount_r_coins), 0)::text AS coins
+       FROM transactions t
+      WHERE t.type = 'AGENCY_COMMISSION' AND t.status = 'COMPLETED' AND t.amount_r_coins > 0
+        AND NOT EXISTS (SELECT 1 FROM fin_journal_entries e
+                        WHERE e.source_kind = 'AGENCY_COMMISSION' AND e.source_id = t.id::text)`,
+  );
+  if (unaccrued && minor(unaccrued.rows) > 0) {
+    const priced = face > 0;
+    findings.push({
+      code: priced ? 'agency_commission_not_booked' : 'agency_commission_unpriced',
+      severity: priced ? 'ERROR' : 'INFO',
+      accountCode: FIN_ACCOUNTS.commissionExpense,
+      currency: 'pkr',
+      amountMinor: minor(unaccrued.coins) * face,
+      detail: priced
+        ? `${minor(unaccrued.rows)} agency commission row(s) of ${minor(unaccrued.coins)} R-coins, worth ` +
+          `${minor(unaccrued.coins) * face} pkr at today's face value, never reached the journal`
+        : `${minor(unaccrued.rows)} agency commission row(s) totalling ${minor(unaccrued.coins)} R-coins await ` +
+          `a coin face value; the journal cannot price an accrual until accounts.coinValue is set`,
+    });
+  }
+
+  // And the other direction: an entry that names a source row which is gone. A commission transaction
+  // or a batch can only disappear by a delete that no service offers, so this is the shape a bad
+  // manual repair leaves behind — a payable the book still carries with nothing to show for it.
+  const agencyOrphans = await many<{ reference: string; source_kind: string; source_id: string }>(
+    `SELECT e.reference, e.source_kind, e.source_id
+       FROM fin_journal_entries e
+      WHERE (e.source_kind = 'AGENCY_COMMISSION' AND NOT EXISTS (
+               SELECT 1 FROM transactions t WHERE t.type = 'AGENCY_COMMISSION' AND t.id::text = e.source_id))
+         OR (e.source_kind = 'AGENCY_SETTLEMENT' AND NOT EXISTS (
+               SELECT 1 FROM agency_settlements s WHERE s.id::text = e.source_id))
+      LIMIT 50`,
+  );
+  for (const row of agencyOrphans) {
+    findings.push({
+      code: 'agency_book_orphan',
+      severity: 'ERROR',
+      accountCode: null,
+      currency: 'pkr',
+      amountMinor: 0,
+      detail: `entry ${row.reference} books an agency ${row.source_kind === 'AGENCY_COMMISSION' ? 'accrual' : 'payout'} against ${row.source_id}, which no longer exists`,
     });
   }
 

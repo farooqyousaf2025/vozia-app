@@ -35,7 +35,14 @@ export type JournalInput = {
     // game kept from its pool, and the fee withheld from a withdrawal that was actually paid out.
     | 'GIFT_TAX'
     | 'GAME_TAKE'
-    | 'WITHDRAWAL_FEE';
+    | 'WITHDRAWAL_FEE'
+    // The agency share of a host's gift earnings (0033). Not a take — the platform never held these
+    // coins — but the same shape: coins counted somewhere else, priced at the face value, owed to a
+    // named account.
+    | 'AGENCY_COMMISSION'
+    // Recording that an agency batch was actually paid, which is when its payable leaves the book
+    // (0033). Keyed on the settlement, so replaying the pay step describes the transfer once.
+    | 'AGENCY_SETTLEMENT';
   sourceId: string;
   memo?: string | null;
   currency?: string;
@@ -170,13 +177,24 @@ export async function postJournal(
  */
 export const COIN_VALUE_CONFIG_KEY = 'accounts.coinValue';
 
-/** Minor units per coin, or 0 when the operator has decided the book does not value coins at all. */
-export async function coinFaceMinor(client: PoolClient): Promise<number> {
-  const row = await client.query<{ value: { minorPerCoin?: unknown } }>(
-    'SELECT value FROM system_config WHERE key = $1',
-    [COIN_VALUE_CONFIG_KEY],
-  );
-  const configured = Number(row.rows[0]?.value?.minorPerCoin);
+/**
+ * Minor units per coin, or 0 when the operator has decided the book does not value coins at all.
+ *
+ * The client is optional because a reader that is not inside a money write — the reconciler, a
+ * report — still has to answer "what is a coin worth today?" with this one function rather than a
+ * second copy of the rule.
+ */
+export async function coinFaceMinor(client?: PoolClient): Promise<number> {
+  const rows = client
+    ? (
+        await client.query<{ value: { minorPerCoin?: unknown } }>('SELECT value FROM system_config WHERE key = $1', [
+          COIN_VALUE_CONFIG_KEY,
+        ])
+      ).rows
+    : await many<{ value: { minorPerCoin?: unknown } }>('SELECT value FROM system_config WHERE key = $1', [
+        COIN_VALUE_CONFIG_KEY,
+      ]);
+  const configured = Number(rows[0]?.value?.minorPerCoin);
   return Number.isInteger(configured) && configured > 0 ? configured : 0;
 }
 

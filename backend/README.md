@@ -593,11 +593,22 @@ contradiction between two tables, never a comparison of an account against the n
 read from it: `account_source_missing`, `frozen_exceeds_available`, `payable_state_conflict`,
 `withdrawal_state_conflict`, `journal_entry_invalid` and — since 0031 —
 `platform_revenue_not_booked`, which counts gifts and settled games whose spread has no journal entry
-(see "What a gift keeps is now in the book"). The INFO findings are both true-but-unbooked figures the
+(see "What a gift keeps is now in the book"). The INFO findings are true-but-unbooked figures the
 operator needs to see rather than trust: `opening_not_explained_by_ledger`, a seeded opening balance the
 ledger never moved, and `account_not_yet_opened`, a book that is legitimately empty. Since 0032 the
 withdrawal queue adds one more: `withdrawal_awaiting_payout`, the total of what has been accepted and
 not yet sent — real money owed, and open work rather than an artefact of the query.
+
+Since 0033 the agency book adds five, each of them a disagreement between two tables rather than
+between an account and a view of itself: `settlement_claim_mismatch`, a batch that states an amount its
+own claim rows do not add up to; `settlement_payout_unbooked`, a `PAID` batch whose transfer the journal
+has no entry for, and its opposite `settlement_booked_early`, an entry describing a payout for a batch
+still awaiting approval — the journal moves when the transfer is recorded, never when the figures are
+signed off, so either order is a contradiction; `agency_commission_not_booked`, a commission
+`transactions` row whose `AGENCY:` account never received the matching journal line; and
+`agency_book_orphan`, a journal entry booked against an agency that no longer exists. The fourth of
+these softens itself to the INFO `agency_commission_unpriced` while `accounts.coinValue` carries no face
+value, because an accrual that cannot yet be priced is work waiting for a dial, not a broken book.
 
 ### The endpoints
 
@@ -931,6 +942,81 @@ journal is two balanced legs; a reject-after-approve returns the gross; and the 
 with zero withdrawal ERRORs. `coin_movements` is read with `Number()` coercion — Postgres returns
 `COUNT(*)` as a string, and a `rows[0].n === 2` assertion silently fails on `"2"`.
 
+## An agency's share is booked, then settled (migration 0033)
+
+Before this, `agencies.commission_bps` was a number the panel could edit and nothing else read: a gift
+sent to a host on a roster changed nobody's balance. It is now a liability with an account behind it, and
+clearing it is a lifecycle an operator can be audited through.
+
+**The accrual rides the gift send.** A send that pays a roaster-host writes a `transactions` row of type
+`AGENCY_COMMISSION` holding the commission in **R-coins** — the unit an agreement is negotiated in — and
+the journal entry DEBIT `COMMISSION_EXPENSE` / CREDIT `AGENCY:<uuid>` priced at that moment's face value,
+keyed `(AGENCY_COMMISSION, transactions.id)` so a retried send cannot owe the agency twice. The two units
+are both kept on purpose: the account is in paisa because it is settled in paisa, while `accruedCoins` is
+what an agency and a host actually argue about, and the reconciler needs the pair to say "this 20 R-coin
+share is worth 200 pkr at today's dial".
+
+**A rate that can be absent.** Both rate columns used to be `NOT NULL DEFAULT 1000`, which made every row
+look agreed and the platform fallback unreachable; a row still holding 1000 has never been agreed to
+anything (no code outside `seed.sql` wrote either column, and the seeded roster is 1500 / 1200 / 1500), so
+0033 drops the defaults and nulls exactly those rows. Precedence is then a chain the server resolves per
+send — this host's rate, then this agency's, then `accounts.agency.defaultCommissionBps` — and a `NULL`
+means "say nothing", not "zero". When every level is absent or `0`, nothing is booked at all.
+
+**Settling claims; it does not pay.** `POST /admin/agencies/:id/settlements` takes a half-open period
+(`occurred_at >= from AND < to`, which is why the panel labels the end day "not included") and inserts one
+`agency_settlement_items` row per unclaimed accrual. `UNIQUE (entry_id)` is the entire answer to "can this
+commission be settled twice": the schema refuses it, so the service never has to win that race. Two guards
+run on the account row that the hold is then taken on, so the figures and the freeze describe one position
+rather than two reads of a moving one — nothing to claim is `409 nothing_to_settle`, and asking for more
+than is unclaimed (`available − frozen − pending`) is `409 settlement_exceeds_payable` naming both numbers
+and what would fix it. The batch opens as DRAFT behind a `PENDING_SETTLEMENT` hold.
+
+**The journal moves when the transfer is recorded.** DRAFT → APPROVED → PAID, or VOID from either of the
+first two. Approval moves no balance and books no entry; it says the figures are right. Pay is the only
+step that writes — DEBIT `AGENCY:<id>` / CREDIT `PROVIDER_COLLECTIONS`, the pair BD and seller
+settlements already use because the money leaves through the same rails, keyed
+`(AGENCY_SETTLEMENT, settlement.id)` so a pay whose response was lost replays its first answer instead of
+sending a second transfer. Its hold is CONVERTED with the batch's reference, which is how the statement can
+still name the batch that cleared it, and the payout reference is required for the same reason 0032
+requires one for withdrawals: the amount is a fact the platform did not decide. A VOID deletes its claim
+rows and releases the hold, so every accrual is claimable again by the next window.
+
+**Two operators, stated twice.** `CHECK (status <> 'PAID' OR (paid_at IS NOT NULL AND payout_reference IS
+NOT NULL))`, `CHECK (period_to > period_from)` and `CHECK (approved_by <> created_by)` sit in the table
+beside the service's `self_approval` 403. The duplication is deliberate: a batch one person can raise,
+approve and pay is a money movement with no witness, and the schema is what keeps that true when a future
+writer forgets the rule.
+
+| Route | Permission | Notes |
+|---|---|---|
+| `GET /admin/agencies` | `finance:read` | search / status / paged, each row carrying its own account position |
+| `GET /admin/agencies/:id` | `finance:read` | agency, roster with each *effective* rate and where it came from, batches |
+| `PUT /admin/agencies/:id/rate` | `commission:manage` | `{ commissionBps }`; `null` hands the decision back to the platform default |
+| `PUT /admin/agencies/:id/hosts/:userId/rate` | `commission:manage` | only a host already on the roster — this is not the route that adds people |
+| `GET /admin/agencies/settlements` | `finance:read` | `agencyId` / `status` filters, with each batch's raising and approving operator |
+| `POST /admin/agencies/:id/settlements` | `commission:manage` | `{ periodFrom, periodTo, payoutMethod?, idempotencyKey }` → 201, or 200 with `replay: true` |
+| `POST /admin/agencies/settlements/:id/approve` | `commission:manage` | 403 `self_approval` when you raised it |
+| `POST /admin/agencies/settlements/:id/pay` | `commission:manage` | `{ payoutReference, payoutMethod?, note?, idempotencyKey }` → 200 |
+| `POST /admin/agencies/settlements/:id/void` | `commission:manage` | `{ reason (≥ 8 chars), idempotencyKey }` → 200 |
+
+**History was priced, not forgiven**, in the same shape as 0031's backfill: `JR-BF-` references over every
+completed commission row that never reached the book, after the same migration opens a `fin_accounts` row
+for any agency that arrived since 0029's seed — `fin_journal_lines.account_code` references
+`fin_accounts (code)`, so an accrual for an agency with no account would fail at the line rather than at
+the intent. Where `minorPerCoin` is `0` the backfill posts nothing and the reconciler reports those rows as
+unbooked instead of inventing a rate.
+
+An `AGENCY:<uuid>` is an ordinary purpose account from here on: `GET /admin/accounts/AGENCY:<id>/movements`
+is the agency's statement — `AGENCY_COMMISSION` IN, `AGENCY_SETTLEMENT` OUT — and it satisfies the same
+`opening + ΣIN − ΣOUT` identity as every other book. `node scripts/account-e2e.cjs` walks the whole
+lifecycle over HTTP with SQL spot checks: precedence resolved at all three levels and a retried send
+booking no second accrual, a raise that replays rather than double-claims, a moderator refused, the
+self-approval 403, pay-before-approve refused, a payout with no reference refused, one balanced entry on
+pay with the claim CONVERTED, a void returning every accrual and RELEASED its hold, a batch unable to claim
+money a dispute froze, the statement naming both an accrual and a payout and adding up to the account it
+describes, three audit rows for the three steps, and the agency book leaving the reconciler nothing to say.
+
 ## The socket speaks for a member, and a password is guessed slowly
 
 `joinRoom` is the moderation gate: it refuses a closed room, a banned account and a
@@ -1025,7 +1111,7 @@ entry, priced at the configured face value, and no entry at all for a free match
 accounts and scopes, the nine-step recharge, one-time credit, commission versions and statements,
 reversals and reconciliation, with the revenue account pinned to holding only the coin spread.
 
-`npm run test:accounts` (98) and `npm run test:operators` (44) need that stack running too. The
+`npm run test:accounts` (133) and `npm run test:operators` (44) need that stack running too. The
 accounts suite walks the whole book rather than a page of it: the projection identity
 `opening + ΣIN − ΣOUT = balance` on a 926-movement account, one statement leg per currency rule, the
 reconciliation findings a clean database should not raise, idempotent hold create/release including
@@ -1037,7 +1123,14 @@ the dial's number rather than the environment's, the escrow and the `pending` co
 ledger row is still PENDING, the identity re-asserted at all five lifecycle points, Pay refusing no
 reference and a `MODERATOR`, the `WITHDRAWAL_FEE` journal arriving as two balanced legs, a
 reject-after-approve returning the gross, both `admin_audit` verbs recorded for one request, and the
-reconcile report finishing with zero withdrawal ERRORs. It ends
+reconcile report finishing with zero withdrawal ERRORs. Since 0033 the same run walks an agency batch from
+accrual to payout: precedence resolved at all three rate levels with a retried send booking no second
+accrual, a raise that replays its own batch instead of double-claiming, `nothing_to_settle` on a window
+already drained, the self-approval 403, pay-before-approve refused, a payout with no reference refused, one
+balanced entry on pay with the claim CONVERTED rather than left hanging, a void returning every accrual and
+RELEASING its hold, a batch unable to claim money a dispute has frozen, the statement naming both an accrual
+and a payout and adding up to the account it describes, and the agency book leaving the reconciler nothing
+to complain about. It ends
 by proving an operator with audit history cannot be deleted (`23514`).
 
 The operator suite is mostly the same fact from the other side: that the switch is a switch. The two

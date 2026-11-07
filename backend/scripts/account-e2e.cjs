@@ -565,6 +565,234 @@ async function identity(token, code) {
     ['WITHDRAWAL_REVIEW', 'WITHDRAWAL_PAY'].every((a) => audited.rows.some((r) => r.action === a)),
     audited.rows.map((r) => r.action).join(','));
 
+  // ---------------------------------------------------------------- agency commission (migration 0033)
+  //
+  // The gift path accrues an agency's share into the money book; the agency desk only ever moves
+  // claims on that book, and the five agency checks in the reconciler exist to notice when the two
+  // disagree. The fixture is a throwaway agency whose whole roster is the withdrawal host from above,
+  // so the seeded roster keeps its history and the statement identity below is the same promise
+  // section 9 asks of every account — here for a book nobody has looked at before.
+  const AGENCY = (
+    await sql(
+      `INSERT INTO agencies (name, commission_bps, status) VALUES ($1, 2000, 'ACTIVE') RETURNING id`,
+      [`e2e agency ${stamp}`],
+    )
+  ).rows[0].id;
+  const agencyCode = `AGENCY:${AGENCY}`;
+  await sql(
+    `INSERT INTO agency_hosts (agency_id, host_user_id, commission_bps, status) VALUES ($1,$2,NULL,'ACTIVE')`,
+    [AGENCY, hostId],
+  );
+  const senderToken = await memberToken(`+92305${stamp}`, `ags${stamp}`);
+  const sender = (await api('GET', '/api/wallet', { token: senderToken })).json.user;
+  await api('POST', `/api/admin/users/${sender.id}/balance`, {
+    token: T,
+    body: { diamondDelta: 500_000, note: `${reason} gift money` },
+  });
+  const catalogue = (await api('GET', '/api/gifts')).json;
+  const cheapest = (catalogue.gifts || catalogue)
+    .filter((g) => !g.minVipLevel && g.diamondPrice > 0)
+    .sort((a, b) => a.diamondPrice - b.diamondPrice)[0];
+  const agQuantity = Math.max(1, Math.ceil(100 / (cheapest.rCoinValue || 1)));
+
+  let sends = 0;
+  /**
+   * One gift, then read back what the gift path is supposed to have written: its commission row, the
+   * journal entry keyed on that row, and what actually landed in the host's wallet. Every rate and
+   * pricing assertion below compares against these, so a change to the accrual shows up as a failed
+   * comparison rather than as a number the test agrees with by construction.
+   */
+  const accrue = async () => {
+    const before = Number((await api('GET', '/api/wallet', { token: hostToken })).json.user.rCoinBalance);
+    const sent = await api('POST', '/api/gifts/send', {
+      token: senderToken,
+      body: { giftId: cheapest.id, receiverId: hostId, quantity: agQuantity, idempotencyKey: `${reason}-send-${(sends += 1)}` },
+    });
+    const after = Number((await api('GET', '/api/wallet', { token: hostToken })).json.user.rCoinBalance);
+    const rows = await sql(
+      `SELECT t.id, t.amount_r_coins AS coins, t.meta->>'commissionBps' AS bps, t.meta->>'rateSource' AS src,
+              e.id AS entry_id,
+              COALESCE((SELECT SUM(l.amount_cents) FROM fin_journal_lines l
+                         WHERE l.entry_id = e.id AND l.account_code = $2 AND l.direction = 'CREDIT'), 0) AS minor,
+              (SELECT g.amount_r_coins FROM transactions g
+                WHERE g.type = 'GIFT_SENT' AND g.sender_id = $3 ORDER BY g.created_at DESC LIMIT 1) AS banked
+         FROM transactions t
+         LEFT JOIN fin_journal_entries e ON e.source_kind = 'AGENCY_COMMISSION' AND e.source_id = t.id::text
+        WHERE t.type = 'AGENCY_COMMISSION' AND t.agency_id = $1
+        ORDER BY t.created_at DESC LIMIT 1`,
+      [AGENCY, agencyCode, sender.id],
+    );
+    return { sent, row: rows.rows[0], walletDelta: after - before };
+  };
+
+  const first = await accrue();
+  report('a gift to an agency host accrues to that agency',
+    first.sent.status === 201 && !!first.row && !!first.row.entry_id
+      && Number(first.row.bps) === 2000 && first.row.src === 'AGENCY',
+    first.row);
+  report('the accrual is priced from the coin face value, never a guessed rate',
+    Number(first.row.minor) === Number(first.row.coins) * FACE,
+    { coins: first.row.coins, minor: first.row.minor, face: FACE });
+  report('the commission leaves the host neither richer nor poorer',
+    first.walletDelta === Number(first.row.banked) && Number(first.row.coins) < Number(first.row.banked),
+    { walletDelta: first.walletDelta, giftRCoins: first.row.banked, commissionCoins: first.row.coins });
+
+  const agOpened = (await api('GET', `/api/admin/accounts/${encodeURIComponent(agencyCode)}`, { token: T })).json;
+  report('an agency account is opened by its first accrual and reads the journal',
+    !!agOpened.account && agOpened.account.balanceSource === 'fin_journal_lines' && agOpened.account.balance === Number(first.row.minor),
+    agOpened.account);
+
+  // Three levels decide the share, and `NULL` has to mean "nobody agreed a number here" rather than
+  // "agreed nothing" — otherwise clearing an override would silently stop the agency taking its cut.
+  const hostRate = await api('PUT', `/api/admin/agencies/${AGENCY}/hosts/${hostId}/rate`, { token: T, body: { commissionBps: 800 } });
+  const atHostRate = await accrue();
+  report('a per-host rate wins over the agency rate',
+    hostRate.status === 200 && Number(atHostRate.row.bps) === 800 && atHostRate.row.src === 'HOST',
+    { bps: atHostRate.row.bps, src: atHostRate.row.src });
+  await api('PUT', `/api/admin/agencies/${AGENCY}/hosts/${hostId}/rate`, { token: T, body: { commissionBps: null } });
+  const atAgencyRate = await accrue();
+  report('clearing the override inherits the agency rate again',
+    Number(atAgencyRate.row.bps) === 2000 && atAgencyRate.row.src === 'AGENCY',
+    { bps: atAgencyRate.row.bps, src: atAgencyRate.row.src });
+  const rateDialBefore = await api('GET', '/api/admin/business/config/accounts.agency', { token: T });
+  await api('PUT', '/api/admin/business/config/accounts.agency', { token: T, body: { value: { defaultCommissionBps: 1200 } } });
+  await api('PUT', `/api/admin/agencies/${AGENCY}/rate`, { token: T, body: { commissionBps: null } });
+  const atPlatformRate = await accrue();
+  report('and with no rate at either level the platform dial decides',
+    Number(atPlatformRate.row.bps) === 1200 && atPlatformRate.row.src === 'PLATFORM_DEFAULT',
+    { bps: atPlatformRate.row.bps, src: atPlatformRate.row.src });
+  await api('PUT', `/api/admin/agencies/${AGENCY}/rate`, { token: T, body: { commissionBps: 2000 } });
+  await api('PUT', '/api/admin/business/config/accounts.agency', { token: T, body: { value: rateDialBefore.json.value } });
+  const wildRate = await api('PUT', `/api/admin/agencies/${AGENCY}/rate`, { token: T, body: { commissionBps: 20_000 } });
+  report('a rate above 100% is refused', wildRate.status === 400 && wildRate.code === 'bad_rate', wildRate.code);
+  const absentRate = await api('PUT', `/api/admin/agencies/${AGENCY}/rate`, { token: T, body: {} });
+  report('omitting the rate is refused rather than read as no change',
+    absentRate.status === 400 && absentRate.code === 'rate_required', absentRate.code);
+
+  const agWindow = { periodFrom: '2000-01-01T00:00:00.000Z', periodTo: new Date(Date.now() + 600_000).toISOString() };
+  const agPosition = async () => (await api('GET', `/api/admin/accounts/${encodeURIComponent(agencyCode)}`, { token: T })).json.account;
+  const agRaise = (key) =>
+    api('POST', `/api/admin/agencies/${AGENCY}/settlements`, {
+      token: T, body: { ...agWindow, payoutMethod: 'BANK', idempotencyKey: `${reason}-raise-${key}` },
+    });
+
+  const raised = await agRaise('one');
+  const batch = raised.json && raised.json.settlement;
+  report('a batch claims the agency’s own unclaimed accruals',
+    raised.status === 201 && batch.status === 'DRAFT' && batch.entryCount >= 3 && !!batch.holdId,
+    { reference: batch && batch.reference, entries: batch && batch.entryCount, amount: batch && batch.amount });
+  const agClaimed = (await sql('SELECT COALESCE(SUM(amount_minor),0) AS minor FROM agency_settlement_items WHERE settlement_id=$1', [batch.id])).rows[0];
+  report('the batch states exactly what its claims add up to',
+    Number(agClaimed.minor) === batch.amount
+      && batch.amount === Number(first.row.minor) + Number(atHostRate.row.minor) + Number(atAgencyRate.row.minor) + Number(atPlatformRate.row.minor),
+    { claimed: Number(agClaimed.minor), stated: batch.amount });
+  const afterRaise = await agPosition();
+  report('a claim shows up as pending, not as paid', afterRaise.pending === batch.amount && afterRaise.balance === batch.amount, afterRaise);
+  const replayRaise = await agRaise('one');
+  const batchRows = (await sql('SELECT COUNT(*) AS n FROM agency_settlements WHERE agency_id=$1', [AGENCY])).rows[0];
+  report('a retried raise replays its own batch instead of claiming twice',
+    replayRaise.status === 200 && replayRaise.json.replay === true && replayRaise.json.settlement.id === batch.id && Number(batchRows.n) === 1,
+    { status: replayRaise.status, settlements: Number(batchRows.n) });
+  const sameWindow = await agRaise('two');
+  report('the same window then has nothing left to claim',
+    sameWindow.status === 409 && sameWindow.code === 'nothing_to_settle', sameWindow.code);
+  const modRaise = await api('POST', `/api/admin/agencies/${AGENCY}/settlements`, {
+    token: modToken, body: { ...agWindow, idempotencyKey: `${reason}-raise-mod` },
+  });
+  report('a moderator cannot raise a batch', modRaise.status === 403, { status: modRaise.status, code: modRaise.code });
+
+  const selfApproved = await api('POST', `/api/admin/agencies/settlements/${batch.id}/approve`, { token: T });
+  report('an operator cannot approve the batch they raised',
+    selfApproved.status === 403 && selfApproved.code === 'self_approval', selfApproved.code);
+  const earlyPay = await api('POST', `/api/admin/agencies/settlements/${batch.id}/pay`, {
+    token: finToken, body: { payoutReference: `E2E-${stamp}-x`, idempotencyKey: `${reason}-pay-early` },
+  });
+  report('a batch cannot be paid before it is approved', earlyPay.status === 409, { status: earlyPay.status, code: earlyPay.code });
+  const approvedByOther = await api('POST', `/api/admin/agencies/settlements/${batch.id}/approve`, { token: finToken });
+  report('a second operator approves it',
+    approvedByOther.status === 200 && approvedByOther.json.settlement.status === 'APPROVED',
+    approvedByOther.json.settlement && approvedByOther.json.settlement.status);
+  const blindPay = await api('POST', `/api/admin/agencies/settlements/${batch.id}/pay`, { token: finToken, body: { idempotencyKey: `${reason}-pay-blind` } });
+  report('a payout with no reference is refused', blindPay.status === 400, { status: blindPay.status, code: blindPay.code });
+
+  const agPaid = await api('POST', `/api/admin/agencies/settlements/${batch.id}/pay`, {
+    token: finToken, body: { payoutReference: `HBL-${stamp}-1`, payoutMethod: 'BANK', idempotencyKey: `${reason}-pay-one` },
+  });
+  report('paying the batch records the transfer that happened outside the platform',
+    agPaid.status === 200 && agPaid.json.settlement.status === 'PAID' && agPaid.json.settlement.payoutReference === `HBL-${stamp}-1`,
+    agPaid.json.settlement && { status: agPaid.json.settlement.status, ref: agPaid.json.settlement.payoutReference });
+  const payLegs = (await sql(
+    `SELECT l.account_code, l.direction, l.amount_cents
+       FROM fin_journal_entries e JOIN fin_journal_lines l ON l.entry_id = e.id
+      WHERE e.source_kind = 'AGENCY_SETTLEMENT' AND e.source_id = $1 ORDER BY l.direction`,
+    [batch.id],
+  )).rows;
+  report('the payout is one balanced entry: the agency’s payable down, collections up',
+    payLegs.length === 2 && payLegs.some((l) => l.account_code === agencyCode && l.direction === 'DEBIT')
+      && payLegs.every((l) => Number(l.amount_cents) === batch.amount), payLegs);
+  const afterPay = await agPosition();
+  report('and the account is owed nothing it has already been paid',
+    afterPay.pending === 0 && afterPay.balance === 0, afterPay);
+  const payReplay = await api('POST', `/api/admin/agencies/settlements/${batch.id}/pay`, {
+    token: finToken, body: { payoutReference: `HBL-${stamp}-1`, idempotencyKey: `${reason}-pay-one` },
+  });
+  const payEntries = (await sql('SELECT COUNT(*) AS n FROM fin_journal_entries WHERE source_kind=$1 AND source_id=$2', ['AGENCY_SETTLEMENT', batch.id])).rows[0];
+  report('a replayed payout describes the transfer once',
+    payReplay.json.replay === true && Number(payEntries.n) === 1, { entries: Number(payEntries.n) });
+  const paidHold = (await sql('SELECT status, converted_ref FROM account_holds WHERE id=$1', [batch.holdId])).rows[0];
+  report('the claim is converted, not left hanging',
+    paidHold.status === 'CONVERTED' && paidHold.converted_ref === batch.reference, paidHold);
+
+  await accrue();
+  const agSecond = await agRaise('three');
+  const secondBatch = agSecond.json.settlement;
+  const voidShort = await api('POST', `/api/admin/agencies/settlements/${secondBatch.id}/void`, {
+    token: T, body: { reason: 'no', idempotencyKey: `${reason}-void-short` },
+  });
+  report('a void needs a reason an operator can read later', voidShort.status === 400, { status: voidShort.status, code: voidShort.code });
+  const voided = await api('POST', `/api/admin/agencies/settlements/${secondBatch.id}/void`, {
+    token: T, body: { reason: `${reason} wrong window`, idempotencyKey: `${reason}-void-one` },
+  });
+  const releasedClaims = (await sql('SELECT COUNT(*) AS n FROM agency_settlement_items WHERE settlement_id=$1', [secondBatch.id])).rows[0];
+  report('a void puts every accrual it claimed back on the table',
+    voided.status === 200 && voided.json.settlement.status === 'VOID' && Number(releasedClaims.n) === 0,
+    { status: voided.json.settlement.status, claims: Number(releasedClaims.n) });
+  const voidHold = (await sql('SELECT status FROM account_holds WHERE id=$1', [secondBatch.holdId])).rows[0];
+  report('and its hold is released rather than converted', voidHold.status === 'RELEASED', voidHold);
+
+  const freeze = await api('POST', `/api/admin/accounts/${encodeURIComponent(agencyCode)}/holds`, {
+    token: T, body: { kind: 'FROZEN', amount: FACE, reason: `${reason} dispute over the accrual`, idempotencyKey: `${reason}-freeze` },
+  });
+  const overPayable = await agRaise('four');
+  report('a batch cannot claim money a dispute has frozen',
+    overPayable.status === 409 && overPayable.code === 'settlement_exceeds_payable',
+    { status: overPayable.status, message: overPayable.json.error && overPayable.json.error.message });
+  await api('POST', `/api/admin/holds/${freeze.json.hold.id}/release`, { token: T, body: { idempotencyKey: `${reason}-unfreeze` } });
+  const agThird = await agRaise('five');
+  report('with the freeze gone the same claim goes through',
+    agThird.status === 201 && agThird.json.settlement.status === 'DRAFT', agThird.json.settlement && agThird.json.settlement.amount);
+  const voidPaid = await api('POST', `/api/admin/agencies/settlements/${batch.id}/void`, {
+    token: T, body: { reason: `${reason} far too late`, idempotencyKey: `${reason}-void-paid` },
+  });
+  report('a paid batch cannot be voided', voidPaid.status === 409 && voidPaid.code === 'settlement_paid', voidPaid.code);
+
+  const agStatement = await fullStatement(T, agencyCode);
+  report('the agency statement names both an accrual and a payout',
+    agStatement.rows.some((m) => m.type === 'AGENCY_COMMISSION' && m.direction === 'IN')
+      && agStatement.rows.some((m) => m.type === 'AGENCY_SETTLEMENT' && m.direction === 'OUT'),
+    { rows: agStatement.rows.length, unit: agStatement.unit });
+  const agIdentity = await identity(T, agencyCode);
+  report('and it adds up to the account it describes',
+    agIdentity.ok === true,
+    agIdentity.account && { balance: agIdentity.account.balance, in: agIdentity.inSum, out: agIdentity.outSum });
+  const agRecon = await api('GET', '/api/admin/accounts/reconcile', { token: T });
+  const agErrors = agRecon.json.findings.filter((f) => f.severity === 'ERROR' && /agency|settlement_/.test(f.code));
+  report('the agency book leaves the reconciler nothing to complain about', agErrors.length === 0, agErrors);
+  const agAudit = (await sql('SELECT DISTINCT action FROM admin_audit WHERE target_id::text = $1', [batch.id])).rows.map((r) => r.action);
+  report('each step of the batch is its own audit row',
+    ['AGENCY_SETTLEMENT_CREATE', 'AGENCY_SETTLEMENT_APPROVE', 'AGENCY_SETTLEMENT_PAID'].every((a) => agAudit.includes(a)),
+    agAudit.join(','));
+
   out.push('');
   out.push(`${out.filter((l) => l.startsWith('PASS')).length}/${out.length - 1} account checks passed`);
   process.stdout.write(out.join('\n') + '\n');

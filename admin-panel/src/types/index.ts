@@ -1564,3 +1564,124 @@ export interface OperatorRoleInfo {
   role: string;
   permissions: AdminPermission[];
 }
+
+// ---------------------------------------------------------------------------
+// The agency desk (migration 0033) — a roster of hosts, and the platform's share of what they earned.
+//
+// An agency is not a `business_accounts` partner: it sells nothing, and its money is a percentage of
+// the R-coins its hosts received as gifts. So every figure here is either a rate the platform decided
+// in advance or a batch that clears rates already applied — never a balance an operator can edit.
+// ---------------------------------------------------------------------------
+
+export type AgencyStatus = 'PENDING' | 'ACTIVE' | 'SUSPENDED';
+export type AgencySettlementStatus = 'DRAFT' | 'APPROVED' | 'PAID' | 'VOID';
+
+/** Which of the three levels a host's rate actually came from — the answer to "why this number". */
+export type CommissionRateSource = 'HOST' | 'AGENCY' | 'PLATFORM_DEFAULT';
+
+/**
+ * `commissionBps` is `null` when the agency inherits the platform default. That distinction is the
+ * feature, not a gap: a cleared override has to read differently from a zero, and the server refuses
+ * a PUT that omits the field rather than guessing which one the operator meant.
+ */
+export interface Agency {
+  id: string;
+  name: string;
+  status: AgencyStatus;
+  contactPhone: string | null;
+  ownerUserId: string | null;
+  commissionBps: number | null;
+  commissionLabel: string;
+  hostCount: number;
+  activeHostCount: number;
+  /** Lifetime commission counted in coins — the unit an agency negotiates in, not the money it is owed. */
+  accruedCoins: number;
+  openBatches: number;
+  paidBatches: number;
+  createdAt: string;
+  /** null until the gift path opens the account, which is also what the reconciler reports. */
+  account: null | PurposeAccount;
+}
+
+export interface AgencyListResult {
+  agencies: Agency[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/**
+ * One host on a roster, with both the rate written on them and the rate that actually applies.
+ *
+ * `hostCommissionBps` and `effectiveBps` are different columns on purpose: an operator clearing an
+ * override needs to see that the agency's own level is what a gift will now be taken at, otherwise
+ * the row looks unchanged after the edit that changed it.
+ */
+export interface AgencyRosterRow {
+  membershipId: string;
+  hostUserId: string;
+  username: string;
+  phone: string;
+  avatarUrl: string | null;
+  status: AgencyStatus;
+  joinedAt: string;
+  hostCommissionBps: number | null;
+  effectiveBps: number;
+  effectiveSource: CommissionRateSource;
+  commissionLabel: string;
+  accruedCoins: number;
+}
+
+export interface AgencyDetailResult {
+  agency: Agency;
+  roster: AgencyRosterRow[];
+  settlements: AgencySettlement[];
+}
+
+/**
+ * One payout batch.
+ *
+ * `amount` is minor units (`currency` says which) because a batch settles money, not coins — while
+ * `entryCount` counts the accruals claimed into it, and the two are only reconcilable against each
+ * other, never against a host's wallet. `holdId` is the money the raise froze; `payoutReference` the
+ * transfer that proves a PAID row.
+ */
+export interface AgencySettlement {
+  id: string;
+  reference: string;
+  agencyId: string;
+  agencyName: string;
+  currency: string;
+  amount: number;
+  status: AgencySettlementStatus;
+  periodFrom: string;
+  periodTo: string;
+  entryCount: number;
+  payoutMethod: string | null;
+  payoutReference: string | null;
+  holdId: string | null;
+  note: string | null;
+  createdByName: string | null;
+  approvedByName: string | null;
+  createdAt: string;
+  paidAt: string | null;
+}
+
+export interface AgencySettlementListResult {
+  settlements: AgencySettlement[];
+}
+
+/** The accruals behind one batch, each naming the ledger transaction the share was counted from. */
+export interface AgencySettlementEntry {
+  reference: string;
+  occurredAt: string;
+  amount: number;
+  currency: string;
+  memo: string | null;
+  sourceId: string;
+}
+
+export interface AgencySettlementEntriesResult {
+  settlement: AgencySettlement;
+  entries: AgencySettlementEntry[];
+}

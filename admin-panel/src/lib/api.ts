@@ -21,6 +21,13 @@ import type {
   AdminReport,
   AdminRoomTheme,
   AdminStats,
+  Agency,
+  AgencyDetailResult,
+  AgencyListResult,
+  AgencyRosterRow,
+  AgencySettlement,
+  AgencySettlementEntriesResult,
+  AgencySettlementListResult,
   AuditEntry,
   BalanceAdjustResult,
   Banner,
@@ -1172,6 +1179,105 @@ export const api = {
     return request<{ settlement: CommissionSettlement }>(
       `/api/admin/business/commissions/settlements/${id}/pay`,
       { method: 'POST', body: { note } },
+    );
+  },
+
+  // ---- the agency desk ------------------------------------------------------
+  /**
+   * Rates and payout batches for agency rosters (migration 0033).
+   *
+   * Reads need `finance:read`, every write here needs `commission:manage`; the server decides both on
+   * each call, so this client only decides which buttons to draw. Nothing here moves a balance: the
+   * accrual is written by the gift path, and `payAgencySettlement` records a transfer that already
+   * happened outside the platform's rails.
+   *
+   * The three batch actions carry an `idempotencyKey` because a retry is not an operator mistake — it
+   * is what a lost response on a slow connection looks like, and the server replays its first answer
+   * rather than raising a second batch over the same accruals.
+   */
+  agencies(
+    params: { search?: string; status?: string; page?: number; limit?: number } = {},
+  ): Promise<AgencyListResult> {
+    return request<AgencyListResult>(
+      `/api/admin/agencies${query({
+        search: params.search,
+        status: params.status,
+        page: params.page ?? 1,
+        limit: params.limit ?? 25,
+      })}`,
+    );
+  },
+
+  agencyDetail(id: string): Promise<AgencyDetailResult> {
+    return request<AgencyDetailResult>(`/api/admin/agencies/${encodeURIComponent(id)}`);
+  },
+
+  /** `null` is a value here, not an omission: it means "this agency takes the platform default". */
+  setAgencyRate(id: string, commissionBps: number | null): Promise<{ agency: Agency }> {
+    return request<{ agency: Agency }>(`/api/admin/agencies/${encodeURIComponent(id)}/rate`, {
+      method: 'PUT',
+      body: { commissionBps },
+    });
+  },
+
+  setHostRate(id: string, hostUserId: string, commissionBps: number | null): Promise<{ host: AgencyRosterRow }> {
+    return request<{ host: AgencyRosterRow }>(
+      `/api/admin/agencies/${encodeURIComponent(id)}/hosts/${encodeURIComponent(hostUserId)}/rate`,
+      { method: 'PUT', body: { commissionBps } },
+    );
+  },
+
+  agencySettlements(
+    params: { agencyId?: string; status?: string; limit?: number } = {},
+  ): Promise<AgencySettlementListResult> {
+    return request<AgencySettlementListResult>(
+      `/api/admin/agencies/settlements${query({
+        agencyId: params.agencyId,
+        status: params.status,
+        limit: params.limit ?? 50,
+      })}`,
+    );
+  },
+
+  agencySettlementEntries(id: string): Promise<AgencySettlementEntriesResult> {
+    return request<AgencySettlementEntriesResult>(`/api/admin/agencies/settlements/${encodeURIComponent(id)}`);
+  },
+
+  /** Claim a period's unclaimed accruals into a DRAFT batch and freeze what it pays. */
+  raiseAgencySettlement(
+    agencyId: string,
+    body: { periodFrom: string; periodTo: string; payoutMethod?: string | null; idempotencyKey: string },
+  ): Promise<{ settlement: AgencySettlement; replay: boolean }> {
+    return request<{ settlement: AgencySettlement; replay: boolean }>(
+      `/api/admin/agencies/${encodeURIComponent(agencyId)}/settlements`,
+      { method: 'POST', body },
+    );
+  },
+
+  approveAgencySettlement(id: string): Promise<{ settlement: AgencySettlement }> {
+    return request<{ settlement: AgencySettlement }>(
+      `/api/admin/agencies/settlements/${encodeURIComponent(id)}/approve`,
+      { method: 'POST' },
+    );
+  },
+
+  payAgencySettlement(
+    id: string,
+    body: { payoutReference: string; payoutMethod?: string | null; note?: string | null; idempotencyKey: string },
+  ): Promise<{ settlement: AgencySettlement; replay: boolean }> {
+    return request<{ settlement: AgencySettlement; replay: boolean }>(
+      `/api/admin/agencies/settlements/${encodeURIComponent(id)}/pay`,
+      { method: 'POST', body },
+    );
+  },
+
+  voidAgencySettlement(
+    id: string,
+    body: { reason: string; idempotencyKey: string },
+  ): Promise<{ settlement: AgencySettlement; replay: boolean }> {
+    return request<{ settlement: AgencySettlement; replay: boolean }>(
+      `/api/admin/agencies/settlements/${encodeURIComponent(id)}/void`,
+      { method: 'POST', body },
     );
   },
 

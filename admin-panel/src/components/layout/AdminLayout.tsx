@@ -62,6 +62,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/partners', label: 'Partners', icon: <IconPartners className="h-5 w-5" />, permission: 'business:manage' },
   { to: '/recharges', label: 'Recharges', icon: <IconRecharge className="h-5 w-5" />, permission: 'finance:read' },
   { to: '/commissions', label: 'Commission', icon: <IconCommission className="h-5 w-5" />, permission: 'finance:read' },
+  { to: '/agencies', label: 'Agencies', icon: <IconPartners className="h-5 w-5" />, permission: 'finance:read' },
   { to: '/finance', label: 'Finance book', icon: <IconBook className="h-5 w-5" />, permission: 'finance:read' },
   { to: '/accounts', label: 'Purpose accounts', icon: <IconScales className="h-5 w-5" />, permission: 'account:read' },
   { to: '/operators', label: 'Operators', icon: <IconKey className="h-5 w-5" />, permission: 'operator:manage' },

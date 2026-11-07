@@ -3,6 +3,7 @@ import * as admin from '../controllers/admin.controller';
 import * as auth from '../controllers/auth.controller';
 import * as account from '../controllers/account.controller';
 import * as operator from '../controllers/operator.controller';
+import agencyRoutes from './agency-admin.routes';
 import partnerRoutes from './partner-admin.routes';
 import { requireAdminOperator, requirePermission } from '../middleware/auth';
 
@@ -193,6 +194,9 @@ router.get('/accounts/:code/holds', requirePermission('account:read'), account.h
 router.post('/accounts/:code/holds', requirePermission('account:manage'), account.addHold);
 router.post('/accounts/:code/status', requirePermission('account:manage'), account.status);
 router.post('/holds/:id/release', requirePermission('account:manage'), account.releaseHoldEndpoint);
+
+// What each agency's share is, and the batches that pay it (migration 0033).
+router.use('/agencies', agencyRoutes);
 
 // §21-§23: BD accounts, coin sellers, recharge orders, commission and the book.
 router.use('/business', partnerRoutes);

@@ -450,6 +450,10 @@ const CONFIG_DIALS: Record<string, ReadonlyArray<{ field: string; min: number; m
     { field: 'feeBps', min: 0, max: 10_000 },
   ],
   'accounts.coinValue': [{ field: 'minorPerCoin', min: 1, max: 1_000_000 }],
+  // The rate an agency takes when neither the host nor the agency agreed one (0033). `0` is a
+  // decision, not an absence: it says the platform defaults to taking nothing, and the readers
+  // distinguish it from a missing row exactly the way the rate columns do.
+  'accounts.agency': [{ field: 'defaultCommissionBps', min: 0, max: 10_000 }],
 };
 
 export const writeConfigEndpoint = asyncHandler(async (req: Request, res: Response) => {

@@ -97,6 +97,22 @@ The payout itself has no cash leg: there is no bank account or FX rate in this
 stack, so the net stays in COIN_LIABILITY and `payout_reference` is the evidence.
 See `backend/README.md` → *The withdrawal pipeline (migration 0032)*.
 
+An agency's share of a gift is booked rather than remembered. A send to a host on a
+roster writes the `AGENCY_COMMISSION` ledger row *and* a journal entry — DEBIT
+COMMISSION_EXPENSE / CREDIT `AGENCY:<uuid>`, priced at the coin face value live at
+send time — so what the platform owes a roster is a balance, not a percentage somebody
+typed in once. The rate resolves per send in three levels (this host's override, then
+this agency's rate, then the `accounts.agency.defaultCommissionBps` dial), and a `NULL`
+at any level means inherit rather than zero. Clearing it is a batch: raising one claims
+the accruals inside a half-open period, `UNIQUE (entry_id)` makes claiming one twice
+impossible at the schema level, `DRAFT → APPROVED → PAID` requires an operator other than
+the one who raised it, and only Pay writes the DEBIT `AGENCY:<id>` / CREDIT
+PROVIDER_COLLECTIONS entry — approval changes no balance, and a void puts every accrual
+back on the table. The panel's Agencies screen is the only route to any of it and never
+takes an amount: a payout records a reference for a transfer that already happened
+outside this stack. See `backend/README.md` → *An agency's share is booked, then settled
+(migration 0033)*.
+
 Gifts also carry a **spend tier** (`gifts.min_vip_level` vs `users.vip_level`,
 0–20). The ledger checks the tier *before* the balance, so a VIP-0 account buying a
 tier-5 gift gets `403 vip_required` with `{required, current, giftName}` and no
@@ -201,6 +217,8 @@ Two layers, neither of which needs a third-party account to work:
 · admin `POST /api/admin/login`, `GET /api/admin/stats|users|rooms|gifts|withdrawals|reports`,
 `GET /api/admin/users/:id/social`, `POST /api/admin/reports/:id/review`,
 `POST /api/admin/withdrawals/:id/{review,pay}`, `PUT /api/admin/config/accounts.withdrawal`,
+`GET /api/admin/agencies` + `/api/admin/agencies/:id`, `PUT /api/admin/agencies/{:id/rate,:id/hosts/:userId/rate}`,
+`POST /api/admin/agencies/:id/settlements` and `/api/admin/agencies/settlements/:id/{approve,pay,void}`,
 `POST /api/admin/users/:id/vip` and the matching mutation routes.
 
 Socket.IO events: client sends `room:join`, `room:leave`, `room:chat`, `room:like`,
