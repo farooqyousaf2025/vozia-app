@@ -101,10 +101,10 @@ async function api(method, p, { token, body } = {}) {
 }
 
 /** A member session, the only way this stack issues one: OTP is mocked in development. */
-async function memberToken(phone) {
+async function memberToken(phone, username = `ac${phone.slice(-7)}`) {
   const challenge = await api('POST', '/api/auth/request-otp', { body: { phone } });
   if (challenge.status !== 200) throw new Error(`request-otp failed: ${JSON.stringify(challenge.json)}`);
-  const verified = await api('POST', '/api/auth/verify-otp', { body: { phone, code: '123456', username: `ac${phone.slice(-7)}` } });
+  const verified = await api('POST', '/api/auth/verify-otp', { body: { phone, code: '123456', username } });
   if (verified.status !== 200) throw new Error(`verify-otp failed: ${JSON.stringify(verified.json)}`);
   return verified.json.token;
 }
@@ -397,6 +397,173 @@ async function identity(token, code) {
     error: auditedDelete,
     admins: stillThere.rows[0].n,
   });
+
+  // ------------------------------------------ the withdrawal pipeline (0032)
+  //
+  // One host's cash-out, start to finish, checked at every step against four places that must agree:
+  // the request row, its `transactions` row, the host's purpose account and the journal. The promise
+  // under test is narrow and is the whole reason for the migration — the R-coins are still owed until
+  // somebody actually pays them out, and only at that moment do they become an outflow.
+  const DIAL = { minRCoins: 20_000, feeBps: 500 }; // a 5% cut, so the fee is a number worth checking
+  const GROSS = 25_000;
+  const FEE = Math.floor((GROSS * DIAL.feeBps) / 10_000);
+  const FACE = Number((await sql(`SELECT value->>'minorPerCoin' AS f FROM system_config WHERE key = 'accounts.coinValue'`)).rows[0].f);
+
+  const dialBefore = await api('GET', '/api/admin/business/config/accounts.withdrawal', { token: T });
+  report('the withdrawal dial is readable', dialBefore.status === 200 && dialBefore.json.value, dialBefore.json);
+
+  // `writeConfig` replaces the whole blob, so a body naming one field deletes its neighbour and the
+  // reader's silent fallback turns that into a wrong minimum nobody notices. The route refuses it.
+  const partial = await api('PUT', '/api/admin/business/config/accounts.withdrawal', { token: T, body: { value: { minRCoins: 1_000 } } });
+  report('a dial write missing its other field is refused', partial.status === 400 && partial.code === 'bad_config_value', { status: partial.status, code: partial.code });
+  const wildFee = await api('PUT', '/api/admin/business/config/accounts.withdrawal', { token: T, body: { value: { minRCoins: 1_000, feeBps: 20_000 } } });
+  report('a fee above 100% is refused', wildFee.status === 400, { status: wildFee.status, message: wildFee.json && wildFee.json.error && wildFee.json.error.message });
+  const textMin = await api('PUT', '/api/admin/business/config/accounts.withdrawal', { token: T, body: { value: { minRCoins: 'a lot', feeBps: 0 } } });
+  report('a non-whole minimum is refused', textMin.status === 400, { status: textMin.status });
+  const dialUnmoved = await api('GET', '/api/admin/business/config/accounts.withdrawal', { token: T });
+  report('a refused write leaves the dial alone',
+    dialUnmoved.json.value.minRCoins === dialBefore.json.value.minRCoins && dialUnmoved.json.value.feeBps === dialBefore.json.value.feeBps,
+    dialUnmoved.json.value);
+
+  report('the dial accepts a whole pair',
+    (await api('PUT', '/api/admin/business/config/accounts.withdrawal', { token: T, body: { value: DIAL } })).status === 200, DIAL);
+
+  const hostToken = await memberToken('+92301' + stamp, `wd${stamp}`);
+  const funded = await api('GET', '/api/wallet', { token: hostToken });
+  const hostId = funded.json.user.id;
+  const account = `HOST_RCOIN:${hostId}`;
+  report('reading an account opens it for a host who signed up after 0029',
+    (await api('GET', `/api/admin/accounts/${encodeURIComponent(account)}`, { token: T })).status === 200, account);
+  await api('POST', `/api/admin/users/${hostId}/balance`, { token: T, body: { rCoinDelta: 60_000, note: `${reason} funding` } });
+  const walletOf = async () => Number((await api('GET', '/api/wallet', { token: hostToken })).json.user.rCoinBalance);
+  report('a fresh host starts with the adjustment and nothing else', (await walletOf()) === 60_000, { rCoinBalance: await walletOf() });
+  const cleanStart = await identity(T, account);
+  report('the account reconciles before anything is withdrawn', cleanStart.ok === true, { balance: cleanStart.account && cleanStart.account.balance, opening: cleanStart.account && cleanStart.account.opening });
+
+  const under = await api('POST', '/api/wallet/withdraw', {
+    token: hostToken, body: { amountRCoins: 15_000, payoutMethod: 'BANK', payoutDetails: { account: '0001234567890', holder: 'Voiza E2E' } },
+  });
+  // 15,000 is above nothing and below the dial: the shipped default is 100,000, so accepting this
+  // number at all — or quoting it in the refusal — is what proves the ledger read the stored dial.
+  report('the minimum comes from the dial, not the environment',
+    under.status === 400 && under.code === 'below_minimum' && /20000/.test((under.json && under.json.error && under.json.error.message) || ''),
+    { status: under.status, message: under.json && under.json.error && under.json.error.message });
+
+  const payout = { account: '0001234567890', holder: 'Voiza E2E' };
+  const asked = await api('POST', '/api/wallet/withdraw', { token: hostToken, body: { amountRCoins: GROSS, payoutMethod: 'BANK', payoutDetails: payout } });
+  const w1 = asked.json && asked.json.withdrawal;
+  report('a withdrawal is quoted with its fee and its net',
+    asked.status === 201 && w1 && w1.amountRCoins === GROSS && w1.feeRCoins === FEE && w1.netRCoins === GROSS - FEE && w1.status === 'PENDING',
+    w1);
+  const ledgerOf = async (id) => (await sql(
+    `SELECT status FROM transactions WHERE type = 'WITHDRAWAL' AND meta->>'withdrawalId' = $1`, [id],
+  )).rows[0];
+  report('the escrow left the wallet gross', (await walletOf()) === 60_000 - GROSS);
+  report('the request books nothing yet: its ledger row is PENDING', (await ledgerOf(w1.id)).status === 'PENDING');
+  const owed = await api('GET', `/api/admin/accounts/${encodeURIComponent(account)}`, { token: T });
+  report('the platform still owes the whole amount while it sits unpaid',
+    owed.status === 200 && owed.json.account.pending === GROSS && owed.json.account.balance === 60_000,
+    { pending: owed.json.account.pending, balance: owed.json.account.balance });
+  report('and the account still reconciles at that moment', (await identity(T, account)).ok === true);
+
+  const approved = await api('POST', `/api/admin/withdrawals/${w1.id}/review`, { token: T, body: { approve: true, note: `${reason} ok` } });
+  report('approval accepts the request', approved.status === 200 && approved.json.withdrawal.status === 'APPROVED', approved.json.withdrawal && approved.json.withdrawal.status);
+  report('approval no longer claims the money was paid', (await ledgerOf(w1.id)).status === 'PENDING');
+  report('an approved withdrawal is still owed, still pending',
+    (await identity(T, account)).ok === true && (await api('GET', `/api/admin/accounts/${encodeURIComponent(account)}`, { token: T })).json.account.pending === GROSS);
+  const twice = await api('POST', `/api/admin/withdrawals/${w1.id}/review`, { token: T, body: { approve: true } });
+  report('approving twice is refused', twice.status === 409 && twice.code === 'withdrawal_not_pending', { status: twice.status, code: twice.code });
+
+  const queued = await api('GET', '/api/admin/accounts/reconcile', { token: T });
+  const queueFinding = queued.json.findings.find((f) => f.code === 'withdrawal_awaiting_payout');
+  report('the reconciler reports the queue without calling it an error',
+    queueFinding && queueFinding.severity === 'INFO' && queueFinding.amountMinor >= GROSS, queueFinding);
+  report('nothing approved-and-unpaid looks like a state conflict',
+    !queued.json.findings.some((f) => f.code === 'withdrawal_state_conflict' && f.detail.includes(w1.id)));
+
+  const blind = await api('POST', `/api/admin/withdrawals/${w1.id}/pay`, { token: T, body: {} });
+  report('a payout with no reference is refused', blind.status === 400, { status: blind.status, code: blind.code });
+  const byModerator = await api('POST', `/api/admin/withdrawals/${w1.id}/pay`, { token: modToken, body: { payoutReference: `E2E-${stamp}` } });
+  report('a moderator cannot pay a withdrawal out', byModerator.status === 403, { status: byModerator.status });
+
+  const reference = `E2E-BANK-${stamp}`;
+  const paid = await api('POST', `/api/admin/withdrawals/${w1.id}/pay`, { token: T, body: { payoutReference: reference } });
+  report('the payout records who, when and under what reference',
+    paid.status === 200 && paid.json.withdrawal.status === 'PAID' && !!paid.json.withdrawal.paidAt && paid.json.withdrawal.payoutReference === reference,
+    paid.json.withdrawal);
+  report('and only now does the ledger call it an outflow', (await ledgerOf(w1.id)).status === 'COMPLETED');
+  const settled = await identity(T, account);
+  report('the paid host is owed nothing and the account still reconciles',
+    settled.ok === true && settled.account.pending === 0 && settled.account.balance === 60_000 - GROSS,
+    { balance: settled.account && settled.account.balance, pending: settled.account && settled.account.pending });
+  const paidLeg = await sql(
+    `SELECT amount_minor AS a FROM coin_movements
+      WHERE owner_id = $1 AND movement_type = 'WITHDRAWAL' AND direction = 'OUT'`, [hostId],
+  );
+  report('the statement shows the gross leaving, not the net', paidLeg.rows[0] && paidLeg.rows[0].a === GROSS, {
+    legs: paidLeg.rows.map((r) => r.a),
+  });
+
+  const feeEntry = await sql(
+    `SELECT e.reference,
+            COALESCE(SUM(l.amount_cents) FILTER (WHERE l.direction = 'DEBIT' AND l.account_code = 'COIN_LIABILITY'), 0)::int AS released,
+            COALESCE(SUM(l.amount_cents) FILTER (WHERE l.direction = 'CREDIT' AND l.account_code = 'PLATFORM_REVENUE'), 0)::int AS kept,
+            COUNT(*) AS lines
+       FROM fin_journal_entries e JOIN fin_journal_lines l ON l.entry_id = e.id
+      WHERE e.source_kind = 'WITHDRAWAL_FEE' AND e.source_id = $1
+      GROUP BY e.reference`, [w1.id],
+  );
+  report('the fee the platform kept is one balanced journal entry',
+    feeEntry.rows.length === 1 && feeEntry.rows[0].released === FEE * FACE && feeEntry.rows[0].kept === FEE * FACE && Number(feeEntry.rows[0].lines) === 2,
+    feeEntry.rows[0]);
+  const repaid = await api('POST', `/api/admin/withdrawals/${w1.id}/pay`, { token: T, body: { payoutReference: `E2E-TWICE-${stamp}` } });
+  report('paying twice is refused', repaid.status === 409 && repaid.code === 'withdrawal_not_approved', { status: repaid.status, code: repaid.code });
+  const rejectPaid = await api('POST', `/api/admin/withdrawals/${w1.id}/review`, { token: T, body: { approve: false } });
+  report('a paid withdrawal cannot be rejected back', rejectPaid.status === 409 && rejectPaid.code === 'withdrawal_not_rejectable', { status: rejectPaid.status, code: rejectPaid.code });
+
+  // The two constraints the service functions assume. Written in SQL because the point is that the
+  // database holds them even when a future caller forgets to.
+  let lostEvidence;
+  try {
+    await sql('UPDATE withdrawal_requests SET payout_reference = NULL WHERE id = $1', [w1.id]);
+  } catch (e) { lostEvidence = e.code; }
+  report('a PAID row cannot lose its evidence', lostEvidence === '23514', { error: lostEvidence });
+  let oversizedFee;
+  try {
+    await sql('UPDATE withdrawal_requests SET fee_r_coins = $2 WHERE id = $1', [w1.id, GROSS + 1]);
+  } catch (e) { oversizedFee = e.code; }
+  report('a fee cannot exceed the withdrawal it came from', oversizedFee === '23514', { error: oversizedFee });
+
+  const inList = await api('GET', '/api/admin/withdrawals?status=PAID', { token: T });
+  report('the panel can list paid withdrawals', inList.status === 200 && inList.json.withdrawals.some((r) => r.id === w1.id), { rows: inList.json.withdrawals.length });
+
+  // Refusal after approval: the escrow left the wallet at the request, so giving it back is the only
+  // honest way to undo a decision the bank details turned out to break.
+  const second = await api('POST', '/api/wallet/withdraw', { token: hostToken, body: { amountRCoins: DIAL.minRCoins, payoutMethod: 'USDT', payoutDetails: payout } });
+  const w2 = second.json.withdrawal;
+  await api('POST', `/api/admin/withdrawals/${w2.id}/review`, { token: T, body: { approve: true } });
+  const refused = await api('POST', `/api/admin/withdrawals/${w2.id}/review`, { token: T, body: { approve: false, note: `${reason} bad details` } });
+  report('an approved-but-unpaid withdrawal can still be refused',
+    refused.status === 200 && refused.json.withdrawal.status === 'REJECTED', refused.json.withdrawal && refused.json.withdrawal.status);
+  report('refusing it returns the whole escrow', (await walletOf()) === 60_000 - GROSS, { rCoinBalance: await walletOf() });
+  report('its ledger row reads as reversed, not as gone', (await ledgerOf(w2.id)).status === 'REVERSED');
+  report('and the account reconciles again', (await identity(T, account)).ok === true);
+
+  await api('PUT', '/api/admin/business/config/accounts.withdrawal', { token: T, body: { value: dialBefore.json.value } });
+  const dialBack = await api('GET', '/api/admin/business/config/accounts.withdrawal', { token: T });
+  report('the dial is put back for the next suite',
+    dialBack.json.value.minRCoins === dialBefore.json.value.minRCoins && dialBack.json.value.feeBps === dialBefore.json.value.feeBps,
+    dialBack.json.value);
+
+  const afterAll = await api('GET', '/api/admin/accounts/reconcile', { token: T });
+  const withdrawalErrors = afterAll.json.findings.filter((f) => f.severity === 'ERROR' && f.code.startsWith('withdrawal'));
+  report('the withdrawal pipeline leaves no error in the book', withdrawalErrors.length === 0, withdrawalErrors);
+  const audited = await sql(
+    `SELECT DISTINCT action FROM admin_audit WHERE target_id::text = $1`, [w1.id],
+  );
+  report('each decision on the request is its own audit row',
+    ['WITHDRAWAL_REVIEW', 'WITHDRAWAL_PAY'].every((a) => audited.rows.some((r) => r.action === a)),
+    audited.rows.map((r) => r.action).join(','));
 
   out.push('');
   out.push(`${out.filter((l) => l.startsWith('PASS')).length}/${out.length - 1} account checks passed`);

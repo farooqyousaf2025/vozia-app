@@ -400,7 +400,9 @@ private fun WithdrawSheet(
         )
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("BANK", "UPI", "PAYPAL").forEach { m ->
+            // The three the server's `payoutMethod` enum accepts. UPI and PayPal were offered here
+            // first, so every choice but BANK came back as a 400 from `POST /api/wallet/withdraw`.
+            listOf("BANK", "WALLET", "USDT").forEach { m ->
                 FilterChip(
                     selected = method == m,
                     onClick = { method = m },

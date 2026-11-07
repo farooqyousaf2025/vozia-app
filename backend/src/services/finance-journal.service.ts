@@ -31,10 +31,11 @@ export type JournalInput = {
     | 'SETTLEMENT'
     | 'REVERSAL'
     | 'ADJUSTMENT'
-    // The two coin spreads (0031): what a gift took and did not hand over, and what a settled game
-    // kept from its pool.
+    // The three coin takes (0031, 0032): what a gift took and did not hand over, what a settled
+    // game kept from its pool, and the fee withheld from a withdrawal that was actually paid out.
     | 'GIFT_TAX'
-    | 'GAME_TAKE';
+    | 'GAME_TAKE'
+    | 'WITHDRAWAL_FEE';
   sourceId: string;
   memo?: string | null;
   currency?: string;
@@ -180,7 +181,7 @@ export async function coinFaceMinor(client: PoolClient): Promise<number> {
 }
 
 export type CoinSpreadInput = {
-  sourceKind: 'GIFT_TAX' | 'GAME_TAKE';
+  sourceKind: 'GIFT_TAX' | 'GAME_TAKE' | 'WITHDRAWAL_FEE';
   /** The ledger row or session the spread came from — the idempotency key of this entry. */
   sourceId: string;
   memo: string;
@@ -200,9 +201,12 @@ export type CoinSpreadInput = {
  * price bought, and that gap is a DEBIT to revenue rather than something to skip — the alternative is
  * a book that reports a profit on the exact sends that lost money.
  *
+ * A withdrawal fee mints nothing, so the same writer leaves two lines: `postJournal` drops a
+ * zero-amount leg rather than paying for a line that changes no balance.
+ *
  * Nothing here is derived from a request body: callers pass the same server-computed figures they
- * just wrote into `transactions`, and the entry is keyed on the same id, so a replayed gift or a
- * second settle of a match posts nothing.
+ * just wrote into `transactions`, and the entry is keyed on the same id, so a replayed gift, a second
+ * settle of a match or a second Pay of a withdrawal posts nothing.
  */
 export async function postCoinSpread(
   client: PoolClient,

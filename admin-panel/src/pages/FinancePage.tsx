@@ -39,7 +39,7 @@ const KIND_TONES: Record<string, BadgeTone> = {
   EQUITY: 'violet',
 };
 
-const SOURCE_KINDS = ['RECHARGE_ORDER', 'COMMISSION_ACCRUAL', 'SETTLEMENT', 'REVERSAL', 'ADJUSTMENT', 'GIFT_TAX', 'GAME_TAKE'];
+const SOURCE_KINDS = ['RECHARGE_ORDER', 'COMMISSION_ACCRUAL', 'SETTLEMENT', 'REVERSAL', 'ADJUSTMENT', 'GIFT_TAX', 'GAME_TAKE', 'WITHDRAWAL_FEE'];
 
 export default function FinancePage() {
   const toast = useToast();

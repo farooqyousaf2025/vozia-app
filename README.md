@@ -85,6 +85,18 @@ Every movement writes a `transactions` row with post-image balances for audit.
 Agency commission is written as its own ledger row (`AGENCY_COMMISSION`) so host
 earnings are attributable without touching the host's balance.
 
+A cash-out is a three-step decision, not one: `PENDING → APPROVED → PAID`, with
+`REJECTED` reachable from either open step. The gross R-coins leave
+`users.r_coin_balance` when the host *asks* (escrow) and the `transactions` row
+stays PENDING until money actually moves, so accepting a request never reports a
+payout that has not happened. `POST /api/admin/withdrawals/:id/pay` requires a
+payout reference, flips the ledger row to COMPLETED, and journals the fee — set at
+request time from the `accounts.withdrawal` dial (`{minRCoins, feeBps}`) and stored
+on the row so a later dial change cannot reprice a decision the host already saw.
+The payout itself has no cash leg: there is no bank account or FX rate in this
+stack, so the net stays in COIN_LIABILITY and `payout_reference` is the evidence.
+See `backend/README.md` → *The withdrawal pipeline (migration 0032)*.
+
 Gifts also carry a **spend tier** (`gifts.min_vip_level` vs `users.vip_level`,
 0–20). The ledger checks the tier *before* the balance, so a VIP-0 account buying a
 tier-5 gift gets `403 vip_required` with `{required, current, giftName}` and no
@@ -103,7 +115,8 @@ Two layers, neither of which needs a third-party account to work:
   double-reports). Android 13+ asks for `POST_NOTIFICATIONS` once at startup.
 * **Server push (FCM v1)**: `backend/src/services/push.service.ts` sends a private
   gift and every withdrawal decision (approved / rejected, with the escrow returned
-  on rejection). Registration is `PUT /api/auth/me/device-token`; the service is
+  on rejection, and paid, which names the payout reference). Registration is
+  `PUT /api/auth/me/device-token`; the service is
   env-gated — with `FCM_PROJECT_ID` / `FCM_SERVICE_ACCOUNT_FILE` unset it logs a
   no-op and the gift still returns 201, so push is never on the money path.
   See `.env.example` for the three-step Firebase enablement.
@@ -187,6 +200,7 @@ Two layers, neither of which needs a third-party account to work:
 `GET /api/rooms/:id/speaker-requests`, `POST /api/rooms/:id/speaker-requests/{cancel,:requestId/approve,:requestId/reject}`
 · admin `POST /api/admin/login`, `GET /api/admin/stats|users|rooms|gifts|withdrawals|reports`,
 `GET /api/admin/users/:id/social`, `POST /api/admin/reports/:id/review`,
+`POST /api/admin/withdrawals/:id/{review,pay}`, `PUT /api/admin/config/accounts.withdrawal`,
 `POST /api/admin/users/:id/vip` and the matching mutation routes.
 
 Socket.IO events: client sends `room:join`, `room:leave`, `room:chat`, `room:like`,
@@ -388,7 +402,7 @@ fresh token. Turning approval off cancels the queue rather than stranding it. Se
   `fetch` replaced by a recorder, so no account is needed: the exact Twilio form POST
   and Basic header, Vonage's `200`-with-`status:"1"` trap, the Stripe intent body, and
   every webhook-signature rejection. Together with the e2e suite that is 446 checks.
-* `cd backend && npm run test:business` (87), `test:games` (69), `test:accounts` (58),
+* `cd backend && npm run test:business` (87), `test:games` (69), `test:accounts` (98),
   `test:operators` (44) and `test:revenue` (25) cover the money book rather than the party: the
   nine-step recharge and its commission versions, the three game drivers and at-most-once
   settlement, the purpose-account projection and its exports, the operator roster's live re-read

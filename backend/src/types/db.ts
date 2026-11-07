@@ -184,11 +184,17 @@ export type WithdrawalRow = {
   id: string;
   user_id: string;
   amount_r_coins: number;
+  /** Decided at the request (0032), so the host is charged what they were shown, not today's dial. */
+  fee_r_coins: number;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID';
   payout_method: string;
   payout_details: Record<string, unknown>;
   reviewed_by: string | null;
   reviewed_at: Date | null;
+  /** The payout step: when the money was sent, who sent it, and the reference it went out under. */
+  paid_at: Date | null;
+  paid_by: string | null;
+  payout_reference: string | null;
   created_at: Date;
   username?: string;
   avatar_url?: string | null;

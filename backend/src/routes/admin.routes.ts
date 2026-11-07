@@ -160,6 +160,11 @@ router.post('/pk/battles/:id/stop', requirePermission('config:manage'), admin.st
 
 router.get('/withdrawals', requirePermission('withdrawal:review'), admin.withdrawals);
 router.post('/withdrawals/:id/review', requirePermission('withdrawal:review'), admin.reviewWithdrawalEndpoint);
+// Approving and paying share `withdrawal:review` rather than splitting into a second permission:
+// the dial is "you may decide the fate of a withdrawal", and releasing the money is the last of
+// those decisions, not a different kind of one. What the split *does* buy is two separate rows in
+// `admin_audit`, so who accepted and who actually paid stay distinguishable.
+router.post('/withdrawals/:id/pay', requirePermission('withdrawal:review'), admin.payWithdrawalEndpoint);
 
 router.get('/games', requirePermission('game:read'), admin.games);
 router.put('/games/:key/rules', requirePermission('game:manage'), admin.setGameRules);

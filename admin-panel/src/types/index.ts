@@ -826,9 +826,18 @@ export interface WithdrawalRow {
   id: string;
   user: WithdrawalUser;
   amountRCoins: number;
+  /**
+   * The platform's cut, fixed by the `accounts.withdrawal` dial at the moment the host asked. What
+   * the host is paid is `amountRCoins - feeRCoins`; the escrow that left their wallet was the gross.
+   */
+  feeRCoins: number;
+  netRCoins: number;
   status: WithdrawalStatus;
   payoutMethod: string; // e.g. 'BANK'
   payoutDetails: Record<string, unknown>;
+  /** Set only by a recorded payout, which is the point the ledger calls the money gone. */
+  paidAt: string | null;
+  payoutReference: string | null;
   createdAt: string;
 }
 

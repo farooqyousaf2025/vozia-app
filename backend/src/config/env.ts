@@ -91,6 +91,8 @@ export const env = {
   },
 
   economy: {
+    // The shipped default behind the operator's `accounts.withdrawal` dial (0032): the ledger reads
+    // the switch table first and falls back here when the stored value is missing or unusable.
     minWithdrawRCoins: int('MIN_WITHDRAW_RCOINS', 100000),
     // Per-minute gift throttle per account, as an abuse brake.
     giftRatePerMinute: int('GIFT_RATE_PER_MINUTE', 60),

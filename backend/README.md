@@ -581,9 +581,9 @@ it is what keeps a seeded balance from becoming a permanent unexplained differen
 
 Three books, three statement shapes, because there genuinely are three — inventing a fourth would
 mean two definitions of "paid". The user and host books read the `coin_movements` view restricted to
-`status = 'COMPLETED'`, which is precisely the set the balance view counts as lifetime. A PENDING
-withdrawal is deliberately absent: the R-coins have already left `r_coin_balance` and are reported
-as `pending`, so listing them as an outflow would charge a host twice for the same escrow. The
+`status = 'COMPLETED'`, which is precisely the set the balance view counts as lifetime. A PENDING or
+APPROVED withdrawal is deliberately absent: the R-coins have already left `r_coin_balance` and are
+reported as `pending`, so listing them as an outflow would charge a host twice for the same escrow. The
 payable book emits three legs — accruals in, one `COMMISSION_REVERSAL` out per reversed entry, one
 out per `PAID` settlement — with the counterparty always the *other* side of the order, and the same
 `legs` expression serves the page and the count so the two cannot disagree.
@@ -591,13 +591,13 @@ out per `PAID` settlement — with the counterparty always the *other* side of t
 `GET /api/admin/accounts/reconcile` asks whether each account can explain itself. An ERROR is a
 contradiction between two tables, never a comparison of an account against the number the view just
 read from it: `account_source_missing`, `frozen_exceeds_available`, `payable_state_conflict`,
-`withdrawal_state_conflict`, `withdrawal_paid_step_missing`, `journal_entry_invalid` and — since 0031 —
+`withdrawal_state_conflict`, `journal_entry_invalid` and — since 0031 —
 `platform_revenue_not_booked`, which counts gifts and settled games whose spread has no journal entry
 (see "What a gift keeps is now in the book"). The INFO findings are both true-but-unbooked figures the
 operator needs to see rather than trust: `opening_not_explained_by_ledger`, a seeded opening balance the
-ledger never moved, and `account_not_yet_opened`, a book that is legitimately empty. The one named money
-gap left, an approved withdrawal with no paid step, is real and is open work (#53), not an artefact of
-the query.
+ledger never moved, and `account_not_yet_opened`, a book that is legitimately empty. Since 0032 the
+withdrawal queue adds one more: `withdrawal_awaiting_payout`, the total of what has been accepted and
+not yet sent — real money owed, and open work rather than an artefact of the query.
 
 ### The endpoints
 
@@ -674,8 +674,9 @@ inside those files were correct — the numbers, the BOM and the CSV were never 
 archives were not standards-conformant, so any workbook exported before that fix should be
 re-downloaded rather than repaired.
 
-Not yet built: the PAID step on withdrawals (#53), and booking the coin *issuance* side of demo-mode
-recharges and admin balance grants, which move wallets without a journal line (#60).
+Not yet built: booking the coin *issuance* side of demo-mode recharges and admin balance grants, which
+move wallets without a journal line (#60). The withdrawal PAID step this list used to carry is built —
+see "A withdrawal is paid, not promised (migration 0032)".
 
 ## The operator roster is a switch, not a bin (migration 0030)
 
@@ -813,6 +814,123 @@ never booked. Closing that is #60's job (promotional grants need the same treatm
 on any development database long before it would be on one running real payment orders.
 
 
+## A withdrawal is paid, not promised (migration 0032)
+
+The queue had three states and used two. A host asks for R-coins, the escrow leaves
+`users.r_coin_balance` at that moment, an operator approves, and the approval flipped the
+`transactions` row to COMPLETED — the ledger declaring the money gone, with no row anywhere saying who
+sent it, when, or under what reference. `PAID` has existed in the enum since `schema.sql:56` and
+nothing had ever written it.
+
+The gap was not cosmetic. `purpose_account_balances.pending` counts PENDING **and** APPROVED requests,
+while `coin_movements` counts the outflow only from a COMPLETED ledger row, so the instant the old
+approval ran the same R-coins were both still owed and already gone: `opening + ΣIN − ΣOUT` started
+disagreeing by exactly that amount, and the reconciler reported it as an unexplained opening rather
+than as the missing step it was.
+
+**The outflow is recognised where the money actually leaves.**
+
+| Step | Route | `withdrawal_requests` | `transactions` (WITHDRAWAL) | Host wallet |
+|---|---|---|---|---|
+| Request | `POST /api/wallet/withdraw` | `PENDING`, fee frozen | `PENDING` | gross deducted (escrow) |
+| Accept | `POST /admin/withdrawals/:id/review` `{approve:true}` | `APPROVED` | `PENDING` | unchanged |
+| Refuse | same, `{approve:false}` | `REJECTED` | `REVERSED` | gross returned |
+| Pay | `POST /admin/withdrawals/:id/pay` | `PAID` + evidence | `COMPLETED` | unchanged |
+
+Refusal is reachable from APPROVED as well as PENDING: the escrow leaves at the request, not at the
+payout, so an operator who accepts and then finds the bank details wrong has to be able to hand the
+R-coins back. Approval is refused from any other state (`withdrawal_not_pending`), and Pay only accepts
+APPROVED (`withdrawal_not_approved`) — a transition table enforced in the service and pinned by the
+suite, because the states are also reachable by raw SQL and the enum will not stop a wrong one.
+
+**The fee is decided when the host asks.** `accounts.withdrawal` in `system_config` is the dial —
+`{minRCoins, feeBps}` — seeded by 0029 with the note "Replaces the `MIN_WITHDRAW_RCOINS` environment
+variable once the ledger reads this", and this is the change that lets the ledger read it.
+`Math.floor(amount × feeBps / 10_000)` is computed at request time and **stored on the row** in
+`fee_r_coins`, so the number the wallet screen showed is the number charged even if the operator
+reprices the dial while the request sits in the queue. It is a cut of this withdrawal, never a charge on
+top: `amount_r_coins` stays gross, the escrow is gross, and net = gross − fee.
+
+Because `writeConfig()` replaces the whole JSON blob rather than merging a key, a dial write must send
+the complete object; the route validates the pair (`partner-admin.controller.ts`'s `CONFIG_DIALS`), so a
+`{"feeBps": 1e9}` that would take every R-coin in the account is refused with `bad_config_value` before
+it lands. The service then re-checks each field on read and falls back to the shipped default, because
+the same row can be edited with `psql`. Two guards, one for the console typo and one for the honest
+database.
+
+**Only the fee is journaled.** `payWithdrawal` posts `WITHDRAWAL_FEE` — DEBIT `COIN_LIABILITY` / CREDIT
+`PLATFORM_REVENUE`, `fee × minorPerCoin` — through the same `postCoinSpread` the gift spread and game
+take use, keyed on the withdrawal id so a retried Pay cannot book the cut twice. The payout itself gets
+**no cash leg**: there is no bank account, no payment rail and no FX rate in this stack, so the book
+cannot price the transfer without inventing one. The consequence is stated rather than hidden — the net
+stays inside `COIN_LIABILITY` after PAID, and `payout_reference` is the evidence that it left. A zero-fee
+request posts no entry at all, which is `postCoinSpread`'s existing rule for a spread of zero.
+
+**Evidence is a column, not a note.** `withdrawal_requests_paid_step_evidence` refuses a PAID row with
+no `paid_at` and no `payout_reference`, and the route requires a reference of at least three characters
+before it will call the service — pressing Pay by accident is far easier than remembering a month later
+which transfer paid which request. `withdrawal_requests_fee_within_amount` bounds the fee inside the
+amount. `paid_by` references `admins` with `ON DELETE SET NULL` and is deliberately outside the CHECK:
+`admin_audit` records who pressed Pay, and a later-disabled operator account must not blank a payment
+that happened.
+
+**History was restated toward the ledger, not away from it.** The migration's last statement marks an
+APPROVED request whose ledger row is already COMPLETED as PAID, taking `paid_at` from `reviewed_at`
+because that is the last time the system genuinely knew anything, with a reference that says plainly it
+is a restatement. Reverting the ledger row to PENDING would rewrite what the wallet already did —
+`transactions` is the append-only record of the escrow leaving. On the development database zero rows
+matched; on a stack with withdrawals in it, this is what keeps the reconciler from reporting yesterday's
+payouts as open work. (Any environment that ran an older build should re-check that count: a restated
+row is a row the payout queue will now show as closed.)
+
+### What the reconciler says now
+
+`withdrawal_paid_step_missing` is gone, along with the ERROR it produced on every accepted withdrawal.
+`withdrawal_state_conflict` remains and now enumerates four disjoint shapes — PENDING or APPROVED
+without a PENDING ledger row, PAID without a COMPLETED one, REJECTED without a REVERSED one — so it
+fires only on a real contradiction between the two tables. `withdrawal_awaiting_payout` is one aggregate
+INFO: how many accepted requests await a payout, their total, and the date the oldest was accepted. The
+split is deliberate; a queue of unpaid work is true and open, so it belongs in one line, while a
+disagreement between books is per row and needs an id.
+
+### The read path opens the account it is asked about
+
+Testing the fee surfaced that `accountFor()` — the lazy "open the owner's book on demand" helper 0029
+wrote and commented as the intended read path — had no callers at all. 206 of the development database's
+932 users therefore had no purpose accounts, and `GET /api/admin/accounts/HOST_RCOIN:<new-user>` answered
+404 for every one of them. `account.controller.ts`'s `readAccount()` now splits a `CATEGORY:owner` code
+and opens the book before reading it, wired into both `detail` and `movements` — the latter because the
+CSV and workbook exports hit that route without ever going through `detail` first. Platform codes, which
+have no owner to open a book for, keep going straight to `findAccount`.
+
+Accounts are still created on first read rather than in a backfill, so a book whose owner has never been
+looked at does not exist yet. That is a defensible rule for a projection nobody has asked about, but it
+means `GET /admin/accounts?onlyWithPosition=true` under-reports the platform's own hosts until someone
+views them.
+
+### Routes, permissions and the panel
+
+Accept, refuse and pay all sit behind the single `withdrawal:review` permission rather than a separate
+`withdrawal:pay`. The dial that permission turns is "you may decide the fate of a withdrawal", and
+releasing the money is the last of those decisions, not a different kind of one; what the split *does*
+buy is two rows in `admin_audit` — `WITHDRAWAL_REVIEW` and `WITHDRAWAL_PAY` — so who accepted and who
+actually paid stay distinguishable forever. `GET /api/admin/config/:key` reads the dial under
+`finance:read` and the write needs `config:manage`, which is the existing pairing for every other money
+setting.
+
+The panel's `/withdrawals` page shows the fee and the net under the amount, offers Pay only on APPROVED
+rows, requires a reference before the button enables, and states in the review modal what accepting
+promises ("the host is owed …"). `PolicyCard` on the same page edits the dial and recomputes a worked
+example live, so an operator sees that a R 100k cash-out would pay X and keep Y before saving it.
+
+`node scripts/account-e2e.cjs` walks the whole thing over HTTP with SQL spot-checks: the dial refuses a
+partial, out-of-range and non-numeric write and stays unmoved after each; a request below the minimum
+fails with the *dial's* number in the message, not the environment's; the projection identity is
+re-asserted at all five lifecycle points; Pay refuses a missing reference and a `MODERATOR`; the fee
+journal is two balanced legs; a reject-after-approve returns the gross; and the reconcile report ends
+with zero withdrawal ERRORs. `coin_movements` is read with `Number()` coercion — Postgres returns
+`COUNT(*)` as a string, and a `rows[0].n === 2` assertion silently fails on `"2"`.
+
 ## The socket speaks for a member, and a password is guessed slowly
 
 `joinRoom` is the moderation gate: it refuses a closed room, a banned account and a
@@ -907,12 +1025,19 @@ entry, priced at the configured face value, and no entry at all for a free match
 accounts and scopes, the nine-step recharge, one-time credit, commission versions and statements,
 reversals and reconciliation, with the revenue account pinned to holding only the coin spread.
 
-`npm run test:accounts` (58) and `npm run test:operators` (44) need that stack running too. The
+`npm run test:accounts` (98) and `npm run test:operators` (44) need that stack running too. The
 accounts suite walks the whole book rather than a page of it: the projection identity
 `opening + ΣIN − ΣOUT = balance` on a 926-movement account, one statement leg per currency rule, the
 reconciliation findings a clean database should not raise, idempotent hold create/release including
 the `idempotency_in_flight` answer, the per-role permission split, and the two exports opened the way
-a spreadsheet program opens them — ZIP local headers, every entry inflated, CRC-32 recomputed. It ends
+a spreadsheet program opens them — ZIP local headers, every entry inflated, CRC-32 recomputed. Since
+0032 it also runs a withdrawal from end to end: the `accounts.withdrawal` dial refusing a partial,
+out-of-range and non-numeric write and staying unmoved after each, a below-minimum request answered with
+the dial's number rather than the environment's, the escrow and the `pending` column agreeing while the
+ledger row is still PENDING, the identity re-asserted at all five lifecycle points, Pay refusing no
+reference and a `MODERATOR`, the `WITHDRAWAL_FEE` journal arriving as two balanced legs, a
+reject-after-approve returning the gross, both `admin_audit` verbs recorded for one request, and the
+reconcile report finishing with zero withdrawal ERRORs. It ends
 by proving an operator with audit history cannot be deleted (`23514`).
 
 The operator suite is mostly the same fact from the other side: that the switch is a switch. The two

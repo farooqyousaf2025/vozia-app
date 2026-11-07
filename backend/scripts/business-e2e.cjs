@@ -557,9 +557,12 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   )).rows.map((r) => r.k);
   // What this suite is really claiming: the recharge-and-commission book never calls money its own
   // revenue — provider fees and partner payouts sit on their own accounts — so the only thing this
-  // account has ever held is the coin spread migration 0031 started booking (GIFT_TAX, GAME_TAKE).
-  check('journal: the revenue account holds only the coin spread, never recharge or commission money',
-    revenue.status === 200 && revenueKinds.join(',') === 'GAME_TAKE,GIFT_TAX', {
+  // account has ever held is a coin take. The set is the three of them (0031's gift spread and game
+  // take, 0032's withdrawal fee); a fourth kind appearing here means someone booked a recharge or a
+  // commission as revenue, which is exactly the mistake this check exists to catch.
+  const COIN_TAKES = 'GAME_TAKE,GIFT_TAX,WITHDRAWAL_FEE';
+  check('journal: the revenue account holds only coin takes, never recharge or commission money',
+    revenue.status === 200 && revenueKinds.join(',') !== '' && revenueKinds.every((k) => COIN_TAKES.includes(k)), {
       kinds: revenueKinds, balance: revenue.json && revenue.json.account.balance,
     });
 

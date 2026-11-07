@@ -887,6 +887,18 @@ export const api = {
     });
   },
 
+  /**
+   * Record that the money was actually sent. The reference is required by the server and by the
+   * database: it is the only thing that will answer the host who asks a month later which transfer
+   * paid their request.
+   */
+  payWithdrawal(withdrawalId: string, payoutReference: string): Promise<WithdrawalMutationResult> {
+    return request<WithdrawalMutationResult>(`/api/admin/withdrawals/${withdrawalId}/pay`, {
+      method: 'POST',
+      body: { payoutReference },
+    });
+  },
+
   // ---- games --------------------------------------------------------------
   adminGames(params: { gameKey?: string; status?: string; limit?: number } = {}): Promise<AdminGamesResult> {
     return request<AdminGamesResult>(

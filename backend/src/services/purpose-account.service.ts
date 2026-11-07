@@ -902,10 +902,11 @@ export async function reconcileAccounts(): Promise<{ generatedAt: string; findin
     });
   }
 
-  // The withdrawal pipeline: the request row and its ledger row must tell one story.
-  // APPROVED-with-a-COMPLETED-ledger-row is deliberately absent from this list; it is the
-  // pipeline's known shape today (approval books the money as gone and no step ever records the
-  // payout) and gets its own aggregate finding below rather than one error per request.
+  // The withdrawal pipeline: the request row and its ledger row must tell one story. Since 0032 the
+  // ledger follows the request one step behind — the money leaves the wallet when the host asks
+  // (escrow), so PENDING and APPROVED both sit on a PENDING ledger row, and only a recorded payout
+  // books it COMPLETED. Anything else is a write that went around one of the two service functions,
+  // which is why APPROVED-with-a-COMPLETED-row is an error now rather than the pipeline's shape.
   const withdrawalMismatch = await many<{
     id: string;
     wstatus: string;
@@ -916,7 +917,7 @@ export async function reconcileAccounts(): Promise<{ generatedAt: string; findin
        FROM withdrawal_requests w
        LEFT JOIN transactions t ON t.type = 'WITHDRAWAL' AND t.meta->>'withdrawalId' = w.id::text
       WHERE (w.status = 'PENDING' AND (t.id IS NULL OR t.status <> 'PENDING'))
-         OR (w.status = 'APPROVED' AND (t.id IS NULL OR t.status NOT IN ('PENDING','COMPLETED')))
+         OR (w.status = 'APPROVED' AND (t.id IS NULL OR t.status <> 'PENDING'))
          OR (w.status = 'PAID' AND (t.id IS NULL OR t.status <> 'COMPLETED'))
          OR (w.status = 'REJECTED' AND (t.id IS NULL OR t.status <> 'REVERSED'))
       LIMIT 100`,
@@ -932,24 +933,25 @@ export async function reconcileAccounts(): Promise<{ generatedAt: string; findin
     });
   }
 
-  // The paid step that the operator path never records. The R-coins have left the host's wallet —
-  // the ledger row is COMPLETED — while the request still says APPROVED, so nothing in the system
-  // states that anyone was actually paid. Counted, not enumerated: every approved withdrawal is in
-  // this state until the lifecycle gains its final step.
-  const unpaid = await one<{ n: string | number; total: string | number }>(
-    `SELECT COUNT(*)::text AS n, COALESCE(SUM(w.amount_r_coins), 0)::text AS total
+  // Approved and still sitting in the outbox. Nothing is wrong — the R-coins are escrowed and the
+  // projection counts them as pending — but the host has been promised money and the book does not
+  // yet name anyone who moved it, so the queue is stated rather than enumerated as errors.
+  const unpaid = await one<{ n: string | number; total: string | number; oldest: Date | null }>(
+    `SELECT COUNT(*)::text AS n, COALESCE(SUM(w.amount_r_coins), 0)::text AS total,
+            MIN(w.reviewed_at) AS oldest
        FROM withdrawal_requests w
-       JOIN transactions t ON t.type = 'WITHDRAWAL' AND t.meta->>'withdrawalId' = w.id::text
-      WHERE w.status = 'APPROVED' AND t.status = 'COMPLETED'`,
+      WHERE w.status = 'APPROVED'`,
   );
   if (unpaid && minor(unpaid.n) > 0) {
     findings.push({
-      code: 'withdrawal_paid_step_missing',
-      severity: 'ERROR',
+      code: 'withdrawal_awaiting_payout',
+      severity: 'INFO',
       accountCode: null,
       currency: 'rcn',
       amountMinor: minor(unpaid.total),
-      detail: `${minor(unpaid.n)} withdrawal(s) totalling ${minor(unpaid.total)} R-coins are marked paid in the ledger but still APPROVED as a request`,
+      detail: `${minor(unpaid.n)} approved withdrawal(s) totalling ${minor(unpaid.total)} R-coins await a payout${
+        unpaid.oldest ? `; the oldest accepted ${new Date(unpaid.oldest).toISOString().slice(0, 10)}` : ''
+      }`,
     });
   }
 

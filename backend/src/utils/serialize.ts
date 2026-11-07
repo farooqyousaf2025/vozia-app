@@ -205,10 +205,16 @@ export type ParticipantDto = {
 export type WithdrawalDto = {
   id: string;
   amountRCoins: number;
+  /** What the platform keeps of this request, decided when it was made (0032). */
+  feeRCoins: number;
+  /** What the host is paid: `amountRCoins - feeRCoins`. Never a third number the client adds up. */
+  netRCoins: number;
   status: WithdrawalRow['status'];
   payoutMethod: string;
   payoutDetails: Record<string, unknown>;
   createdAt: string;
+  paidAt: string | null;
+  payoutReference: string | null;
   user: MiniUser;
 };
 
@@ -486,10 +492,14 @@ export function toWithdrawal(row: WithdrawalRow): WithdrawalDto {
   return {
     id: row.id,
     amountRCoins: row.amount_r_coins,
+    feeRCoins: row.fee_r_coins,
+    netRCoins: row.amount_r_coins - row.fee_r_coins,
     status: row.status,
     payoutMethod: row.payout_method,
     payoutDetails: row.payout_details,
     createdAt: iso(row.created_at),
+    paidAt: row.paid_at ? iso(row.paid_at) : null,
+    payoutReference: row.payout_reference,
     user: { id: row.user_id, username: row.username ?? 'unknown', avatarUrl: row.avatar_url ?? null },
   };
 }

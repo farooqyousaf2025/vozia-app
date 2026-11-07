@@ -88,7 +88,7 @@ import {
   GIFT_EFFECT_KINDS,
   GiftInput,
 } from '../services/admin.service';
-import { adjustBalance, reviewWithdrawal } from '../services/ledger.service';
+import { adjustBalance, payWithdrawal, reviewWithdrawal } from '../services/ledger.service';
 import {
   MEDIA_KINDS,
   MediaKind,
@@ -1262,12 +1262,47 @@ export const reviewWithdrawalEndpoint = asyncHandler(async (req: Request, res: R
     void pushToUser(user.id, {
       title: withdrawal.status === 'APPROVED' ? 'Withdrawal approved' : 'Withdrawal rejected',
       body: withdrawal.status === 'APPROVED'
-        ? `${withdrawal.amount_r_coins} R-coins released for payout.`
+        ? `${withdrawal.amount_r_coins} R-coins accepted for payout.`
         : `${withdrawal.amount_r_coins} R-coins were returned to your balance.`,
       data: { type: 'withdrawal', status: withdrawal.status },
     });
   }
   res.json({ withdrawal: (await getAdminWithdrawal(withdrawal.id)) ?? toWithdrawal(withdrawal) });
+});
+
+/**
+ * Record that a payout was actually sent (0032). Approval only promised it.
+ *
+ * A reference is required rather than optional: the row has to answer the host's call next month, and
+ * an operator can press Pay far more easily than they can remember which transfer paid which request.
+ */
+export const payWithdrawalEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const id = requireString(req.params.id, 'withdrawalId', { min: 36, max: 36 });
+  const reference = requireString(req.body?.payoutReference, 'payoutReference', { min: 3, max: 120 });
+  const withdrawal = await payWithdrawal(id, req.admin!.sub, reference);
+  await logAction(req, {
+    action: 'WITHDRAWAL_PAY',
+    targetType: 'withdrawal',
+    targetId: id,
+    summary: `Paid ${withdrawal.amount_r_coins - withdrawal.fee_r_coins} of a ${withdrawal.amount_r_coins} R-coin withdrawal under ${reference}`,
+    details: {
+      payoutReference: reference,
+      feeRCoins: withdrawal.fee_r_coins,
+      amountRCoins: withdrawal.amount_r_coins,
+      userId: withdrawal.user_id,
+    },
+  });
+  const holder = await one<UserRow>('SELECT * FROM users WHERE id = $1', [withdrawal.user_id]);
+  if (holder) {
+    const user: UserDto = toUser(holder);
+    emitToUser(user.id, 'withdrawal:update', { id: withdrawal.id, status: withdrawal.status, rCoinBalance: user.rCoinBalance });
+    void pushToUser(user.id, {
+      title: 'Withdrawal paid',
+      body: `${withdrawal.amount_r_coins - withdrawal.fee_r_coins} R-coins were sent (${reference}).`,
+      data: { type: 'withdrawal', status: withdrawal.status },
+    });
+  }
+  res.json({ withdrawal: (await getAdminWithdrawal(id)) ?? toWithdrawal(withdrawal) });
 });
 
 /** Rotate the operator password from inside the panel. */

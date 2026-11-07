@@ -6,9 +6,12 @@ import {
   ACCOUNT_CATEGORIES,
   ACCOUNT_OWNER_KINDS,
   ACCOUNT_STATUSES,
+  AccountCategory,
+  PurposeAccountDto,
   HOLD_KINDS,
   AccountHoldDto,
   ReconciliationFinding,
+  accountFor,
   releaseHold,
   setAccountStatus,
   claimIdempotency,
@@ -83,6 +86,24 @@ const accountCode = (value: unknown): string => {
   return code;
 };
 
+/**
+ * Read one account, opening it first when it belongs to a person nobody has looked at yet.
+ *
+ * Migration 0029 backfills everyone who existed the day it ran, and `accountFor` is documented as
+ * covering everyone after — but no route ever reached it, so a host who signed up since has no row
+ * and their wallet is missing from the book. `account_not_yet_opened` in the reconcile report is the
+ * reconciler admitting to that. Opening on read is safe precisely because the account is a
+ * projection: a row that does not exist yet cannot be a wrong one, and nothing here moves money.
+ */
+async function readAccount(code: string): Promise<PurposeAccountDto> {
+  const separator = code.indexOf(':');
+  if (separator < 0) return findAccount(code);
+  const category = code.slice(0, separator) as AccountCategory;
+  const ownerId = code.slice(separator + 1);
+  if (ownerId === 'PLATFORM' || !ACCOUNT_CATEGORIES.includes(category)) return findAccount(code);
+  return accountFor(category, ownerId);
+}
+
 const FORMAT_LABELS = ['json', 'csv', 'xlsx'] as const;
 type ExportFormat = (typeof FORMAT_LABELS)[number];
 
@@ -152,7 +173,7 @@ export const overview = asyncHandler(async (req: Request, res: Response) => {
 
 /** One account, and the source the balance is read from — a number with no provenance is not auditable. */
 export const detail = asyncHandler(async (req: Request, res: Response) => {
-  res.json({ account: await findAccount(accountCode(req.params.code)) });
+  res.json({ account: await readAccount(accountCode(req.params.code)) });
 });
 
 /**
@@ -164,6 +185,9 @@ export const detail = asyncHandler(async (req: Request, res: Response) => {
  */
 export const movements = asyncHandler(async (req: Request, res: Response) => {
   const code = accountCode(req.params.code);
+  // Read the account before its statement so the statement of a host nobody has opened yet exists at
+  // all — the export links hit this route without ever going through `detail` first.
+  await readAccount(code);
   const { limit, offset, page: pageNumber } = page(req);
   const format = exportFormat(req);
   const { from, to } = windowDates(req);

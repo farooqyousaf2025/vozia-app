@@ -1,6 +1,17 @@
 // ---------------------------------------------------------------------------
-// Withdrawal queue: filter by status, approve/reject with an audit note via
-// POST /withdrawals/:id/review. Rows refresh from the API response.
+// Withdrawal queue: filter by status, then walk a request down the pipeline.
+//
+//   PENDING  --Review-->  APPROVED  --Pay-->  PAID
+//       `--------------------------------------------->  REJECTED (from either side)
+//
+// Approving is a decision about the request; paying is the record that money left the company, and
+// only the second one books the outflow server-side (POST /withdrawals/:id/review, /pay). The two
+// are separate buttons because the two happen hours or days apart, and the row that sits between
+// them is the platform still owing a host.
+//
+// The fee the platform keeps is set by the `accounts.withdrawal` dial at the moment the host asks,
+// so the number shown here is the number that was quoted on the phone — moving the dial afterwards
+// changes the next request, not this one.
 // ---------------------------------------------------------------------------
 import { useCallback, useEffect, useState } from 'react';
 import { Avatar } from '../components/ui/Avatar';
@@ -8,15 +19,18 @@ import { Badge, type BadgeTone } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { EmptyState } from '../components/ui/EmptyState';
+import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { Textarea } from '../components/ui/Input';
 import { useToast } from '../components/ui/Toast';
+import { useAuth } from '../context/AuthContext';
 import {
   IconAlert,
   IconCheck,
   IconClose,
+  IconCoin,
   IconRefresh,
   IconWallet,
 } from '../components/ui/Icons';
@@ -42,11 +56,13 @@ function payoutDetailsSummary(details: Record<string, unknown>): string {
 
 export default function WithdrawalsPage() {
   const toast = useToast();
+  const { can } = useAuth();
   const [status, setStatus] = useState<'' | WithdrawalStatus>('PENDING');
   const [rows, setRows] = useState<WithdrawalRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reviewTarget, setReviewTarget] = useState<WithdrawalRow | null>(null);
+  const [payTarget, setPayTarget] = useState<WithdrawalRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -143,6 +159,11 @@ export default function WithdrawalsPage() {
                   </Td>
                   <Td align="right" className="font-bold tabular-nums text-ink">
                     {formatRCoin(row.amountRCoins)}
+                    {row.feeRCoins > 0 && (
+                      <p className="text-[11px] font-normal text-faint" title="Fee kept by the platform; the host is paid the rest.">
+                        −{formatRCoin(row.feeRCoins)} fee · {formatRCoin(row.netRCoins)} paid
+                      </p>
+                    )}
                   </Td>
                   <Td>
                     <Badge tone="slate">{row.payoutMethod}</Badge>
@@ -157,16 +178,37 @@ export default function WithdrawalsPage() {
                   </Td>
                   <Td>
                     <Badge tone={STATUS_TONES[row.status] ?? 'slate'}>{row.status}</Badge>
+                    {row.status === 'PAID' && (
+                      <p
+                        className="mt-1 max-w-[13rem] break-words text-[11px] text-faint"
+                        title={row.paidAt ? `Paid ${formatDateTime(row.paidAt)}` : undefined}
+                      >
+                        {row.payoutReference ?? 'paid without a reference'}
+                      </p>
+                    )}
                   </Td>
                   <Td align="right" className="pr-4">
-                    {row.status === 'PENDING' ? (
+                    {row.status === 'PENDING' && (
                       <div className="flex justify-end">
                         <Button size="sm" variant="primary" onClick={() => setReviewTarget(row)}>
                           Review
                         </Button>
                       </div>
-                    ) : (
-                      <span className="block text-right text-xs text-faint">reviewed</span>
+                    )}
+                    {row.status === 'APPROVED' && (
+                      <div className="flex justify-end">
+                        <Button
+                          size="sm"
+                          variant="success"
+                          icon={<IconCoin className="h-4 w-4" />}
+                          onClick={() => setPayTarget(row)}
+                        >
+                          Pay
+                        </Button>
+                      </div>
+                    )}
+                    {(row.status === 'PAID' || row.status === 'REJECTED') && (
+                      <span className="block text-right text-xs text-faint">closed</span>
                     )}
                   </Td>
                 </Tr>
@@ -185,13 +227,213 @@ export default function WithdrawalsPage() {
             setReviewTarget(null);
             toast.success(
               updated.status === 'APPROVED'
-                ? `Approved ${formatRCoin(updated.amountRCoins)} for ${updated.user.username}.`
+                ? `Accepted ${formatRCoin(updated.amountRCoins)} for payout to ${updated.user.username}.`
                 : `Rejected withdrawal from ${updated.user.username}.`,
             );
           }}
         />
       )}
+
+      {payTarget !== null && (
+        <PayModal
+          withdrawal={payTarget}
+          onClose={() => setPayTarget(null)}
+          onPaid={(updated) => {
+            replaceRow(updated);
+            setPayTarget(null);
+            toast.success(`Recorded ${formatRCoin(updated.netRCoins)} paid to ${updated.user.username}.`);
+          }}
+        />
+      )}
+
+      <PolicyCard canWrite={can('config:manage')} />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pay modal: the reference is the point of the screen.
+// ---------------------------------------------------------------------------
+interface PayModalProps {
+  withdrawal: WithdrawalRow;
+  onClose: () => void;
+  onPaid: (withdrawal: WithdrawalRow) => void;
+}
+
+function PayModal({ withdrawal, onClose, onPaid }: PayModalProps) {
+  const [reference, setReference] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setServerError(null);
+    try {
+      const result = await api.payWithdrawal(withdrawal.id, reference.trim());
+      onPaid(result.withdrawal);
+    } catch (err) {
+      setServerError(err instanceof ApiError ? err.message : 'Payout failed.');
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Record a payout"
+      subtitle={`#${withdrawal.id.slice(0, 8)} · ${withdrawal.user.username}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="success" onClick={() => void submit()} loading={submitting} disabled={reference.trim().length < 3}>
+            Mark as paid
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="rounded-lg border border-edge/60 bg-elevated/40 p-4">
+          <p className="text-xs uppercase tracking-wider text-faint">The host is owed</p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-300">
+            {formatRCoin(withdrawal.netRCoins)}
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            of {formatRCoin(withdrawal.amountRCoins)} requested
+            {withdrawal.feeRCoins > 0 ? ` · ${formatRCoin(withdrawal.feeRCoins)} kept as the platform fee` : ' · no fee on this request'}{' '}
+            · via <span className="font-semibold text-ink">{withdrawal.payoutMethod}</span> ·{' '}
+            {payoutDetailsSummary(withdrawal.payoutDetails)}
+          </p>
+        </div>
+
+        <Input
+          label="Bank / transfer reference"
+          maxLength={120}
+          placeholder="e.g. HBL-TRX-000984321"
+          hint="Required. This is what answers the host who asks in three weeks which transfer paid them, and the database refuses a paid row without one."
+          value={reference}
+          onChange={(e) => setReference(e.target.value)}
+          autoFocus
+        />
+
+        {serverError !== null && (
+          <div className="flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 py-2 text-xs text-rose-200">
+            <IconAlert className="h-4 w-4 shrink-0" />
+            {serverError}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The cash-out policy the next request is priced on.
+// ---------------------------------------------------------------------------
+interface WithdrawalPolicy {
+  minRCoins?: number;
+  feeBps?: number;
+}
+
+function PolicyCard({ canWrite }: { canWrite: boolean }) {
+  const toast = useToast();
+  const [minimum, setMinimum] = useState('');
+  const [fee, setFee] = useState('');
+  const [loaded, setLoaded] = useState<WithdrawalPolicy | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .readConfig<WithdrawalPolicy>('accounts.withdrawal')
+      .then((result) => {
+        if (cancelled) return;
+        setMinimum(String(result.value.minRCoins ?? ''));
+        setFee(String(result.value.feeBps ?? ''));
+        setLoaded({ minRCoins: Number(result.value.minRCoins ?? 0), feeBps: Number(result.value.feeBps ?? 0) });
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof ApiError ? err.message : 'Failed to read the cash-out policy.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const minNumber = Number(minimum);
+  const feeNumber = Number(fee);
+  const whole = (value: number) => Number.isInteger(value) && value >= 0;
+  const valid = whole(minNumber) && minNumber > 0 && whole(feeNumber) && feeNumber <= 10_000;
+  const dirty =
+    loaded !== null && (loaded.minRCoins !== minNumber || (loaded.feeBps ?? 0) !== feeNumber);
+
+  const save = async () => {
+    if (busy || !valid) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.writeConfig('accounts.withdrawal', { minRCoins: minNumber, feeBps: feeNumber });
+      const value = result.value as WithdrawalPolicy;
+      setLoaded({ minRCoins: Number(value.minRCoins), feeBps: Number(value.feeBps) });
+      toast.success('Cash-out policy updated. Requests already in the queue keep the fee they were quoted.');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save the policy.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loaded === null && error === null) return null;
+
+  return (
+    <Card
+      title="Cash-out policy"
+      subtitle="What the next request needs, and what the platform keeps from it."
+      actions={
+        canWrite && (
+          <Button size="sm" variant="primary" onClick={() => void save()} loading={busy} disabled={!valid || !dirty}>
+            Save policy
+          </Button>
+        )
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Input
+          label="Minimum withdrawal (R-coins)"
+          type="number"
+          min={1}
+          value={minimum}
+          onChange={(e) => setMinimum(e.target.value)}
+          disabled={!canWrite}
+          hint="A host below this gets a refusal quoting this number, so it has to match what the app tells them."
+        />
+        <Input
+          label="Fee (basis points, 100 = 1%)"
+          type="number"
+          min={0}
+          max={10000}
+          value={fee}
+          onChange={(e) => setFee(e.target.value)}
+          disabled={!canWrite}
+          hint="Charged on the gross and kept when the payout is recorded. Saved requests keep the fee they were quoted with."
+        />
+      </div>
+      {loaded !== null && (
+        <p className="mt-3 text-xs text-faint">
+          A {formatRCoin(100_000)} cash-out would pay the host{' '}
+          <span className="text-ink">{formatRCoin(100_000 - Math.floor((100_000 * (feeNumber || 0)) / 10_000))}</span> and keep{' '}
+          <span className="text-ink">{formatRCoin(Math.floor((100_000 * (feeNumber || 0)) / 10_000))}</span>.
+        </p>
+      )}
+      {error !== null && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 py-2 text-xs text-rose-200">
+          <IconAlert className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -241,7 +483,7 @@ function ReviewModal({ withdrawal, onClose, onReviewed }: ReviewModalProps) {
             onClick={() => void submit()}
             loading={submitting}
           >
-            {decision === 'approve' ? 'Approve payout' : 'Reject request'}
+            {decision === 'approve' ? 'Accept request' : 'Reject request'}
           </Button>
         </>
       }
@@ -252,6 +494,11 @@ function ReviewModal({ withdrawal, onClose, onReviewed }: ReviewModalProps) {
           <p className="mt-1 text-2xl font-bold tabular-nums text-fuchsia-300">
             {formatRCoin(withdrawal.amountRCoins)}
           </p>
+          {withdrawal.feeRCoins > 0 && (
+            <p className="mt-0.5 text-xs text-muted">
+              {formatRCoin(withdrawal.netRCoins)} of it reaches the host; {formatRCoin(withdrawal.feeRCoins)} stays with the platform.
+            </p>
+          )}
           <p className="mt-1 text-xs text-muted">
             via <span className="font-semibold text-ink">{withdrawal.payoutMethod}</span> ·{' '}
             {payoutDetailsSummary(withdrawal.payoutDetails)} · requested {relativeTime(withdrawal.createdAt)}

@@ -434,11 +434,39 @@ export const readConfigEndpoint = asyncHandler(async (req: Request, res: Respons
   res.json({ key, value: await readConfig(key, {}) });
 });
 
+/**
+ * The money dials this route is allowed to know about, and the shape each one must arrive in.
+ *
+ * Two things make a typo here expensive in a way it is not for a decorative setting. First, the
+ * readers (`withdrawalPolicy`, `coinFaceMinor`) ignore a stored value that is not a whole number in
+ * range and fall back to the shipped default, which would turn a bad write into a silent no-op.
+ * Second, `writeConfig` replaces the blob rather than merging into it, so a body that names one field
+ * deletes its neighbour's value for the next reader. Refusing the write is the only place an operator
+ * can still be told. A key that is not listed here is accepted as it always was.
+ */
+const CONFIG_DIALS: Record<string, ReadonlyArray<{ field: string; min: number; max: number }>> = {
+  'accounts.withdrawal': [
+    { field: 'minRCoins', min: 1, max: 1_000_000_000 },
+    { field: 'feeBps', min: 0, max: 10_000 },
+  ],
+  'accounts.coinValue': [{ field: 'minorPerCoin', min: 1, max: 1_000_000 }],
+};
+
 export const writeConfigEndpoint = asyncHandler(async (req: Request, res: Response) => {
   const key = requireString(req.params.key, 'key', { min: 3, max: 48 });
   const value = req.body?.value;
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw ApiError.badRequest('value must be a JSON object', 'bad_config_value');
+  }
+  for (const spec of CONFIG_DIALS[key] ?? []) {
+    const raw = (value as Record<string, unknown>)[spec.field];
+    const number = Number(raw);
+    if (!Number.isInteger(number) || number < spec.min || number > spec.max) {
+      throw ApiError.badRequest(
+        `${key}.${spec.field} must be a whole number between ${spec.min} and ${spec.max}`,
+        'bad_config_value',
+      );
+    }
   }
   const row = await writeConfig(adminId(req), key, value as Record<string, unknown>);
   res.json({ key, value: row.value, updatedAt: new Date(row.updated_at).toISOString() });

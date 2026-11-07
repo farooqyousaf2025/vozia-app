@@ -461,6 +461,15 @@ valid cert, or `adb reverse` for local testing).
   `wallet:update` event is folded into the cached session by
   `SessionManager.applyWalletUpdate()`, and only the side the server actually names is
   replaced, so a gift sender never sees their R-coin balance drop to zero.
+  The withdrawal sheet offers exactly the three methods `POST /api/wallet/withdraw`
+  accepts — `BANK`, `WALLET`, `USDT`. It previously also offered UPI and PayPal, which
+  the server's `requireEnum` refused with a 400, so two of five choices could never be
+  used; the list is kept short rather than the server widened, because a payout method
+  is a rail someone has to actually operate. What the sheet does not yet show is the
+  fee: since migration `0032` the server freezes `fee_r_coins` at request time, pays the
+  net, and already sends both `feeRCoins` and `netRCoins` on the withdrawal DTO — the
+  app's `WithdrawalDto` simply does not read them, so a host sees "25,000 withdrawn"
+  and receives a payout of `gross − fee` (roadmap follow-up).
   The recharge sheet still calls `POST /api/wallet/recharge`, the simulated path: it
   works only while the backend runs `PAYMENTS_PROVIDER=simulated` and starts answering
   `403 payments_provider_is_stripe` the moment the stack charges for real. Shipping

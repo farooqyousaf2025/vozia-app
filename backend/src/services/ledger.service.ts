@@ -5,6 +5,7 @@ import { many, one, query, withTransaction } from '../config/db';
 import { rateLimit, redis } from '../config/redis';
 import { GiftBoxOutcomeRow, GiftRow, TransactionRow, UserRow, WithdrawalRow } from '../types/db';
 import { ApiError } from '../utils/http';
+import { readConfig } from './business.service';
 import { postCoinSpread } from './finance-journal.service';
 import { LuckyRollDto, rollLuckyBox, toBoxOutcomes } from './lucky-box.service';
 import { awardXp, ensureRankRegistry, xpForEarning, xpForSpend } from './rank.service';
@@ -816,6 +817,30 @@ export async function postGameMoves(client: PoolClient, moves: readonly GameMove
   return posted as PostedGameMove[];
 }
 
+/**
+ * The two dials a cash-out runs on, read from the switch table (0029 seeded `accounts.withdrawal`;
+ * 0032 is the change that let the ledger stop hardcoding the minimum).
+ *
+ * A stored value that is not a whole number in range is ignored rather than obeyed. This is the floor
+ * and the charge on somebody's withdrawal, and a console typo that sets `feeBps` to `1e9` would take
+ * every R-coin in the account — falling back to the shipped default is the difference between a bad
+ * setting and a lost balance.
+ */
+const MAX_WITHDRAWAL_FEE_BPS = 10_000;
+
+async function withdrawalPolicy(): Promise<{ minRCoins: number; feeBps: number }> {
+  const stored = await readConfig('accounts.withdrawal', {
+    minRCoins: env.economy.minWithdrawRCoins,
+    feeBps: 0,
+  });
+  const minRCoins = Number(stored.minRCoins);
+  const feeBps = Number(stored.feeBps);
+  return {
+    minRCoins: Number.isInteger(minRCoins) && minRCoins > 0 ? minRCoins : env.economy.minWithdrawRCoins,
+    feeBps: Number.isInteger(feeBps) && feeBps >= 0 && feeBps <= MAX_WITHDRAWAL_FEE_BPS ? feeBps : 0,
+  };
+}
+
 export async function requestWithdrawal(
   userId: string,
   amountRCoins: number,
@@ -823,9 +848,15 @@ export async function requestWithdrawal(
   payoutDetails: Record<string, unknown>,
 ): Promise<{ withdrawal: WithdrawalRow; user: UserDto }> {
   await ensureRankRegistry();
-  if (amountRCoins < env.economy.minWithdrawRCoins) {
-    throw ApiError.badRequest(`Minimum withdrawal is ${env.economy.minWithdrawRCoins} R-coins`, 'below_minimum');
+  const { minRCoins, feeBps } = await withdrawalPolicy();
+  if (amountRCoins < minRCoins) {
+    throw ApiError.badRequest(`Minimum withdrawal is ${minRCoins} R-coins`, 'below_minimum');
   }
+  // The fee is decided when the host asks, not when the operator pays, so the number the wallet screen
+  // showed is the number charged even if the dial moves while the request sits in the queue. It is a
+  // cut of this withdrawal, never an extra charge on top: `amount_r_coins` stays gross, and the
+  // escrow taken below is the gross figure.
+  const feeRCoins = Math.floor((amountRCoins * feeBps) / 10_000);
 
   const withdrawal = await withTransaction(async (client) => {
     const rows = await client.query<UserRow>('SELECT * FROM users WHERE id = $1 FOR UPDATE', [userId]);
@@ -837,9 +868,9 @@ export async function requestWithdrawal(
     await client.query('UPDATE users SET r_coin_balance = r_coin_balance - $2 WHERE id = $1', [userId, amountRCoins]);
 
     const inserted = await client.query<WithdrawalRow>(
-      `INSERT INTO withdrawal_requests (user_id, amount_r_coins, payout_method, payout_details)
-       VALUES ($1,$2,$3,$4) RETURNING *`,
-      [userId, amountRCoins, payoutMethod, JSON.stringify(payoutDetails)],
+      `INSERT INTO withdrawal_requests (user_id, amount_r_coins, fee_r_coins, payout_method, payout_details)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [userId, amountRCoins, feeRCoins, payoutMethod, JSON.stringify(payoutDetails)],
     );
     await client.query<TransactionRow>(
       `INSERT INTO transactions (type, status, sender_id, amount_r_coins, meta)
@@ -853,6 +884,13 @@ export async function requestWithdrawal(
   return { withdrawal, user: toUser(user!) };
 }
 
+/**
+ * Approve or refuse a request. Approval no longer books the money as gone (0032).
+ *
+ * Refusal is allowed from APPROVED as well as PENDING, because the escrow leaves the host's wallet at
+ * the request, not at the payout: an operator who approves and then finds the bank details are wrong
+ * has to be able to give the R-coins back, and the only way to say that is to refuse.
+ */
 export async function reviewWithdrawal(
   withdrawalId: string,
   approve: boolean,
@@ -865,7 +903,12 @@ export async function reviewWithdrawal(
     ]);
     const withdrawal = rows.rows[0];
     if (!withdrawal) throw ApiError.notFound('Withdrawal not found');
-    if (withdrawal.status !== 'PENDING') throw ApiError.conflict('Already reviewed');
+    if (approve && withdrawal.status !== 'PENDING') {
+      throw ApiError.conflict('Already reviewed', 'withdrawal_not_pending');
+    }
+    if (!approve && withdrawal.status !== 'PENDING' && withdrawal.status !== 'APPROVED') {
+      throw ApiError.conflict('Only an unpaid withdrawal can be rejected', 'withdrawal_not_rejectable');
+    }
 
     const status = approve ? 'APPROVED' : 'REJECTED';
     if (!approve) {
@@ -874,16 +917,16 @@ export async function reviewWithdrawal(
         withdrawal.user_id,
         withdrawal.amount_r_coins,
       ]);
+      await client.query(
+        `UPDATE transactions SET status = 'REVERSED'
+          WHERE type = 'WITHDRAWAL' AND meta->>'withdrawalId' = $1`,
+        [withdrawalId],
+      );
     }
     await client.query(
       `UPDATE withdrawal_requests SET status = $2::withdrawal_status, reviewed_by = $3, reviewed_at = now()
         WHERE id = $1`,
       [withdrawalId, status, adminId],
-    );
-    await client.query(
-      `UPDATE transactions SET status = $2
-        WHERE type = 'WITHDRAWAL' AND meta->>'withdrawalId' = $1`,
-      [withdrawalId, approve ? 'COMPLETED' : 'REVERSED'],
     );
     if (note) {
       await client.query('UPDATE withdrawal_requests SET payout_details = payout_details || $2::jsonb WHERE id = $1', [
@@ -891,6 +934,64 @@ export async function reviewWithdrawal(
         JSON.stringify({ reviewNote: note }),
       ]);
     }
+    const updated = await client.query<WithdrawalRow>('SELECT * FROM withdrawal_requests WHERE id = $1', [withdrawalId]);
+    return updated.rows[0];
+  });
+}
+
+/**
+ * Record that the money was actually sent, which is the step that ends the escrow.
+ *
+ * Until here the platform owes the host the R-coins and the ledger says nothing left: `pending` in
+ * `purpose_account_balances` counts PENDING and APPROVED requests, and `coin_movements` counts the
+ * outflow only from a COMPLETED ledger row. This is where the two switch over, in one transaction, so
+ * an account can never be both owed and paid.
+ *
+ * The payout reference is required because the row has to survive the host's phone call: an operator
+ * can press Pay twice by accident far more easily than they can remember which transfer paid which
+ * request a month later. The money itself moves outside the platform's rails, so the book does not
+ * price it — only the fee the platform kept is journaled, at the same coin face value as every other
+ * coin take.
+ */
+export async function payWithdrawal(
+  withdrawalId: string,
+  adminId: string,
+  payoutReference: string,
+): Promise<WithdrawalRow> {
+  return withTransaction(async (client) => {
+    const rows = await client.query<WithdrawalRow>('SELECT * FROM withdrawal_requests WHERE id = $1 FOR UPDATE', [
+      withdrawalId,
+    ]);
+    const withdrawal = rows.rows[0];
+    if (!withdrawal) throw ApiError.notFound('Withdrawal not found');
+    if (withdrawal.status !== 'APPROVED') {
+      throw ApiError.conflict('Only an approved withdrawal can be paid', 'withdrawal_not_approved');
+    }
+
+    await client.query(
+      `UPDATE withdrawal_requests
+          SET status = 'PAID'::withdrawal_status, paid_at = now(), paid_by = $2, payout_reference = $3
+        WHERE id = $1`,
+      [withdrawalId, adminId, payoutReference.slice(0, 120)],
+    );
+    await client.query(
+      `UPDATE transactions SET status = 'COMPLETED'
+        WHERE type = 'WITHDRAWAL' AND meta->>'withdrawalId' = $1`,
+      [withdrawalId],
+    );
+
+    // The host is paid `amount - fee`; the fee never left as cash, so it is the platform's, and it is
+    // the only figure this book can state. A zero-fee request mints the dial's default of nothing to
+    // say, and `postCoinSpread` books no entry for a spread of zero.
+    await postCoinSpread(client, {
+      sourceKind: 'WITHDRAWAL_FEE',
+      sourceId: withdrawalId,
+      memo: `Withdrawal fee: ${withdrawal.fee_r_coins} of ${withdrawal.amount_r_coins} R-coins kept`,
+      coinsReleased: withdrawal.fee_r_coins,
+      coinsMinted: 0,
+      createdBy: adminId,
+    });
+
     const updated = await client.query<WithdrawalRow>('SELECT * FROM withdrawal_requests WHERE id = $1', [withdrawalId]);
     return updated.rows[0];
   });
