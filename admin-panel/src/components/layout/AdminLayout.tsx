@@ -17,6 +17,7 @@ import {
   IconMic,
   IconPartners,
   IconRecharge,
+  IconScales,
   IconSearch,
   IconShieldCheck,
   IconSidebarToggle,
@@ -61,6 +62,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/recharges', label: 'Recharges', icon: <IconRecharge className="h-5 w-5" />, permission: 'finance:read' },
   { to: '/commissions', label: 'Commission', icon: <IconCommission className="h-5 w-5" />, permission: 'finance:read' },
   { to: '/finance', label: 'Finance book', icon: <IconBook className="h-5 w-5" />, permission: 'finance:read' },
+  { to: '/accounts', label: 'Purpose accounts', icon: <IconScales className="h-5 w-5" />, permission: 'account:read' },
   { to: '/audit', label: 'Audit', icon: <IconAudit className="h-5 w-5" />, permission: 'audit:read' },
 ];
 

@@ -5,6 +5,7 @@ import { EmptyState } from './components/ui/EmptyState';
 import { Card } from './components/ui/Card';
 import { IconShieldCheck } from './components/ui/Icons';
 import { useAuth } from './context/AuthContext';
+import AccountsPage from './pages/AccountsPage';
 import AuditPage from './pages/AuditPage';
 import BannersPage from './pages/BannersPage';
 import CommissionsPage from './pages/CommissionsPage';
@@ -84,6 +85,7 @@ export default function App() {
         <Route path="recharges" element={<RequirePermission permission="finance:read"><RechargesPage /></RequirePermission>} />
         <Route path="commissions" element={<RequirePermission permission="finance:read"><CommissionsPage /></RequirePermission>} />
         <Route path="finance" element={<RequirePermission permission="finance:read"><FinancePage /></RequirePermission>} />
+        <Route path="accounts" element={<RequirePermission permission="account:read"><AccountsPage /></RequirePermission>} />
         <Route path="audit" element={<RequirePermission permission="audit:read"><AuditPage /></RequirePermission>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -6,6 +6,12 @@
 //   (except on the login call itself, where the error is surfaced inline)
 // ---------------------------------------------------------------------------
 import type {
+  AccountHold,
+  AccountHoldListResult,
+  AccountListResult,
+  AccountMovementListResult,
+  AccountReconciliation,
+  AccountStatus,
   AdminEmoji,
   AdminGamesResult,
   AdminIdentity,
@@ -52,6 +58,7 @@ import type {
   GiftMutationResult,
   GiftPatch,
   GrantedItem,
+  HoldKind,
   JournalListResult,
   LoginResponse,
   MediaAsset,
@@ -59,6 +66,7 @@ import type {
   OkResult,
   ProfileFrame,
   ProfileRide,
+  PurposeAccount,
   PublishedBanner,
   PublishedEmojiCatalogue,
   PublishedLadder,
@@ -289,7 +297,17 @@ function query(params: Record<string, string | number | undefined | null>): stri
  * the bearer token, so the bytes come through fetch and leave as an object URL.
  */
 async function downloadCsv(path: string, filename: string): Promise<void> {
-  const headers: Record<string, string> = { Accept: 'text/csv' };
+  await downloadFile(path, filename, 'text/csv');
+}
+
+const EXPORT_TYPES: Record<'csv' | 'xlsx', string> = {
+  csv: 'text/csv',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
+
+/** The same shape as `downloadCsv` for any export the backend can attach a filename to. */
+async function downloadFile(path: string, filename: string, accept: string): Promise<void> {
+  const headers: Record<string, string> = { Accept: accept };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -1167,6 +1185,126 @@ export const api = {
   downloadReconciliationCsv(params: { from?: string; to?: string } = {}): Promise<void> {
     const stamp = new Date().toISOString().slice(0, 10);
     return downloadCsv(`/api/admin/business/finance/reconciliation?format=csv${query(params).replace('?', '&')}`, `voiza-reconciliation-${stamp}.csv`);
+  },
+
+  // ---- purpose accounts ------------------------------------------------------
+  /**
+   * The book (§8). Reads need `account:read` and writes need `account:manage`; the server decides
+   * both on every call, so this client only decides which buttons to draw.
+   */
+  accounts(
+    params: {
+      category?: string;
+      ownerKind?: string;
+      ownerId?: string;
+      status?: string;
+      currency?: string;
+      search?: string;
+      onlyWithPosition?: boolean;
+      page?: number;
+      limit?: number;
+    } = {},
+  ): Promise<AccountListResult> {
+    return request<AccountListResult>(
+      `/api/admin/accounts${query({
+        category: params.category,
+        ownerKind: params.ownerKind,
+        ownerId: params.ownerId,
+        status: params.status,
+        currency: params.currency,
+        search: params.search,
+        onlyWithPosition: params.onlyWithPosition ? 'true' : undefined,
+        page: params.page ?? 1,
+        limit: params.limit ?? 25,
+      })}`,
+    );
+  },
+
+  account(code: string): Promise<{ account: PurposeAccount }> {
+    return request<{ account: PurposeAccount }>(`/api/admin/accounts/${encodeURIComponent(code)}`);
+  },
+
+  accountMovements(
+    code: string,
+    params: { from?: string; to?: string; page?: number; limit?: number } = {},
+  ): Promise<AccountMovementListResult> {
+    return request<AccountMovementListResult>(
+      `/api/admin/accounts/${encodeURIComponent(code)}/movements${query({
+        from: params.from,
+        to: params.to,
+        page: params.page ?? 1,
+        limit: params.limit ?? 25,
+      })}`,
+    );
+  },
+
+  accountHolds(
+    params: { accountCode?: string; status?: string; page?: number; limit?: number } = {},
+  ): Promise<AccountHoldListResult> {
+    const path = params.accountCode
+      ? `/api/admin/accounts/${encodeURIComponent(params.accountCode)}/holds`
+      : '/api/admin/accounts/holds';
+    return request<AccountHoldListResult>(
+      `${path}${query({ status: params.status, page: params.page ?? 1, limit: params.limit ?? 25 })}`,
+    );
+  },
+
+  /**
+   * `idempotencyKey` is generated per click, not per form: the server replays a key it has already
+   * answered for, so a retry after a lost response cannot freeze the same money twice.
+   */
+  createAccountHold(
+    code: string,
+    body: { kind: HoldKind; amount: number; reason: string; idempotencyKey: string },
+  ): Promise<{ hold: AccountHold; replay: boolean }> {
+    return request<{ hold: AccountHold; replay: boolean }>(
+      `/api/admin/accounts/${encodeURIComponent(code)}/holds`,
+      { method: 'POST', body },
+    );
+  },
+
+  releaseAccountHold(
+    id: string,
+    body: { convertTo?: string | null; idempotencyKey: string },
+  ): Promise<{ id: string; status: string; replay: boolean }> {
+    return request<{ id: string; status: string; replay: boolean }>(
+      `/api/admin/holds/${encodeURIComponent(id)}/release`,
+      { method: 'POST', body },
+    );
+  },
+
+  setAccountStatus(
+    code: string,
+    body: { status: AccountStatus; reason?: string },
+  ): Promise<PurposeAccount> {
+    return request<PurposeAccount>(`/api/admin/accounts/${encodeURIComponent(code)}/status`, {
+      method: 'POST',
+      body,
+    });
+  },
+
+  accountReconciliation(): Promise<AccountReconciliation> {
+    return request<AccountReconciliation>('/api/admin/accounts/reconcile');
+  },
+
+  /** A statement is one page at most (200 rows), so an export carries the page being looked at. */
+  downloadAccountStatement(
+    code: string,
+    format: 'csv' | 'xlsx',
+    params: { from?: string; to?: string; limit?: number } = {},
+  ): Promise<void> {
+    const stamp = new Date().toISOString().slice(0, 10);
+    const path = `/api/admin/accounts/${encodeURIComponent(code)}/movements?format=${format}&limit=${params.limit ?? 200}${query({ from: params.from, to: params.to }).replace('?', '&')}`;
+    return downloadFile(path, `voiza-${code.replace(/[^A-Za-z0-9]/g, '-')}-statement-${stamp}.${format}`, EXPORT_TYPES[format]);
+  },
+
+  downloadAccountReconciliation(format: 'csv' | 'xlsx'): Promise<void> {
+    const stamp = new Date().toISOString().slice(0, 10);
+    return downloadFile(
+      `/api/admin/accounts/reconcile?format=${format}`,
+      `voiza-account-reconciliation-${stamp}.${format}`,
+      EXPORT_TYPES[format],
+    );
   },
 
   // ---- the switches ---------------------------------------------------------

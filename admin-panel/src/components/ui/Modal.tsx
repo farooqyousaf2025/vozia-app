@@ -2,12 +2,13 @@ import { useEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { IconClose } from './Icons';
 
-type ModalSize = 'sm' | 'md' | 'lg';
+type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 
 const sizeClasses: Record<ModalSize, string> = {
   sm: 'max-w-sm',
   md: 'max-w-lg',
   lg: 'max-w-2xl',
+  xl: 'max-w-5xl',
 };
 
 interface ModalProps {

@@ -31,6 +31,22 @@ export function formatRCoin(value: number): string {
 }
 
 /**
+ * A figure from the purpose-account book, formatted by its own unit.
+ *
+ * `dmn` and `rcn` are whole-coin counts and `pkr` is minor units, so the same integer means two
+ * different things — which is precisely the mistake the accounts schema refuses at the database.
+ * Exact digits, not the compact form: a statement is read row by row and reconciled against a
+ * balance, and "1.2k" cannot be added up.
+ */
+export function formatUnitAmount(value: number, currency: string | null | undefined): string {
+  const amount = Number.isFinite(value) ? Math.round(value) : 0;
+  if (currency === 'pkr') return formatCents(amount, 'PKR');
+  if (currency === 'dmn') return `\u25C6 ${amount.toLocaleString('en-US')}`;
+  if (currency === 'rcn') return `R ${amount.toLocaleString('en-US')}`;
+  return `${amount.toLocaleString('en-US')}${currency ? ` ${currency.toUpperCase()}` : ''}`;
+}
+
+/**
  * Real money is always stored in minor units, and a number without its currency code is the
  * kind of figure a partner disputes. 150000 + 'PKR' -> "PKR 1,500.00".
  */

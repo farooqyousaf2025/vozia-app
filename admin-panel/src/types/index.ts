@@ -1401,3 +1401,120 @@ export interface UserSocialSummary {
   reportsAgainst: AdminReport[];
   reportsFiled: AdminReport[];
 }
+
+// ---------------------------------------------------------------------------
+// Purpose accounts (§8, §9) — the projection the "Accounts" screen reads.
+// ---------------------------------------------------------------------------
+
+export type AccountCategory =
+  | 'PLATFORM_MAIN'
+  | 'USER_DIAMOND'
+  | 'HOST_RCOIN'
+  | 'BD_MANAGER'
+  | 'COIN_SELLER'
+  | 'AGENCY'
+  | 'GAME_OPS'
+  | 'PROMOTIONAL'
+  | 'PENDING_SETTLEMENT';
+
+export type AccountStatus = 'ACTIVE' | 'SUSPENDED' | 'FROZEN' | 'CLOSED';
+export type HoldKind = 'FROZEN' | 'PENDING_SETTLEMENT' | 'WITHDRAWAL' | 'PROMOTIONAL';
+
+/**
+ * One balance the platform owes or holds.
+ *
+ * Every figure is a projection of a table that already owned it, and `balanceSource` names that
+ * table: a number an operator cannot trace is a number they cannot defend to finance.
+ */
+export interface PurposeAccount {
+  accountCode: string;
+  name: string;
+  category: AccountCategory;
+  ownerKind: string | null;
+  ownerId: string | null;
+  currency: string;
+  unit: string;
+  status: AccountStatus;
+  balanceSource: string;
+  available: number;
+  pending: number;
+  approved: number;
+  frozen: number;
+  balance: number;
+  lifetimeIn: number;
+  lifetimeOut: number;
+  /** Whatever the ledger cannot explain — zero for an account whose coins all arrived recorded. */
+  opening: number;
+  sourceRowPresent: boolean;
+  openedAt: string | null;
+  lastActivityAt: string | null;
+}
+
+export interface AccountListResult {
+  accounts: PurposeAccount[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/** One leg of the statement behind a balance. */
+export interface AccountMovement {
+  reference: string;
+  occurredAt: string;
+  type: string;
+  status: string;
+  direction: 'IN' | 'OUT';
+  amount: number;
+  currency: string;
+  description: string;
+  counterparty: string | null;
+}
+
+export interface AccountMovementListResult {
+  accountCode: string;
+  unit: string;
+  movements: AccountMovement[];
+  total: number;
+  page: number;
+  limit: number;
+  from: string | null;
+  to: string | null;
+}
+
+export interface AccountHold {
+  id: string;
+  accountCode: string;
+  kind: HoldKind;
+  amount: number;
+  currency: string;
+  reason: string;
+  status: 'OPEN' | 'RELEASED' | 'CONVERTED' | string;
+  createdByName: string | null;
+  createdAt: string;
+  releasedAt: string | null;
+  convertedRef: string | null;
+}
+
+export interface AccountHoldListResult {
+  holds: AccountHold[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface ReconciliationFinding {
+  code: string;
+  severity: 'ERROR' | 'INFO';
+  accountCode: string | null;
+  currency: string | null;
+  /** Minor units for `pkr`, whole coins for `dmn` and `rcn` — read it with `currency`. */
+  amountMinor: number;
+  detail: string;
+}
+
+export interface AccountReconciliation {
+  generatedAt: string;
+  total: number;
+  errors: number;
+  findings: ReconciliationFinding[];
+}

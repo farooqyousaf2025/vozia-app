@@ -119,7 +119,7 @@ export default function LoginPage() {
               <span className="font-semibold">Bootstrap hint:</span> on a fresh dev stack the backend
               seeds a super-admin from its <code className="rounded bg-black/30 px-1">ADMIN_USERNAME</code> /
               <code className="rounded bg-black/30 px-1">ADMIN_PASSWORD</code> env
-              vars — with the defaults in <code className="rounded bg-black/30 px-1">docker-compose.yml</code>{' '}
+              vars — with the defaults shipped in the root <code className="rounded bg-black/30 px-1">.env.example</code>{' '}
               that is username <span className="font-semibold">admin</span> / password{' '}
               <span className="font-semibold">voiza-admin</span>. See the panel README for details.
             </div>
