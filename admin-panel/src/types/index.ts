@@ -1518,3 +1518,40 @@ export interface AccountReconciliation {
   errors: number;
   findings: ReconciliationFinding[];
 }
+
+// ---------------------------------------------------------------------------
+// The operator roster (migration 0030) — who may sign into this panel at all.
+// ---------------------------------------------------------------------------
+
+/**
+ * One back-office account.
+ *
+ * `role` is what the server's permission table applies; `roleStored` is what the row says. They
+ * differ on accounts seeded before the vocabulary existed, and showing only the normalised value
+ * would hide a row that still needs migrating.
+ */
+export interface Operator {
+  id: string;
+  username: string;
+  displayName: string | null;
+  roleStored: string;
+  role: string;
+  isActive: boolean;
+  disabledAt: string | null;
+  createdAt: string;
+  /** Sent so the roster can show what a role means instead of naming it and hoping. */
+  permissions: AdminPermission[];
+}
+
+export interface OperatorListResult {
+  operators: Operator[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/** A role with the permissions the guards actually grant it, read live from the server. */
+export interface OperatorRoleInfo {
+  role: string;
+  permissions: AdminPermission[];
+}

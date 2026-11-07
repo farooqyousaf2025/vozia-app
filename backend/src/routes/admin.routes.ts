@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as admin from '../controllers/admin.controller';
 import * as auth from '../controllers/auth.controller';
 import * as account from '../controllers/account.controller';
+import * as operator from '../controllers/operator.controller';
 import partnerRoutes from './partner-admin.routes';
 import { requireAdminOperator, requirePermission } from '../middleware/auth';
 
@@ -190,6 +191,22 @@ router.post('/holds/:id/release', requirePermission('account:manage'), account.r
 
 // §21-§23: BD accounts, coin sellers, recharge orders, commission and the book.
 router.use('/business', partnerRoutes);
+
+// ---------------------------------------------------------------------------
+// The operator roster (migration 0030): who may sign in at all.
+//
+// `operator:manage` is held only by SUPER_ADMIN, and there is no delete route here, because
+// `admin_audit` will not give up the name on a row an operator has written — see
+// `operator.service`. Disabling is the lifecycle, and it is enforced on every request rather
+// than at sign-in, since the token in use is twelve hours old.
+// ---------------------------------------------------------------------------
+router.get('/operators', requirePermission('operator:manage'), operator.list);
+// Ordered before `/operators/:id` for the same reason as `/accounts/reconcile` above.
+router.get('/operators/roles', requirePermission('operator:manage'), operator.roles);
+router.post('/operators', requirePermission('operator:manage'), operator.create);
+router.put('/operators/:id', requirePermission('operator:manage'), operator.update);
+router.post('/operators/:id/disable', requirePermission('operator:manage'), operator.disable);
+router.post('/operators/:id/enable', requirePermission('operator:manage'), operator.enable);
 
 // Audit needs its own permission: the log names every other role's work, so reading it is not
 // a courtesy attached to `dashboard:read`.

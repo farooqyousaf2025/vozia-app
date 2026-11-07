@@ -64,6 +64,9 @@ import type {
   MediaAsset,
   MediaKind,
   OkResult,
+  Operator,
+  OperatorListResult,
+  OperatorRoleInfo,
   ProfileFrame,
   ProfileRide,
   PurposeAccount,
@@ -268,14 +271,21 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   if (!response.ok) {
-    if (response.status === 401 && auth && !noRedirect) {
+    const failure = describeFailure(payload, response.status);
+    // A 401 ends the session because the token has expired. `operator_disabled` ends it the same
+    // way even though it is a 403: the account was switched off, so this is not a permission to
+    // retry on the next screen — every request carrying this token answers identically.
+    const endsSession =
+      (response.status === 401 || (response.status === 403 && failure.code === 'operator_disabled')) &&
+      auth &&
+      !noRedirect;
+    if (endsSession) {
       setToken(null);
       setStoredAdmin(null);
       if (window.location.pathname !== '/login') {
         window.location.assign('/login');
       }
     }
-    const failure = describeFailure(payload, response.status);
     throw new ApiError(response.status, failure.message, failure.code, failure.details);
   }
 
@@ -1305,6 +1315,58 @@ export const api = {
       `voiza-account-reconciliation-${stamp}.${format}`,
       EXPORT_TYPES[format],
     );
+  },
+
+  // ---- the operator roster --------------------------------------------------
+  /**
+   * Who may sign into this panel (migration 0030). Everything here needs `operator:manage`, which
+   * only SUPER_ADMIN holds, so a finance operator sees the page exist and nothing in it.
+   *
+   * There is no delete call and there never will be: an operator who has written an audit row
+   * cannot be removed at all — the database refuses it — so the lifecycle is disable and enable.
+   */
+  operators(
+    params: { search?: string; role?: string; active?: string; page?: number; limit?: number } = {},
+  ): Promise<OperatorListResult> {
+    return request<OperatorListResult>(
+      `/api/admin/operators${query({
+        search: params.search,
+        role: params.role,
+        active: params.active,
+        page: params.page ?? 1,
+        limit: params.limit ?? 25,
+      })}`,
+    );
+  },
+
+  /** The roles and the permissions each one carries, read from the table the guards use. */
+  operatorRoles(): Promise<{ roles: OperatorRoleInfo[] }> {
+    return request<{ roles: OperatorRoleInfo[] }>('/api/admin/operators/roles');
+  },
+
+  createOperator(body: {
+    username: string;
+    password: string;
+    role: string;
+    displayName?: string;
+  }): Promise<{ operator: Operator }> {
+    return request<{ operator: Operator }>('/api/admin/operators', { method: 'POST', body });
+  },
+
+  updateOperator(id: string, body: { role?: string; displayName?: string }): Promise<{ operator: Operator }> {
+    return request<{ operator: Operator }>(`/api/admin/operators/${id}`, { method: 'PUT', body });
+  },
+
+  /** A reason of at least 8 characters is what makes a disable a decision rather than a click. */
+  disableOperator(id: string, reason: string): Promise<{ operator: Operator }> {
+    return request<{ operator: Operator }>(`/api/admin/operators/${id}/disable`, {
+      method: 'POST',
+      body: { reason },
+    });
+  },
+
+  enableOperator(id: string): Promise<{ operator: Operator }> {
+    return request<{ operator: Operator }>(`/api/admin/operators/${id}/enable`, { method: 'POST', body: {} });
   },
 
   // ---- the switches ---------------------------------------------------------

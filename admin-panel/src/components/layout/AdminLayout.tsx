@@ -13,6 +13,7 @@ import {
   IconGame,
   IconGift,
   IconImage,
+  IconKey,
   IconLogout,
   IconMic,
   IconPartners,
@@ -63,6 +64,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/commissions', label: 'Commission', icon: <IconCommission className="h-5 w-5" />, permission: 'finance:read' },
   { to: '/finance', label: 'Finance book', icon: <IconBook className="h-5 w-5" />, permission: 'finance:read' },
   { to: '/accounts', label: 'Purpose accounts', icon: <IconScales className="h-5 w-5" />, permission: 'account:read' },
+  { to: '/operators', label: 'Operators', icon: <IconKey className="h-5 w-5" />, permission: 'operator:manage' },
   { to: '/audit', label: 'Audit', icon: <IconAudit className="h-5 w-5" />, permission: 'audit:read' },
 ];
 

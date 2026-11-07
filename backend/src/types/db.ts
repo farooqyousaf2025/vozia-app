@@ -174,6 +174,9 @@ export type AdminRow = {
   password_hash: string;
   display_name: string | null;
   role: 'SUPER' | 'MODERATOR';
+  /** 0030: an operator is switched off rather than deleted — the audit trail must outlive access. */
+  is_active: boolean;
+  disabled_at: Date | null;
   created_at: Date;
 };
 

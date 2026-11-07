@@ -628,7 +628,7 @@ One constraint the accounts work surfaced for #58: **an operator who has acted c
 every row, so removing the link fails the check and the whole delete rolls back — the suite pins that
 as `node scripts/account-e2e.cjs`'s last assertion. An audit trail that survives the deletion of the
 person who wrote it is the right trade, and it means admin CRUD has to offer deactivation, not
-delete.
+delete. Migration 0030 is that deactivation.
 
 Mutations are replay-safe. `idempotent_requests` has `PRIMARY KEY (scope, key)`, and a second
 attempt with the same key returns the first attempt's stored result rather than repeating the action;
@@ -672,8 +672,71 @@ inside those files were correct — the numbers, the BOM and the CSV were never 
 archives were not standards-conformant, so any workbook exported before that fix should be
 re-downloaded rather than repaired.
 
-Not yet built: the admin panel module that consumes these routes (#57), the PAID step on withdrawals
-(#53), and journaling for gift spread and box tax (#55).
+Not yet built: the PAID step on withdrawals (#53) and journaling for gift spread and box tax (#55).
+
+## The operator roster is a switch, not a bin (migration 0030)
+
+`admins` gained `is_active` and `disabled_at`, and the router gained six routes. Nothing else about
+an operator changed, and that is the point: this is the one surface that decides who can change
+every other surface, so it is built around two refusals rather than around editing.
+
+**An operator is switched off, never deleted.** The constraint the accounts work ran into is general:
+`admin_audit.admin_id` is `ON DELETE SET NULL` while `admin_audit_actor_present` requires every row
+to keep naming an actor, so deleting anyone who has ever written something fails with `23514` and
+rolls back. A history that survives the person who wrote it is the right trade, and it means the only
+lifecycle this table can offer is deactivation. There is no DELETE route to match the database.
+
+**A disable is read on every request, not remembered at sign-in.** The operator token is a signed
+twelve-hour JWT that says nothing about a switch thrown after it was issued, so `requireAdminOperator`
+and `requirePermission` re-read the row — which they already did for the role, so the check costs
+nothing. The consequence is worth stating plainly in both directions: a token held by a disabled
+operator is refused by the very next request, and a role raised after a login takes effect for the
+token that was already issued. `POST /admin/login` and the `ADMIN_BOOTSTRAP_OTP` branch of
+`POST /auth/verify-otp` answer `403 operator_disabled` for the same reason, and the bootstrap phone is
+a way in for a new VPS, not a way back for an operator who was switched off.
+
+Migration 0030 also pins the invariant in the table, not only in the code:
+`CHECK (is_active = (disabled_at IS NULL))`. Two columns that can disagree are two columns where a
+bug chooses which one wins.
+
+### The endpoints
+
+| Route | Permission | Notes |
+|---|---|---|
+| `GET /admin/operators` | `operator:manage` | `?search=` (username or display name, ILIKE), `?role=`, `?active=ALL\|ACTIVE\|DISABLED`, paged ≤100; active first |
+| `GET /admin/operators/roles` | `operator:manage` | every role with the permissions `ROLE_PERMISSIONS` actually grants it, read live |
+| `POST /admin/operators` | `operator:manage` | `{ username, password, role, displayName? }` → 201 |
+| `PUT /admin/operators/:id` | `operator:manage` | `{ role?, displayName? }`; an update that changes neither is `nothing_to_update` |
+| `POST /admin/operators/:id/disable` | `operator:manage` | `{ reason }`, at least 8 characters |
+| `POST /admin/operators/:id/enable` | `operator:manage` | `{ reason? }` |
+
+`operator:manage` is a new permission and it sits on `SUPER_ADMIN` alone. It is deliberately not folded
+into `config:manage`: an operator who can change the money switches is not thereby entitled to hand
+out the credential that changes them. `GET /admin/operators/roles` is ordered before
+`GET /admin/operators/:id` for the same reason the account routes are — a literal path that only
+works because of route ordering breaks the first time someone renames a parameter.
+
+Two refusals protect the platform from its own operators, and both run inside the transaction that
+writes the change:
+
+* `cannot_disable_self` — you cannot switch off the account you are signed in as. Another
+  super-admin has to do it, which is also the only way the act gets a second pair of eyes.
+* `last_super_admin` — the final **active** super-admin can neither be disabled nor demoted, because
+  `operator:manage` lives only on that role and losing it leaves no credential that can undo the
+  change. The check first `SELECT … FOR UPDATE` every active super-admin row, so two operators
+  demoting two different supers at the same moment cannot both conclude that a third is still around.
+  A demotion that changes nothing about the super-admin count does not pay for those locks.
+
+There is no password route in this router. Rotating an operator password needs that operator's own
+credential, and an administrative reset without it is a way to take an account while leaving no reason
+behind; until a supervised reset with its own audit trail exists, the route is the operator's own
+`POST /admin/change-password`. Every roster write records `OPERATOR_CREATE`, `OPERATOR_UPDATE`,
+`OPERATOR_DISABLE` or `OPERATOR_ENABLE` with the actor, the target id and — for a disable — the reason.
+
+The DTO carries `roleStored` beside `role`: a row seeded before the vocabulary existed stores `SUPER`,
+which the guards apply as `SUPER_ADMIN`, and a screen that shows only the normalised value would hide
+an account whose stored value still needs migrating.
+
 
 ## The socket speaks for a member, and a password is guessed slowly
 
@@ -767,6 +830,25 @@ the game lifecycle, pinned rule versions, fees, at-most-once settlement, timeout
 forfeit, disputes and the three drivers; then BD/coin-seller accounts and scopes, the
 nine-step recharge, one-time credit, commission versions and statements, reversals and
 reconciliation.
+
+`npm run test:accounts` (58) and `npm run test:operators` (44) need that stack running too. The
+accounts suite walks the whole book rather than a page of it: the projection identity
+`opening + ΣIN − ΣOUT = balance` on a 926-movement account, one statement leg per currency rule, the
+reconciliation findings a clean database should not raise, idempotent hold create/release including
+the `idempotency_in_flight` answer, the per-role permission split, and the two exports opened the way
+a spreadsheet program opens them — ZIP local headers, every entry inflated, CRC-32 recomputed. It ends
+by proving an operator with audit history cannot be deleted (`23514`).
+
+The operator suite is mostly the same fact from the other side: that the switch is a switch. The two
+checks worth reading first are that **a token issued before a disable is refused by the next request**
+— twice, on a mutation and on a plain read — and that **a role raised after a login applies to the
+token already in the operator's hand**. Both fall out of one design decision, every admin request
+re-reads the row, and each breaks the moment someone caches it, lengthens the token or starts trusting
+the `role` claim. The rest cover the roster shape and search, the role catalogue read live from
+`ROLE_PERMISSIONS`, username and password validation, `cannot_disable_self`, `last_super_admin` with a
+second super-admin on either side of it, the schema's own flag/timestamp check, and that every write
+is audited by its own verb with the right actor. It leaves the four operators it created disabled — it
+cannot remove them, which is the reason the feature exists — so run it against a development database.
 
 `npm run test:wire-fixtures` and `npm run test:game-wire-fixtures` capture the live REST,
 socket and game-board payloads into `android/scripts/fixtures/`, which

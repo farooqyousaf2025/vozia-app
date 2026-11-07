@@ -18,6 +18,7 @@ import LoginPage from './pages/LoginPage';
 import MediaPage from './pages/MediaPage';
 import ModerationPage from './pages/ModerationPage';
 import OverviewPage from './pages/OverviewPage';
+import OperatorsPage from './pages/OperatorsPage';
 import PartnersPage from './pages/PartnersPage';
 import QuestsPage from './pages/QuestsPage';
 import RanksPage from './pages/RanksPage';
@@ -86,6 +87,14 @@ export default function App() {
         <Route path="commissions" element={<RequirePermission permission="finance:read"><CommissionsPage /></RequirePermission>} />
         <Route path="finance" element={<RequirePermission permission="finance:read"><FinancePage /></RequirePermission>} />
         <Route path="accounts" element={<RequirePermission permission="account:read"><AccountsPage /></RequirePermission>} />
+        <Route
+          path="operators"
+          element={
+            <RequirePermission permission="operator:manage">
+              <OperatorsPage />
+            </RequirePermission>
+          }
+        />
         <Route path="audit" element={<RequirePermission permission="audit:read"><AuditPage /></RequirePermission>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

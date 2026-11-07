@@ -49,6 +49,10 @@ export const PERMISSIONS = [
   // manual money route in the product.
   'account:read',
   'account:manage',
+  // Who may sign into the back office at all. It is not on any role but SUPER_ADMIN, and it is
+  // deliberately not folded into `config:manage`: an operator who can change the money switches
+  // is not thereby entitled to hand out the credential that changes them.
+  'operator:manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

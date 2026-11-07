@@ -31,6 +31,13 @@ export const verifyOtp = asyncHandler(async (req: Request, res: Response) => {
   const isAdminBootstrap = phone === env.admin.bootstrapPhone && code === env.admin.bootstrapOtp;
   if (isAdminBootstrap) {
     const admin = await ensureBootstrapAdmin();
+    // The bootstrap phone is a way in for a new VPS, not a way back for a disabled operator.
+    if (!admin.is_active) {
+      throw ApiError.forbidden(
+        `Operator "${admin.username}" is disabled. Another super-admin can re-enable it.`,
+        'operator_disabled',
+      );
+    }
     return res.json({
       token: signAdminToken({ sub: admin.id, username: admin.username, role: admin.role }),
       admin: toAdmin(admin),
@@ -78,6 +85,11 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   const admin = await findAdminByUsername(username);
   if (!admin || !verifySecret(password, admin.password_hash)) {
     throw ApiError.unauthorized('Wrong username or password', 'invalid_credentials');
+  }
+  // Spelled out rather than folded into the wrong-password answer: this is a back office, and an
+  // operator who is locked out of their own company needs to know which of the two happened.
+  if (!admin.is_active) {
+    throw ApiError.forbidden(`Operator "${admin.username}" is disabled. Another super-admin can re-enable it.`, 'operator_disabled');
   }
   res.json({
     token: signAdminToken({ sub: admin.id, username: admin.username, role: admin.role }),

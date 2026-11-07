@@ -66,8 +66,22 @@ export const requireAdminOperator = guard(async (req) => {
   req.admin = payload;
   const row = await findAdminById(payload.sub);
   if (!row) throw ApiError.unauthorized('Operator account no longer exists');
+  assertOperatorActive(row);
   req.adminRow = row;
 });
+
+/**
+ * A disabled operator is refused on every request, not only at sign-in.
+ *
+ * The twelve-hour token is signed and says nothing about the switch thrown since it was issued,
+ * so `is_active` means what it should only if it is read from the row — which this path already
+ * loads for the role, so the check costs nothing and closes the window the token would leave open.
+ */
+function assertOperatorActive(row: AdminRow): void {
+  if (!row.is_active) {
+    throw ApiError.forbidden('This operator account is disabled', 'operator_disabled');
+  }
+}
 
 /** Programme §23: the permission decides, not the role name a client can read. */
 export function requirePermission(...permissions: Permission[]) {
@@ -79,6 +93,7 @@ export function requirePermission(...permissions: Permission[]) {
     req.admin = payload;
     const row = (req.adminRow ??= await findAdminById(payload.sub));
     if (!row) throw ApiError.unauthorized('Operator account no longer exists');
+    assertOperatorActive(row);
     for (const permission of permissions) {
       if (!adminHasPermission(row.role, permission)) {
         throw ApiError.forbidden(`Role ${row.role} may not perform ${permission}`, 'permission_denied');

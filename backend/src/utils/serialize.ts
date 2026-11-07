@@ -584,6 +584,8 @@ export function toAdmin(row: AdminRow) {
     username: row.username,
     displayName: row.display_name,
     role: row.role,
+    isActive: row.is_active,
+    disabledAt: row.disabled_at ? new Date(row.disabled_at).toISOString() : null,
   };
 }
 
