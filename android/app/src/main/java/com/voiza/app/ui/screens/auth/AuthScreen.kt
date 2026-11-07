@@ -174,7 +174,8 @@ private fun CodeStep(vm: AuthViewModel, state: AuthViewModel.AuthUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Verification code", color = OnDarkHigh, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Text(
-            text = "Sent to ${state.countryCode}${state.phone}",
+            // The number actually sent, plus sign and all — this is the account the code opens.
+            text = "Sent to ${state.e164()}",
             color = OnDarkMedium,
             fontSize = 13.sp,
         )

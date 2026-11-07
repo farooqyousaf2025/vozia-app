@@ -7,6 +7,7 @@ import com.voiza.app.di.ServiceLocator
 import com.voiza.app.domain.model.Transaction
 import com.voiza.app.domain.model.User
 import com.voiza.app.domain.model.WalletSnapshot
+import com.voiza.app.domain.model.Withdrawal
 import com.voiza.app.domain.repository.AuthRepository
 import com.voiza.app.domain.repository.WalletRepository
 import com.voiza.app.domain.usecase.RechargeWalletUseCase
@@ -100,7 +101,8 @@ class WalletViewModel(
                 is ApiResult.Success -> _state.update {
                     it.copy(
                         busyAction = null,
-                        message = "Withdrawal ${result.data.id.take(8)} submitted (${result.data.status})",
+                        message = "Withdrawal ${result.data.id.take(8)} submitted " +
+                            "(${result.data.status}) · ${result.data.receipt()}",
                     )
                 }
                 is ApiResult.Failure -> _state.update {
@@ -114,3 +116,15 @@ class WalletViewModel(
     fun consumeMessage() = _state.update { it.copy(message = null) }
     fun clearError() = _state.update { it.copy(error = null) }
 }
+
+/**
+ * What the host is actually paid, in the server's own numbers. The fee is decided when the request is
+ * booked and sent back with it, so the receipt quotes those two figures rather than re-running the
+ * dial's arithmetic on the device.
+ */
+internal fun Withdrawal.receipt(): String =
+    if (feeRCoins > 0) {
+        "$netRCoins \u25C9 paid out after a $feeRCoins fee"
+    } else {
+        "$netRCoins \u25C9 \u00b7 no fee on this cash-out"
+    }

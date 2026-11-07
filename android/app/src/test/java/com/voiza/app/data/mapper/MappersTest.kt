@@ -28,6 +28,8 @@ import com.voiza.app.data.remote.dto.StorePurchaseResponse
 import com.voiza.app.data.remote.dto.StoreResponse
 import com.voiza.app.data.remote.dto.ThemeCatalogueDto
 import com.voiza.app.data.remote.dto.UserDto
+import com.voiza.app.data.remote.dto.WalletResponse
+import com.voiza.app.data.remote.dto.WithdrawalDto
 import com.voiza.app.domain.model.DEFAULT_AMBIENT_EFFECT
 import com.voiza.app.domain.model.DEFAULT_ROOM_THEME
 import com.voiza.app.domain.model.FALLBACK_EMOJI_CODE_PATTERN
@@ -1261,5 +1263,72 @@ class MappersTest {
         ).toDomainOrNull()
         assertEquals("guffaw", spare?.emoji?.label)
         assertEquals("[guffaw]", spare?.emoji?.code)
+    }
+
+    @Test
+    fun `a withdrawal carries the fee and the net the ledger booked`() {
+        // Both rows are live captures of GET /api/wallet/withdrawals for the account +923012397011,
+        // after `backend/scripts/account-e2e.cjs` paid and refused one request each. The fee is the
+        // server's subtraction, sent as its own field: the sheet never works out a third number.
+        val paid = gson.fromJson(
+            """{"id":"a9364981-b402-4ace-a5b3-5f560293f9b1","amountRCoins":25000,"feeRCoins":1250,"netRCoins":23750,
+               "status":"PAID","payoutMethod":"BANK",
+               "payoutDetails":{"holder":"Voiza E2E","account":"0001234567890","currency":"USD"},
+               "createdAt":"2026-11-07T23:00:00.281Z","paidAt":"2026-11-07T23:00:00.494Z",
+               "payoutReference":"E2E-BANK-2397011",
+               "user":{"id":"30ad98b7-8ca7-4e49-888d-1a44a192fcb2","username":"wd2397011","avatarUrl":null}}""",
+            WithdrawalDto::class.java,
+        ).toDomain()
+
+        assertEquals(1250, paid.feeRCoins)
+        assertEquals(23750, paid.netRCoins)
+        assertEquals("PAID", paid.status)
+
+        // A response from a backend that predates 0032 has no fee to report, and the sheet reads that
+        // as "nothing was kept" rather than as a figure it should guess.
+        val legacy = gson.fromJson(
+            """{"id":"1a","amountRCoins":20000,"status":"PENDING","payoutMethod":"BANK"}""",
+            WithdrawalDto::class.java,
+        ).toDomain()
+        assertEquals(0, legacy.feeRCoins)
+        assertEquals(0, legacy.netRCoins)
+    }
+
+    @Test
+    fun `the wallet payload carries the cash-out dial and mirrors its floor`() {
+        val withPolicy = gson.fromJson(
+            """{"user":{"id":"u1","phone":"+923012397011","username":"wd2397011","diamondBalance":0,
+                       "rCoinBalance":500,"totalGiftsSent":0,"totalGiftsReceived":0,
+                       "userType":"USER","status":"ACTIVE","isVerified":false,"vipLevel":0},
+               "transactions":[],"stats":{"diamondsSpent":0,"rCoinsEarned":500,"giftsSent":0},
+               "withdrawalPolicy":{"minRCoins":100000,"feeBps":500}}""",
+            WalletResponse::class.java,
+        ).toDomain()
+
+        val policy = withPolicy.withdrawalPolicy
+        assertEquals(100000, policy?.minRCoins)
+        assertEquals(500, policy?.feeBps)
+
+        // The estimate the sheet prints before the request is the ledger's own floor, so it cannot
+        // round a host up to a number the booking then refuses to charge.
+        assertEquals(2500, policy?.feeFor(50000))
+        assertEquals(47500, policy?.netFor(50000))
+        assertEquals(1499, policy?.feeFor(29999))
+        assertEquals(28500, policy?.netFor(30000))
+        assertFalse(policy!!.allows(99_999))
+        assertTrue(policy.allows(100_000))
+
+        // Gson leaves an absent object null regardless of the DTO default, and a dial that is not
+        // there is a dial the sheet stays silent about — not a minimum of its own invention.
+        val bare = gson.fromJson(
+            """{"user":{"id":"u1","phone":"+1","username":"ana","diamondBalance":0,"rCoinBalance":0,
+                       "totalGiftsSent":0,"totalGiftsReceived":0,
+                       "userType":"USER","status":"ACTIVE","isVerified":false,"vipLevel":0},
+               "transactions":[],"stats":{"diamondsSpent":0,"rCoinsEarned":0,"giftsSent":0}}""",
+            WalletResponse::class.java,
+        ).toDomain()
+        assertNull(bare.withdrawalPolicy)
+        assertNull(bare.withdrawalPolicy?.feeFor(50_000))
+        assertTrue(bare.transactions.isEmpty())
     }
 }

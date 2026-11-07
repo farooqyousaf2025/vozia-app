@@ -427,9 +427,19 @@ fun WalletResponse.toDomain(): WalletSnapshot = WalletSnapshot(
         rCoinsEarned = stats.rCoinsEarned,
         giftsSent = stats.giftsSent,
     ),
+    withdrawalPolicy = withdrawalPolicy?.let {
+        com.voiza.app.domain.model.WithdrawalPolicy(minRCoins = it.minRCoins, feeBps = it.feeBps)
+    },
 )
 
-fun WithdrawalDto.toDomain() = com.voiza.app.domain.model.Withdrawal(id, amountRCoins, status, payoutMethod)
+fun WithdrawalDto.toDomain() = com.voiza.app.domain.model.Withdrawal(
+    id = id,
+    amountRCoins = amountRCoins,
+    feeRCoins = feeRCoins,
+    netRCoins = netRCoins,
+    status = status,
+    payoutMethod = payoutMethod,
+)
 
 /**
  * One shop row. A row is dropped unless its kind is one this build knows, and unless it has the

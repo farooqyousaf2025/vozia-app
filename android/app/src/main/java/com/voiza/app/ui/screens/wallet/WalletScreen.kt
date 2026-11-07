@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.voiza.app.domain.model.Transaction
+import com.voiza.app.domain.model.WithdrawalPolicy
 import com.voiza.app.ui.components.EmptyState
 import com.voiza.app.ui.components.LoadingProgress
 import com.voiza.app.ui.components.VoizaButton
@@ -202,6 +203,7 @@ fun WalletScreen(
     if (withdrawOpen) {
         WithdrawSheet(
             rCoinBalance = state.user?.rCoinBalance ?: 0,
+            policy = state.snapshot?.withdrawalPolicy,
             busy = state.busyAction == WalletViewModel.WalletUiState.BusyAction.WITHDRAW,
             onDismiss = { withdrawOpen = false },
             onSubmit = { amount, method, account ->
@@ -353,7 +355,9 @@ private fun TransactionRow(txn: Transaction) {
             Text(
                 text = when {
                     txn.amountDiamonds > 0 -> (if (incoming) "+" else "-") + "${txn.amountDiamonds} \u2756"
-                    txn.amountRCoins > 0 -> "+${txn.amountRCoins} \u25C9"
+                    // A cash-out leaves the wallet, so it reads with the sign it moved. Gross, not
+                    // net: the escrow takes the whole request and the fee is only kept at payout.
+                    txn.amountRCoins > 0 -> (if (outgoing) "-" else "+") + "${txn.amountRCoins} \u25C9"
                     else -> "0"
                 },
                 color = if (outgoing) Color(0xFFFF8FA0) else RCoinGreen,
@@ -368,6 +372,7 @@ private fun TransactionRow(txn: Transaction) {
 @Composable
 private fun WithdrawSheet(
     rCoinBalance: Int,
+    policy: WithdrawalPolicy?,
     busy: Boolean,
     onDismiss: () -> Unit,
     onSubmit: (amount: Int, method: String, account: String) -> Unit,
@@ -376,6 +381,14 @@ private fun WithdrawSheet(
     var method by remember { mutableStateOf("BANK") }
     var account by remember { mutableStateOf("") }
 
+    val amount = amountText.toIntOrNull()
+    val belowMinimum = amount != null && policy != null && !policy.allows(amount)
+    // The server refuses an over-balance request, but a sheet that prints "≈ 4.8M to you" under a
+    // 150k balance has already made a promise the ledger will not keep.
+    val overBalance = amount != null && amount > rCoinBalance
+    val fee = amount?.let { policy?.feeFor(it) }
+    val net = amount?.let { policy?.netFor(it) }
+
     VoizaSheet(visible = true, onDismiss = onDismiss, title = "Withdraw R-Coins") {
         Text(
             text = "Available: $rCoinBalance \u25C9",
@@ -383,6 +396,24 @@ private fun WithdrawSheet(
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
         )
+        // The dial the operator sets, read from the same call that fills the ledger. A backend that
+        // does not publish it leaves this line off rather than quoting a floor nobody chose.
+        if (policy != null && (policy.minRCoins != null || policy.feeBps != null)) {
+            Text(
+                text = buildString {
+                    append("Minimum ")
+                    append(policy.minRCoins?.toString() ?: "\u2014")
+                    append(" \u25C9")
+                    append(" \u00b7 ")
+                    val bps = policy.feeBps
+                    append(
+                        if (bps == null) "fee unknown" else if (bps == 0) "no fee" else "${bpsPercent(bps)} fee",
+                    )
+                },
+                color = OnDarkMedium,
+                fontSize = 11.sp,
+            )
+        }
         Spacer(Modifier.height(10.dp))
         OutlinedTextField(
             value = amountText,
@@ -398,6 +429,26 @@ private fun WithdrawSheet(
             ),
             modifier = Modifier.fillMaxWidth(),
         )
+        if (amount != null && amount > 0) {
+            Spacer(Modifier.height(6.dp))
+            val line: String? = when {
+                overBalance -> "More than the $rCoinBalance \u25C9 available"
+                belowMinimum -> "Minimum cash-out is ${policy?.minRCoins} \u25C9"
+                fee != null && net != null ->
+                    if (fee > 0) "\u2248 $net \u25C9 to you \u00b7 $fee \u25C9 kept as the fee" else "\u2248 $net \u25C9 to you \u00b7 no fee"
+                else -> null
+            }
+            // Estimated, and it says so with \u2248: the booked figures come back with the withdrawal and
+            // are what the receipt after this screen quotes.
+            if (line != null) {
+                Text(
+                    text = line,
+                    color = if (overBalance || belowMinimum) DangerRed else RCoinGreen,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             // The three the server's `payoutMethod` enum accepts. UPI and PayPal were offered here
@@ -433,15 +484,23 @@ private fun WithdrawSheet(
         Spacer(Modifier.height(14.dp))
         VoizaButton(
             text = if (busy) "Submitting\u2026" else "Request withdrawal",
-            enabled = !busy &&
-                amountText.toIntOrNull() != null &&
-                (amountText.toIntOrNull() ?: 0) > 0 &&
-                account.isNotBlank(),
+            enabled = !busy && amount != null && amount > 0 && !belowMinimum && !overBalance && account.isNotBlank(),
             onClick = { onSubmit(amountText.toInt(), method, account) },
             gradient = VoizaCtaGradient,
             modifier = Modifier.fillMaxWidth(),
         )
     }
+}
+
+/** 500 \u2192 "5%", 250 \u2192 "2.5%", 5 \u2192 "0.05%" \u2014 the dial is basis points, the sheet is for a host. */
+private fun bpsPercent(bps: Int): String {
+    val whole = bps / 100
+    val hundredths = bps % 100
+    return when {
+        hundredths == 0 -> "$whole"
+        hundredths % 10 == 0 -> "$whole.${hundredths / 10}"
+        else -> "$whole.${hundredths.toString().padStart(2, '0')}"
+    } + "%"
 }
 
 /** One-shot confirmation snack; clears itself after 2.5 s. */

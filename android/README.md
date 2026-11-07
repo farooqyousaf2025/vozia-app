@@ -356,7 +356,18 @@ valid cert, or `adb reverse` for local testing).
 
 - `ui/screens/auth` — phone + country-code → 6-digit OTP, optional first-login
   username, gradient CTA; when the backend runs in dev mode it returns
-  `devCode`, the field auto-fills and a hint chip tells the reviewer.
+  `devCode`, the field auto-fills and a hint chip tells the reviewer. That auto-fill is
+  gated on `BuildConfig.DEBUG`: a release build drops `devCode` even when it is pointed at
+  a dev backend that hands one out, because accepting a code the app typed in for you is
+  the one shortcut that skips the OTP step entirely.
+  The two fields are joined as `e164()` — `+`, digits of the country code, digits of the
+  phone — rather than concatenated as typed. The country-code field filters to digits the
+  moment a member edits it, so `+92` becomes `92`, and the backend keys an account on the
+  literal string with no prefix normalisation of its own: `923007774393` and `+923007774393`
+  are two different people. Before this, editing the code once silently created a second,
+  empty account instead of signing into the first, and the OTP screen confirmed it by
+  printing the number without its `+`. The same `e164()` is what the "Sent to" line shows,
+  so the string on screen is the string the server received.
 - `ui/screens/home` — top bar (avatar/username/diamond chip), Popular/Party/
   Music tabs → `GET /api/rooms?category=`, a discovery row above the grid (search box and
   the `default|popular|trending|recent` chips are query parameters, never a client-side
@@ -465,11 +476,21 @@ valid cert, or `adb reverse` for local testing).
   accepts — `BANK`, `WALLET`, `USDT`. It previously also offered UPI and PayPal, which
   the server's `requireEnum` refused with a 400, so two of five choices could never be
   used; the list is kept short rather than the server widened, because a payout method
-  is a rail someone has to actually operate. What the sheet does not yet show is the
-  fee: since migration `0032` the server freezes `fee_r_coins` at request time, pays the
-  net, and already sends both `feeRCoins` and `netRCoins` on the withdrawal DTO — the
-  app's `WithdrawalDto` simply does not read them, so a host sees "25,000 withdrawn"
-  and receives a payout of `gross − fee` (roadmap follow-up).
+  is a rail someone has to actually operate. The fee is now on screen twice, and the two
+  are not the same kind of number. Before submitting, the sheet quotes the `withdrawalPolicy`
+  that `GET /api/wallet` publishes — a terms line ("Minimum 100000 ◉ · 5% fee", or "no fee"
+  when the dial is at 0) and an estimate under the amount field marked with `≈`, because it is
+  arithmetic on a dial, not a booked figure. After submitting, the toast quotes the
+  `feeRCoins` / `netRCoins` that came back on the withdrawal row, which are the server's own
+  numbers and need no `≈`. A backend that does not publish the dial leaves both lines off
+  rather than inventing a minimum nobody chose. The sheet also refuses to book a request the
+  ledger cannot honour: an amount under the minimum or above the balance shown turns red and
+  disables the button — the server still decides, this only stops the app promising a payout
+  it has already been told is impossible.
+  The ledger list signs its R-coin rows by direction, not by currency: a withdrawal reads
+  `-150000 ◉` because that is what left the wallet (gross — the escrow takes the whole
+  request and the fee is only kept at payout), while a credit still reads `+`. It showed `+`
+  for every R-coin row before, so three cash-outs looked like three earnings.
   The recharge sheet still calls `POST /api/wallet/recharge`, the simulated path: it
   works only while the backend runs `PAYMENTS_PROVIDER=simulated` and starts answering
   `403 payments_provider_is_stripe` the moment the stack charges for real. Shipping

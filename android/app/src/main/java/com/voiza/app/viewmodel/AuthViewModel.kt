@@ -34,6 +34,14 @@ class AuthViewModel(
         val profileSaved: Boolean = false,
     ) {
         enum class Step { PHONE, CODE, LOGGED_IN }
+
+        /**
+         * The number the backend keys an account on. The `+` is added here rather than kept in the
+         * field, because that field filters down to digits the moment the member edits it — and a
+         * phone sent without its prefix is a second account to the server, not the same one dialled
+         * differently.
+         */
+        fun e164(): String = "+${countryCode.filter { it.isDigit() }}${phone.filter { it.isDigit() }}"
     }
 
     private val _state = MutableStateFlow(AuthUiState())
@@ -69,8 +77,8 @@ class AuthViewModel(
     fun clearError() = _state.update { it.copy(error = null) }
 
     fun requestOtp() {
-        val phone = _state.value.run { countryCode + phone }
-        if (phone.length < 8) {
+        val phone = _state.value.e164()
+        if (phone.length < 9) {
             _state.update { it.copy(error = "Enter a valid phone number") }
             return
         }
@@ -106,7 +114,7 @@ class AuthViewModel(
             _state.update { it.copy(loading = true, error = null) }
             val username = snapshot.username.trim().takeIf { it.isNotEmpty() }
             when (val result = authRepository.verifyOtp(
-                phone = snapshot.countryCode + snapshot.phone,
+                phone = snapshot.e164(),
                 code = snapshot.code,
                 username = username,
             )) {

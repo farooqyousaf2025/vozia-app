@@ -549,6 +549,13 @@ data class WalletResponse(
     @SerializedName("user") val user: UserDto,
     @SerializedName("transactions") val transactions: List<TransactionDto> = emptyList(),
     @SerializedName("stats") val stats: WalletStatsDto = WalletStatsDto(),
+    @SerializedName("withdrawalPolicy") val withdrawalPolicy: WithdrawalPolicyDto? = null,
+)
+
+/** The operator's cash-out dial (`accounts.withdrawal`), as the ledger reads it. Absent on an older backend. */
+data class WithdrawalPolicyDto(
+    @SerializedName("minRCoins") val minRCoins: Int? = null,
+    @SerializedName("feeBps") val feeBps: Int? = null,
 )
 
 data class RechargeBody(@SerializedName("amountDiamonds") val amountDiamonds: Int)
@@ -567,6 +574,10 @@ data class WithdrawBody(
 data class WithdrawalDto(
     @SerializedName("id") val id: String,
     @SerializedName("amountRCoins") val amountRCoins: Int = 0,
+    /** What the platform keeps of this request. The server decides it when the request is made. */
+    @SerializedName("feeRCoins") val feeRCoins: Int = 0,
+    /** What the host is paid. Sent, never added up here. */
+    @SerializedName("netRCoins") val netRCoins: Int = 0,
     @SerializedName("status") val status: String = "PENDING",
     @SerializedName("payoutMethod") val payoutMethod: String = "BANK",
 )

@@ -465,11 +465,36 @@ data class WalletSnapshot(
     val user: User,
     val transactions: List<Transaction>,
     val stats: WalletStats,
+    /** Null on a backend that does not publish the dial; the sheet then quotes no terms at all. */
+    val withdrawalPolicy: WithdrawalPolicy? = null,
 )
+
+/** The operator's `accounts.withdrawal` dial, read by the same call that fills the ledger. */
+data class WithdrawalPolicy(
+    val minRCoins: Int?,
+    val feeBps: Int?,
+) {
+    /**
+     * What the ledger would keep of this request — the same floor the server applies, so the number
+     * typed next to the amount is the number the request is booked at. The withdrawal that comes back
+     * still carries the authoritative pair, and that is what the receipt quotes.
+     */
+    fun feeFor(amountRCoins: Int): Int? =
+        feeBps?.let { ((amountRCoins.toLong() * it) / 10_000L).toInt() }
+
+    fun netFor(amountRCoins: Int): Int? = feeFor(amountRCoins)?.let { amountRCoins - it }
+
+    /** A dial with no floor in it is an unknown floor, not a free pass to book 1 coin. */
+    fun allows(amountRCoins: Int): Boolean = minRCoins == null || amountRCoins >= minRCoins
+}
 
 data class Withdrawal(
     val id: String,
     val amountRCoins: Int,
+    /** The platform's cut, booked by the server when the request was made. */
+    val feeRCoins: Int,
+    /** What the host is owed: the server's own subtraction, not a third number the client adds up. */
+    val netRCoins: Int,
     val status: String,
     val payoutMethod: String,
 )

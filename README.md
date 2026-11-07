@@ -93,6 +93,10 @@ payout that has not happened. `POST /api/admin/withdrawals/:id/pay` requires a
 payout reference, flips the ledger row to COMPLETED, and journals the fee — set at
 request time from the `accounts.withdrawal` dial (`{minRCoins, feeBps}`) and stored
 on the row so a later dial change cannot reprice a decision the host already saw.
+`GET /api/wallet` publishes that same dial as `withdrawalPolicy`, and the Android
+withdrawal sheet quotes it before the host submits (minimum, fee, and an `≈` net)
+then reads back the `feeRCoins` / `netRCoins` the server booked afterwards — the
+estimate is always labelled approximate, and only the returned row is a receipt.
 The payout itself has no cash leg: there is no bank account or FX rate in this
 stack, so the net stays in COIN_LIABILITY and `payout_reference` is the evidence.
 See `backend/README.md` → *The withdrawal pipeline (migration 0032)*.

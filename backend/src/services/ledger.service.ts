@@ -1010,12 +1010,14 @@ export async function getWallet(userId: string, limit = 30): Promise<{
   user: UserDto;
   transactions: TransactionDto[];
   stats: { diamondsSpent: number; rCoinsEarned: number; giftsSent: number };
+  /** The same dial `requestWithdrawal` charges at, so a wallet screen can quote the terms it will apply. */
+  withdrawalPolicy: { minRCoins: number; feeBps: number };
 }> {
   await ensureRankRegistry();
   const userRow = await one<UserRow>('SELECT * FROM users WHERE id = $1', [userId]);
   if (!userRow) throw ApiError.notFound('Account not found');
 
-  const [transactions, aggregates] = await Promise.all([
+  const [transactions, aggregates, policy] = await Promise.all([
     many<TransactionRow>(`${TX_WITH_PARTIES} WHERE t.sender_id = $1 OR t.receiver_id = $1 ORDER BY t.created_at DESC LIMIT $2`, [
       userId,
       limit,
@@ -1027,6 +1029,7 @@ export async function getWallet(userId: string, limit = 30): Promise<{
          FROM transactions WHERE sender_id = $1 OR receiver_id = $1`,
       [userId],
     ),
+    withdrawalPolicy(),
   ]);
 
   return {
@@ -1037,6 +1040,7 @@ export async function getWallet(userId: string, limit = 30): Promise<{
       rCoinsEarned: Number(aggregates?.earned ?? 0),
       giftsSent: Number(aggregates?.sent ?? 0),
     },
+    withdrawalPolicy: policy,
   };
 }
 

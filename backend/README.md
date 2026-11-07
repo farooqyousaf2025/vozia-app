@@ -862,6 +862,13 @@ variable once the ledger reads this", and this is the change that lets the ledge
 reprices the dial while the request sits in the queue. It is a cut of this withdrawal, never a charge on
 top: `amount_r_coins` stays gross, the escrow is gross, and net = gross − fee.
 
+**The dial is read out with the wallet.** `getWallet` returns `withdrawalPolicy: {minRCoins, feeBps}`
+beside the balances it already sent, taken from the same `withdrawalPolicy()` call the request path uses,
+so the app quotes the terms it will be charged rather than a number it guessed. It is a published dial, not
+a promise: the row's stored `fee_r_coins` is still what the ledger books, and `serialize.ts` computes
+`netRCoins` server-side so no client adds up its own payout. A backend that does not send the field leaves
+the Android sheet silent about the minimum instead of inventing one.
+
 Because `writeConfig()` replaces the whole JSON blob rather than merging a key, a dial write must send
 the complete object; the route validates the pair (`partner-admin.controller.ts`'s `CONFIG_DIALS`), so a
 `{"feeBps": 1e9}` that would take every R-coin in the account is refused with `bad_config_value` before
