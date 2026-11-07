@@ -2,6 +2,7 @@ package com.voiza.app.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.voiza.app.BuildConfig
 import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.di.ServiceLocator
 import com.voiza.app.domain.model.User
@@ -77,11 +78,15 @@ class AuthViewModel(
             _state.update { it.copy(loading = true, error = null) }
             when (val result = authRepository.requestOtp(phone)) {
                 is ApiResult.Success -> _state.update {
+                    // A release build never auto-fills a code, even when it is pointed at a dev
+                    // backend that hands one out: this convenience is the one thing in the flow
+                    // that would skip the OTP step entirely.
+                    val devCode = if (BuildConfig.DEBUG) result.data.devCode else null
                     it.copy(
                         loading = false,
                         step = AuthUiState.Step.CODE,
-                        devCode = result.data.devCode,
-                        code = result.data.devCode ?: it.code,
+                        devCode = devCode,
+                        code = devCode ?: it.code,
                     )
                 }
                 is ApiResult.Failure -> _state.update {

@@ -35,7 +35,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.voiza.app.domain.model.BannerPlacement
 import com.voiza.app.domain.model.Gift
+import com.voiza.app.domain.model.GiftCategoryOption
 import com.voiza.app.domain.model.MiniUser
 import com.voiza.app.domain.usecase.RoomEffects
 import com.voiza.app.ui.components.Avatar
@@ -43,6 +45,7 @@ import com.voiza.app.ui.components.asAssetUrl
 import com.voiza.app.ui.components.DiamondChip
 import com.voiza.app.ui.components.LoadingProgress
 import com.voiza.app.ui.components.VoizaButton
+import com.voiza.app.ui.components.banner.PromoBannerStrip
 import com.voiza.app.viewmodel.PartyRoomViewModel
 
 /**
@@ -97,6 +100,15 @@ fun GiftDialog(
         },
         text = {
             Column {
+                // The gift panel's own campaign, above everything else the operator is running. It
+                // is drawn shorter than the home strip because this dialog has a Send button at the
+                // bottom of it: art is not worth pushing the button out of reach for.
+                PromoBannerStrip(
+                    placement = BannerPlacement.GIFT,
+                    artHeight = 64.dp,
+                    modifier = Modifier.padding(bottom = 10.dp),
+                )
+
                 // ---- Receiver chips (seated speakers; host default) ----
                 val receivers = state.seatedUsers
                 if (receivers.isNotEmpty()) {
@@ -443,8 +455,31 @@ private fun GiftTile(
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
         )
+        if (gift.isLuckyBox) {
+            // What the box is actually selling: the best prize in the draw and how often it comes
+            // up. Both numbers are the server's own — `chanceBps` is the prize's weight against the
+            // box's total, divided where the weights were written — so the tile cannot promise odds
+            // the draw does not honour.
+            Text(
+                text = luckyOddsLabel(gift),
+                color = Color(0xFFFFD24D),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
     }
 }
+
+/** "LUCKY 10x 1 in 100", or the shorter form when a box has no prize table published to read. */
+private fun luckyOddsLabel(gift: Gift): String {
+    val best = gift.boxOutcomes.maxByOrNull { it.multiplierBps } ?: return "LUCKY BOX"
+    // A prize with no disclosed chance is one this build was not told the odds of; saying so is the
+    // honest label, and inventing "1 in ?" would be the app making up a number about a payout.
+    val oneIn = if (best.chanceBps <= 0) null else BPS_FULL / best.chanceBps
+    return if (oneIn == null) "LUCKY ${best.label}" else "LUCKY ${best.label} 1 in $oneIn"
+}
+
+private const val BPS_FULL = 10_000
 
 @Composable
 private fun PresetChip(
@@ -464,10 +499,13 @@ private fun PresetChip(
     }
 }
 
-/** "All" + one chip per catalogue category; null = unfiltered. */
+/**
+ * "All" + one chip per catalogue shelf; selecting a chip reports its key (null = "All"). The label
+ * comes straight from the server, so an operator's chosen name is shown as written.
+ */
 @Composable
 private fun CategoryTabs(
-    categories: List<String>,
+    categories: List<GiftCategoryOption>,
     selected: String?,
     onSelect: (String?) -> Unit,
 ) {
@@ -476,7 +514,7 @@ private fun CategoryTabs(
     ) {
         items(count = categories.size + 1) { idx ->
             val category = if (idx == 0) null else categories[idx - 1]
-            val active = category == selected || (idx == 0 && selected == null)
+            val active = category?.key == selected || (idx == 0 && selected == null)
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
@@ -491,11 +529,11 @@ private fun CategoryTabs(
                             Modifier.background(Color(0xFF241F3D))
                         }
                     )
-                    .clickable { onSelect(category) }
+                    .clickable { onSelect(category?.key) }
                     .padding(horizontal = 14.dp),
             ) {
                 Text(
-                    text = category?.replace('_', ' ')?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "All",
+                    text = category?.name ?: "All",
                     color = if (active) Color(0xFF140F2B) else Color(0xFFB9B4D6),
                     fontSize = 11.sp,
                     fontWeight = if (active) FontWeight.Black else FontWeight.SemiBold,

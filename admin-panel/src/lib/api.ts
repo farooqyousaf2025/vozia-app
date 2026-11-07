@@ -12,10 +12,13 @@ import type {
   AdminQuest,
   AdminQuestsResult,
   AdminRank,
+  AdminReport,
   AdminRoomTheme,
   AdminStats,
   AuditEntry,
   BalanceAdjustResult,
+  Banner,
+  BannerInput,
   BusinessAccount,
   BusinessAccountListResult,
   CategoryEffect,
@@ -39,6 +42,11 @@ import type {
   GameEvent,
   GameRulePatch,
   GameRulesResult,
+  GiftAnalyticsResult,
+  GiftCategoryInput,
+  GiftCategoryListResult,
+  GiftCategoryMutationResult,
+  GiftCategoryPatch,
   GiftInput,
   GiftListResult,
   GiftMutationResult,
@@ -50,6 +58,8 @@ import type {
   MediaKind,
   OkResult,
   ProfileFrame,
+  ProfileRide,
+  PublishedBanner,
   PublishedEmojiCatalogue,
   PublishedLadder,
   QuestInput,
@@ -60,6 +70,11 @@ import type {
   RechargeOrderListResult,
   RechargePackage,
   ReconciliationReport,
+  ReportDecision,
+  ReportListResult,
+  ReportReviewResult,
+  RideHolder,
+  RideInput,
   RoomChatMessage,
   RoomConsoleResult,
   RoomListQuery,
@@ -74,6 +89,7 @@ import type {
   UserListQuery,
   UserListResult,
   UserMutationResult,
+  UserSocialSummary,
   VisualEffect,
   VisualEffectKind,
   WithdrawalListQuery,
@@ -124,14 +140,26 @@ export function setStoredAdmin(admin: AdminIdentity | null): void {
   }
 }
 
-/** Error carrying the HTTP status plus the server-provided message. */
+/**
+ * Error carrying the HTTP status plus the server-provided message.
+ *
+ * `code` is the stable machine code the backend answers a refusal with (`error.code`), and `details`
+ * the structured facts beside it (`error.details`). The panel needs both because a refusal's message
+ * is prose a month from now will not match, while its code is a contract — a lucky box that pays more
+ * than it sells and a box with no prizes are both 400s, and only the code says which one the operator
+ * has to fix.
+ */
 export class ApiError extends Error {
   readonly status: number;
+  readonly code: string;
+  readonly details?: unknown;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code = 'error', details?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
+    this.details = details;
   }
 }
 
@@ -165,17 +193,36 @@ interface RequestOptions {
   noRedirect?: boolean;
 }
 
-function extractMessage(payload: unknown, status: number): string {
+/** What a failed response says: the sentence for the screen, the code for the branch, the facts for the maths. */
+interface ServerFailure {
+  message: string;
+  code: string;
+  details?: unknown;
+}
+
+function describeFailure(payload: unknown, status: number): ServerFailure {
   if (payload && typeof payload === 'object') {
     const record = payload as Record<string, unknown>;
     const nested = record.error;
     if (typeof nested === 'object' && nested !== null) {
-      const msg = (nested as Record<string, unknown>).message;
-      if (typeof msg === 'string' && msg.length > 0) return msg;
+      const error = nested as Record<string, unknown>;
+      const msg = error.message;
+      const code = typeof error.code === 'string' && error.code.length > 0 ? error.code : 'error';
+      const details = error.details === undefined ? {} : { details: error.details };
+      // A body with neither `code` nor `message` is an unexpected shape, so it still falls through to
+      // the plain-message and status-derived readings below rather than inventing an empty sentence.
+      if (typeof msg === 'string' && msg.length > 0) return { message: msg, code, ...details };
+      if (code !== 'error') return { message: fallbackMessage(status), code, ...details };
     }
-    if (typeof nested === 'string' && nested.length > 0) return nested;
-    if (typeof record.message === 'string' && record.message.length > 0) return record.message;
+    if (typeof nested === 'string' && nested.length > 0) return { message: nested, code: 'error' };
+    if (typeof record.message === 'string' && record.message.length > 0) {
+      return { message: record.message, code: typeof record.code === 'string' ? record.code : 'error' };
+    }
   }
+  return { message: fallbackMessage(status), code: 'error' };
+}
+
+function fallbackMessage(status: number): string {
   if (status === 401) return 'Session expired. Please sign in again.';
   if (status === 403) return 'This admin account is not allowed to perform that action.';
   if (status === 404) return 'Not found.';
@@ -220,7 +267,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
         window.location.assign('/login');
       }
     }
-    throw new ApiError(response.status, extractMessage(payload, response.status));
+    const failure = describeFailure(payload, response.status);
+    throw new ApiError(response.status, failure.message, failure.code, failure.details);
   }
 
   return payload as T;
@@ -251,7 +299,10 @@ async function downloadCsv(path: string, filename: string): Promise<void> {
   } catch {
     throw new ApiError(0, `Network error: cannot reach the Voiza backend at ${apiBase()}.`);
   }
-  if (!response.ok) throw new ApiError(response.status, extractMessage(null, response.status));
+  if (!response.ok) {
+    const failure = describeFailure(null, response.status);
+    throw new ApiError(response.status, failure.message, failure.code);
+  }
 
   const url = URL.createObjectURL(await response.blob());
   const anchor = document.createElement('a');
@@ -326,6 +377,54 @@ export const api = {
       method: 'POST',
       body: { delta, reason: reason && reason.length > 0 ? reason : undefined },
     });
+  },
+
+  // ---- social moderation (migration 0022) --------------------------------------
+  /**
+   * The report work queue. `status` defaults to the server's combined view; pass `PENDING` to see
+   * only what still needs a decision.
+   */
+  reports(params: {
+    status?: string;
+    targetUserId?: string;
+    reporterId?: string;
+    page?: number;
+    limit?: number;
+  } = {}): Promise<ReportListResult> {
+    return request<ReportListResult>(
+      `/api/admin/reports${query({
+        status: params.status,
+        targetUserId: params.targetUserId,
+        reporterId: params.reporterId,
+        page: params.page ?? 1,
+        limit: params.limit ?? 25,
+      })}`,
+    );
+  },
+
+  /**
+   * Resolve one report. `banUser` is a second, explicit act: the server refuses it together with
+   * `DISMISSED`, because a dismissal says the complaint was unfounded.
+   */
+  reviewReport(
+    reportId: string,
+    decision: ReportDecision,
+    resolution?: string,
+    banUser?: boolean,
+  ): Promise<ReportReviewResult> {
+    return request<ReportReviewResult>(`/api/admin/reports/${reportId}/review`, {
+      method: 'POST',
+      body: {
+        decision,
+        resolution: resolution && resolution.length > 0 ? resolution : undefined,
+        banUser: banUser === true ? true : undefined,
+      },
+    });
+  },
+
+  /** Followers, follows, blocks and both directions of reports around one account. */
+  userSocial(userId: string): Promise<UserSocialSummary> {
+    return request<UserSocialSummary>(`/api/admin/users/${userId}/social`);
   },
 
   // ---- rooms -------------------------------------------------------------------
@@ -423,21 +522,82 @@ export const api = {
     });
   },
 
+  /** Pin or clear the notice above the seats. `null`/blank removes it; the host sees the same change. */
+  setRoomAnnouncement(roomId: string, announcement: string | null): Promise<{ room: ConsoleRoom }> {
+    return request<{ room: ConsoleRoom }>(`/api/admin/rooms/${roomId}/announcement`, {
+      method: 'POST',
+      body: { announcement },
+    });
+  },
+
   // ---- gifts ---------------------------------------------------------------------
+  /**
+   * Every gift, active or not, with a lucky box's prize table attached.
+   *
+   * This is the operator's read: `listGifts({ includeWeights })` on the server puts the raw `weight`
+   * beside the `chanceBps` it produces, because editing 4,000 against 100 is how an operator reasons
+   * and a phone is only ever shown the odds.
+   */
   listGifts(): Promise<GiftListResult> {
     return request<GiftListResult>('/api/admin/gifts');
   },
 
+  /** One write creates the gift, the box flags and the whole prize table together. */
   createGift(input: GiftInput): Promise<GiftMutationResult> {
     return request<GiftMutationResult>('/api/admin/gifts', { method: 'POST', body: input });
   },
 
+  /**
+   * Partial update: keys left out of `patch` are left alone in the database.
+   *
+   * PUT is the verb — `PATCH` on this path 404s, so nothing here may reach for it. For a box that
+   * makes the presence of a key a decision: `boxOutcomes` omitted means "keep the draw that is
+   * stored", while sending it replaces every prize row. The caller therefore sends the table only
+   * when the operator actually edited it.
+   */
   updateGift(giftId: string, patch: GiftPatch): Promise<GiftMutationResult> {
     return request<GiftMutationResult>(`/api/admin/gifts/${giftId}`, { method: 'PUT', body: patch });
   },
 
+  /** A box's prizes go with it; the gift's own ledger history is untouched. */
   deleteGift(giftId: string): Promise<OkResult> {
     return request<OkResult>(`/api/admin/gifts/${giftId}`, { method: 'DELETE' });
+  },
+
+  /**
+   * The shelves the gift panel tabs are built from (`gift_categories`, migration 0025). Nothing in
+   * the panel may hardcode a key any more — a shelf an operator adds has to appear here, in the
+   * order they set, or the phone and this screen would disagree about what the catalogue contains.
+   */
+  giftCategories(): Promise<GiftCategoryListResult> {
+    return request<GiftCategoryListResult>('/api/admin/gift-categories');
+  },
+
+  createGiftCategory(input: GiftCategoryInput): Promise<GiftCategoryMutationResult> {
+    return request<GiftCategoryMutationResult>('/api/admin/gift-categories', { method: 'POST', body: input });
+  },
+
+  /** `key` is an identity and is the path segment, never the body; a rename edits `name`. */
+  updateGiftCategory(key: string, patch: GiftCategoryPatch): Promise<GiftCategoryMutationResult> {
+    return request<GiftCategoryMutationResult>(
+      `/api/admin/gift-categories/${encodeURIComponent(key)}`,
+      { method: 'PUT', body: patch },
+    );
+  },
+
+  /** Refused with `category_in_use` while any gift is filed on the shelf; there is no forced delete. */
+  deleteGiftCategory(key: string): Promise<{ ok: true; key: string }> {
+    return request<{ ok: true; key: string }>(`/api/admin/gift-categories/${encodeURIComponent(key)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  /**
+   * Per-gift earnings over `days` (1..365); the server caps the row list at the top 100 spenders.
+   * Each row carries `isLuckyBox`, so a box's realised payout rate is readable rather than guessed.
+   */
+  giftAnalytics(days: number): Promise<GiftAnalyticsResult> {
+    return request<GiftAnalyticsResult>(`/api/admin/gifts/analytics${query({ days })}`);
   },
 
   // ---- uploaded media -------------------------------------------------------------
@@ -531,6 +691,35 @@ export const api = {
     );
   },
 
+  // ---- entrance rides -------------------------------------------------------
+  // The fourth sellable catalogue (migration 0026): bought and worn like a frame, so the same four
+  // calls, and the same rule that `key` is a receipt identity — it goes in the body of a create and
+  // nowhere in an update, where the path already names the row.
+  createRide(input: RideInput): Promise<{ ride: ProfileRide }> {
+    return request<{ ride: ProfileRide }>('/api/admin/rides', { method: 'POST', body: input });
+  },
+
+  updateRide(key: string, patch: RideInput): Promise<{ ride: ProfileRide }> {
+    return request<{ ride: ProfileRide }>(`/api/admin/rides/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      body: patch,
+    });
+  },
+
+  /** Retiring a ride never touches the receipts: the count says who stops playing it. */
+  deleteRide(key: string): Promise<{ ok: true; key: string; membersStillHolding: number }> {
+    return request<{ ok: true; key: string; membersStillHolding: number }>(
+      `/api/admin/rides/${encodeURIComponent(key)}`,
+      { method: 'DELETE' },
+    );
+  },
+
+  rideHolders(key: string): Promise<{ key: string; holders: RideHolder[] }> {
+    return request<{ key: string; holders: RideHolder[] }>(
+      `/api/admin/rides/${encodeURIComponent(key)}/holders`,
+    );
+  },
+
   /** Give an item to a member without diamonds moving. `days: null` means permanent. */
   grantItem(userId: string, body: { kind: StoreItemKind; key: string; days?: number | null }): Promise<{ item: GrantedItem }> {
     return request<{ item: GrantedItem }>(`/api/admin/users/${userId}/grant`, { method: 'POST', body });
@@ -570,6 +759,37 @@ export const api = {
     return request<{ ok: true; key: string }>(`/api/admin/emoji/${encodeURIComponent(key)}`, {
       method: 'DELETE',
     });
+  },
+
+  // ---- promotional banners ----------------------------------------------------
+  // Splash, home, gift-panel and game-desk art (migration 0028). The row is addressed by id, not
+  // by key like the other catalogues: a key is a marketing label an operator may want to reuse,
+  // while the thing being edited is one specific campaign.
+  banners(): Promise<{ banners: Banner[] }> {
+    return request<{ banners: Banner[] }>('/api/admin/banners');
+  },
+
+  /** The unauthenticated view a phone reads, used here to prove a saved row is actually live. */
+  publicBanners(): Promise<{ banners: PublishedBanner[] }> {
+    return request<{ banners: PublishedBanner[] }>('/api/banners');
+  },
+
+  createBanner(input: BannerInput): Promise<{ banner: Banner }> {
+    return request<{ banner: Banner }>('/api/admin/banners', { method: 'POST', body: input });
+  },
+
+  updateBanner(id: string, patch: BannerInput): Promise<{ banner: Banner }> {
+    return request<{ banner: Banner }>(`/api/admin/banners/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: patch,
+    });
+  },
+
+  deleteBanner(id: string): Promise<{ ok: true; key: string; placement: string }> {
+    return request<{ ok: true; key: string; placement: string }>(
+      `/api/admin/banners/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    );
   },
 
   // ---- level ladder ------------------------------------------------------------

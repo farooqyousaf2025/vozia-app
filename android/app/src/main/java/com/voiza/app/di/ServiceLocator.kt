@@ -7,22 +7,27 @@ import com.voiza.app.data.remote.NetworkModule
 import com.voiza.app.data.remote.SessionManager
 import com.voiza.app.data.remote.VoizaApiService
 import com.voiza.app.data.repository.AuthRepositoryImpl
+import com.voiza.app.data.repository.BannerRepositoryImpl
 import com.voiza.app.data.repository.GameRepositoryImpl
 import com.voiza.app.data.repository.GiftRepositoryImpl
 import com.voiza.app.data.repository.PkRepositoryImpl
 import com.voiza.app.data.repository.QuestRepositoryImpl
 import com.voiza.app.data.repository.RoomRepositoryImpl
+import com.voiza.app.data.repository.SocialRepositoryImpl
 import com.voiza.app.data.repository.StoreRepositoryImpl
 import com.voiza.app.data.repository.WalletRepositoryImpl
 import com.voiza.app.data.socket.VoizaSocketClient
 import com.voiza.app.domain.repository.AuthRepository
+import com.voiza.app.domain.repository.BannerRepository
 import com.voiza.app.domain.repository.GiftRepository
 import com.voiza.app.domain.repository.GameRepository
 import com.voiza.app.domain.repository.PkRepository
 import com.voiza.app.domain.repository.QuestRepository
 import com.voiza.app.domain.repository.RoomRepository
+import com.voiza.app.domain.repository.SocialRepository
 import com.voiza.app.domain.repository.StoreRepository
 import com.voiza.app.domain.repository.WalletRepository
+import com.voiza.app.domain.usecase.BannersStore
 import com.voiza.app.domain.usecase.JoinRoomUseCase
 import com.voiza.app.domain.usecase.RechargeWalletUseCase
 import com.voiza.app.domain.usecase.SendGiftUseCase
@@ -57,6 +62,8 @@ object ServiceLocator {
         private set
     lateinit var giftRepository: GiftRepository
         private set
+    lateinit var bannerRepository: BannerRepository
+        private set
     lateinit var gameRepository: GameRepository
         private set
     lateinit var storeRepository: StoreRepository
@@ -64,6 +71,14 @@ object ServiceLocator {
     lateinit var questRepository: QuestRepository
         private set
     lateinit var pkRepository: PkRepository
+        private set
+
+    /** Follows, blocks and reports between members — the card opened from a roster row or a chat line. */
+    lateinit var socialRepository: SocialRepository
+        private set
+
+    /** The live campaigns, read once per session and drawn by four surfaces. */
+    lateinit var bannersStore: BannersStore
         private set
 
     lateinit var joinRoomUseCase: JoinRoomUseCase
@@ -98,10 +113,14 @@ object ServiceLocator {
             roomRepository = RoomRepositoryImpl(apiService, socketClient)
             walletRepository = WalletRepositoryImpl(apiService, sessionManager)
             giftRepository = GiftRepositoryImpl(apiService)
+            bannerRepository = BannerRepositoryImpl(apiService, sessionManager)
+            bannersStore = BannersStore(bannerRepository)
+            bannerRepository = BannerRepositoryImpl(apiService, sessionManager)
             gameRepository = GameRepositoryImpl(apiService)
             storeRepository = StoreRepositoryImpl(apiService, sessionManager)
             questRepository = QuestRepositoryImpl(apiService, sessionManager)
             pkRepository = PkRepositoryImpl(apiService)
+            socialRepository = SocialRepositoryImpl(apiService)
 
             joinRoomUseCase = JoinRoomUseCase(roomRepository) { roomId ->
                 socketClient.joinRoom(roomId)

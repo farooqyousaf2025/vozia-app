@@ -1,18 +1,18 @@
 {
  "room:user_joined": [
   {
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
    "user": {
-    "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-    "username": "wire_host_8490",
+    "id": "76535a80-3cfd-480e-b609-490f51de1385",
+    "username": "wire_host_7233",
     "avatarUrl": null,
     "vipLevel": 0,
     "rank": {
-     "level": 4,
-     "name": "Silver I",
-     "badge": "/badges/trace/level-4.png",
-     "accent": "#a8b0ba",
-     "minXp": 3000
+     "level": 5,
+     "name": "Silver II",
+     "badge": "/badges/trace/level-5.png",
+     "accent": "#b3bbc4",
+     "minXp": 5000
     },
     "profileFrame": {
      "key": "ring-bronze",
@@ -20,51 +20,93 @@
      "art": "/frames/trace/frame-1.png",
      "accent": "#c98a6b"
     },
-    "entryEffect": "/effects/room-spectrum.json"
+    "entryEffect": "/effects/room-spectrum.json",
+    "entryRide": {
+     "key": "ride-confetti",
+     "name": "Confetti Arrival",
+     "url": "/effects/room-confetti.json",
+     "format": "LOTTIE",
+     "durationMs": 4000
+    }
+   }
+  },
+  {
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
+   "user": {
+    "id": "f1da9700-b1c7-4b6f-96a8-df832d62031f",
+    "username": "wire_aud_7233",
+    "avatarUrl": null,
+    "vipLevel": 0,
+    "rank": {
+     "level": 0,
+     "name": "Newcomer",
+     "badge": "/badges/trace/level-0.png",
+     "accent": "#9aa5b1",
+     "minXp": 0
+    },
+    "profileFrame": null,
+    "entryEffect": null,
+    "entryRide": null
    }
   }
  ],
  "room:chat_message": [
   {
-   "id": "b5236fbf-b45d-470d-a02c-49b6612645ed",
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
+   "id": "e2dd3f08-d88e-47bc-bc64-496b4ba055aa",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
    "user": null,
-   "content": "wire_host_8490 entered the room",
+   "content": "wire_host_7233 entered the room",
    "type": "SYSTEM",
-   "createdAt": "2026-10-30T09:40:29.141Z"
+   "createdAt": "2026-11-06T11:02:48.145Z"
   },
   {
-   "id": "3746e327-bf50-4237-b9e2-3c3a96b079d3",
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
+   "id": "89c238a2-daf5-42eb-8300-652cbb697b9c",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
    "user": {
-    "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-    "username": "wire_host_8490",
+    "id": "76535a80-3cfd-480e-b609-490f51de1385",
+    "username": "wire_host_7233",
     "avatarUrl": null
    },
    "content": "wire capture hello",
    "type": "TEXT",
-   "createdAt": "2026-10-30T09:40:30.355Z"
+   "createdAt": "2026-11-06T11:02:49.349Z"
   },
   {
-   "id": "2ffc956f-4455-422f-98da-7e210febd69d",
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
+   "id": "7170cfaf-550b-44d1-939c-3a71ef5507c3",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
    "user": null,
-   "content": "wire_host_8490 sent 1x Rose to wire_seat_8490",
+   "content": "wire_aud_7233 entered the room",
    "type": "SYSTEM",
-   "createdAt": "2026-10-30T09:40:33.628Z"
+   "createdAt": "2026-11-06T11:02:50.558Z"
   },
   {
-   "id": "142637b3-9d14-4106-812b-d91563e01405",
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
+   "id": "8db8395a-3181-4ede-bc6a-758ccac5ed4a",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
    "user": null,
-   "content": "wire_host_8490 sent 1x Rose to wire_aud_8490",
+   "content": "wire_host_7233 sent 1x Rose to wire_seat_7233",
    "type": "SYSTEM",
-   "createdAt": "2026-10-30T09:40:33.644Z"
+   "createdAt": "2026-11-06T11:02:52.635Z"
+  },
+  {
+   "id": "68b36e7c-ad05-4949-b3e4-7dd650472210",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
+   "user": null,
+   "content": "wire_host_7233 sent 1x Rose to wire_aud_7233",
+   "type": "SYSTEM",
+   "createdAt": "2026-11-06T11:02:52.651Z"
+  },
+  {
+   "id": "511c8785-d807-4516-b2fa-00cf269fcc56",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
+   "user": null,
+   "content": "wire_host_7233 sent 3x Lucky Pouch to wire_seat_7233",
+   "type": "SYSTEM",
+   "createdAt": "2026-11-06T11:02:52.674Z"
   }
  ],
  "room:seat_update": [
   {
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
    "seats": [
     {
      "seatIndex": 0,
@@ -72,8 +114,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-      "username": "wire_host_8490",
+      "id": "76535a80-3cfd-480e-b609-490f51de1385",
+      "username": "wire_host_7233",
       "avatarUrl": null,
       "profileFrame": {
        "key": "ring-bronze",
@@ -89,8 +131,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "474eb99b-9aca-4b89-9648-5a47c5a75871",
-      "username": "wire_seat_8490",
+      "id": "df8ef09a-3dfc-4e05-bc56-a4d3ee0b589b",
+      "username": "wire_seat_7233",
       "avatarUrl": null,
       "profileFrame": {
        "key": "ring-bronze",
@@ -117,8 +159,8 @@
    ],
    "audience": [
     {
-     "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-     "username": "wire_host_8490",
+     "id": "76535a80-3cfd-480e-b609-490f51de1385",
+     "username": "wire_host_7233",
      "avatarUrl": null,
      "profileFrame": {
       "key": "ring-bronze",
@@ -128,8 +170,8 @@
      }
     },
     {
-     "id": "474eb99b-9aca-4b89-9648-5a47c5a75871",
-     "username": "wire_seat_8490",
+     "id": "df8ef09a-3dfc-4e05-bc56-a4d3ee0b589b",
+     "username": "wire_seat_7233",
      "avatarUrl": null,
      "profileFrame": {
       "key": "ring-bronze",
@@ -139,15 +181,15 @@
      }
     },
     {
-     "id": "899323e2-5fac-49b4-88ea-a1ab526c0609",
-     "username": "wire_aud_8490",
+     "id": "f1da9700-b1c7-4b6f-96a8-df832d62031f",
+     "username": "wire_aud_7233",
      "avatarUrl": null,
      "profileFrame": null
     }
    ]
   },
   {
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
    "seats": [
     {
      "seatIndex": 0,
@@ -155,8 +197,91 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-      "username": "wire_host_8490",
+      "id": "76535a80-3cfd-480e-b609-490f51de1385",
+      "username": "wire_host_7233",
+      "avatarUrl": null,
+      "profileFrame": {
+       "key": "ring-bronze",
+       "name": "Bronze Ring",
+       "art": "/frames/trace/frame-1.png",
+       "accent": "#c98a6b"
+      }
+     }
+    },
+    {
+     "seatIndex": 1,
+     "status": "OCCUPIED",
+     "isMuted": false,
+     "isSpeaker": true,
+     "user": {
+      "id": "df8ef09a-3dfc-4e05-bc56-a4d3ee0b589b",
+      "username": "wire_seat_7233",
+      "avatarUrl": null,
+      "profileFrame": {
+       "key": "ring-bronze",
+       "name": "Bronze Ring",
+       "art": "/frames/trace/frame-1.png",
+       "accent": "#c98a6b"
+      }
+     }
+    },
+    {
+     "seatIndex": 2,
+     "status": "EMPTY",
+     "isMuted": false,
+     "isSpeaker": false,
+     "user": null
+    },
+    {
+     "seatIndex": 3,
+     "status": "EMPTY",
+     "isMuted": false,
+     "isSpeaker": false,
+     "user": null
+    }
+   ],
+   "audience": [
+    {
+     "id": "76535a80-3cfd-480e-b609-490f51de1385",
+     "username": "wire_host_7233",
+     "avatarUrl": null,
+     "profileFrame": {
+      "key": "ring-bronze",
+      "name": "Bronze Ring",
+      "art": "/frames/trace/frame-1.png",
+      "accent": "#c98a6b"
+     }
+    },
+    {
+     "id": "df8ef09a-3dfc-4e05-bc56-a4d3ee0b589b",
+     "username": "wire_seat_7233",
+     "avatarUrl": null,
+     "profileFrame": {
+      "key": "ring-bronze",
+      "name": "Bronze Ring",
+      "art": "/frames/trace/frame-1.png",
+      "accent": "#c98a6b"
+     }
+    },
+    {
+     "id": "f1da9700-b1c7-4b6f-96a8-df832d62031f",
+     "username": "wire_aud_7233",
+     "avatarUrl": null,
+     "profileFrame": null
+    }
+   ]
+  },
+  {
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
+   "seats": [
+    {
+     "seatIndex": 0,
+     "status": "OCCUPIED",
+     "isMuted": false,
+     "isSpeaker": true,
+     "user": {
+      "id": "76535a80-3cfd-480e-b609-490f51de1385",
+      "username": "wire_host_7233",
       "avatarUrl": null,
       "profileFrame": {
        "key": "ring-bronze",
@@ -190,8 +315,8 @@
    ],
    "audience": [
     {
-     "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-     "username": "wire_host_8490",
+     "id": "76535a80-3cfd-480e-b609-490f51de1385",
+     "username": "wire_host_7233",
      "avatarUrl": null,
      "profileFrame": {
       "key": "ring-bronze",
@@ -201,8 +326,8 @@
      }
     },
     {
-     "id": "474eb99b-9aca-4b89-9648-5a47c5a75871",
-     "username": "wire_seat_8490",
+     "id": "df8ef09a-3dfc-4e05-bc56-a4d3ee0b589b",
+     "username": "wire_seat_7233",
      "avatarUrl": null,
      "profileFrame": {
       "key": "ring-bronze",
@@ -212,15 +337,15 @@
      }
     },
     {
-     "id": "899323e2-5fac-49b4-88ea-a1ab526c0609",
-     "username": "wire_aud_8490",
+     "id": "f1da9700-b1c7-4b6f-96a8-df832d62031f",
+     "username": "wire_aud_7233",
      "avatarUrl": null,
      "profileFrame": null
     }
    ]
   },
   {
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
    "seats": [
     {
      "seatIndex": 0,
@@ -228,8 +353,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-      "username": "wire_host_8490",
+      "id": "76535a80-3cfd-480e-b609-490f51de1385",
+      "username": "wire_host_7233",
       "avatarUrl": null,
       "profileFrame": {
        "key": "ring-bronze",
@@ -245,8 +370,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "899323e2-5fac-49b4-88ea-a1ab526c0609",
-      "username": "wire_aud_8490",
+      "id": "f1da9700-b1c7-4b6f-96a8-df832d62031f",
+      "username": "wire_aud_7233",
       "avatarUrl": null,
       "profileFrame": null
      }
@@ -268,8 +393,8 @@
    ],
    "audience": [
     {
-     "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-     "username": "wire_host_8490",
+     "id": "76535a80-3cfd-480e-b609-490f51de1385",
+     "username": "wire_host_7233",
      "avatarUrl": null,
      "profileFrame": {
       "key": "ring-bronze",
@@ -279,14 +404,14 @@
      }
     },
     {
-     "id": "899323e2-5fac-49b4-88ea-a1ab526c0609",
-     "username": "wire_aud_8490",
+     "id": "f1da9700-b1c7-4b6f-96a8-df832d62031f",
+     "username": "wire_aud_7233",
      "avatarUrl": null,
      "profileFrame": null
     },
     {
-     "id": "474eb99b-9aca-4b89-9648-5a47c5a75871",
-     "username": "wire_seat_8490",
+     "id": "df8ef09a-3dfc-4e05-bc56-a4d3ee0b589b",
+     "username": "wire_seat_7233",
      "avatarUrl": null,
      "profileFrame": {
       "key": "ring-bronze",
@@ -300,158 +425,38 @@
  ],
  "room:listener_count": [
   {
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
    "count": 3
   },
   {
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
    "count": 3
   },
   {
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
+   "count": 3
+  },
+  {
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
    "count": 3
   }
  ],
  "room:liked": [
   {
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
    "count": 10,
    "total": 10,
    "user": {
-    "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-    "username": "wire_host_8490",
+    "id": "76535a80-3cfd-480e-b609-490f51de1385",
+    "username": "wire_host_7233",
     "avatarUrl": null,
     "vipLevel": 0,
     "rank": {
-     "level": 4,
-     "name": "Silver I",
-     "badge": "/badges/trace/level-4.png",
-     "accent": "#a8b0ba",
-     "minXp": 3000
-    },
-    "profileFrame": {
-     "key": "ring-bronze",
-     "name": "Bronze Ring",
-     "art": "/frames/trace/frame-1.png",
-     "accent": "#c98a6b"
-    },
-    "entryEffect": "/effects/room-spectrum.json"
-   }
-  },
-  {
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
-   "count": 5,
-   "total": 15,
-   "user": {
-    "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-    "username": "wire_host_8490",
-    "avatarUrl": null,
-    "vipLevel": 0,
-    "rank": {
-     "level": 4,
-     "name": "Silver I",
-     "badge": "/badges/trace/level-4.png",
-     "accent": "#a8b0ba",
-     "minXp": 3000
-    },
-    "profileFrame": {
-     "key": "ring-bronze",
-     "name": "Bronze Ring",
-     "art": "/frames/trace/frame-1.png",
-     "accent": "#c98a6b"
-    },
-    "entryEffect": "/effects/room-spectrum.json"
-   }
-  }
- ],
- "room:hand_raise": [
-  {
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
-   "raised": true,
-   "user": {
-    "id": "899323e2-5fac-49b4-88ea-a1ab526c0609",
-    "username": "wire_aud_8490",
-    "avatarUrl": null,
-    "vipLevel": 0,
-    "rank": {
-     "level": 0,
-     "name": "Newcomer",
-     "badge": "/badges/trace/level-0.png",
-     "accent": "#9aa5b1",
-     "minXp": 0
-    },
-    "profileFrame": null,
-    "entryEffect": null
-   }
-  },
-  {
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
-   "raised": false,
-   "user": {
-    "id": "899323e2-5fac-49b4-88ea-a1ab526c0609",
-    "username": "wire_aud_8490",
-    "avatarUrl": null,
-    "vipLevel": 0,
-    "rank": {
-     "level": 0,
-     "name": "Newcomer",
-     "badge": "/badges/trace/level-0.png",
-     "accent": "#9aa5b1",
-     "minXp": 0
-    },
-    "profileFrame": null,
-    "entryEffect": null
-   }
-  }
- ],
- "room:gift_animated": [
-  {
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
-   "gift": {
-    "id": "65314a39-92ef-4cc8-b637-22ecfeae749f",
-    "name": "Rose",
-    "iconUrl": "/gifts/rose.png",
-    "animationUrl": "/gifts/rose.json",
-    "soundUrl": "/gifts/sounds/chime.wav",
-    "diamondPrice": 1,
-    "rCoinValue": 1,
-    "category": "ROSE",
-    "effectKind": "TICKER",
-    "minVipLevel": 0,
-    "sortOrder": 10,
-    "isActive": true
-   },
-   "sender": {
-    "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-    "phone": "+15557322849001",
-    "username": "wire_host_8490",
-    "avatarUrl": null,
-    "bio": null,
-    "gender": null,
-    "countryCode": null,
-    "diamondBalance": 1199,
-    "rCoinBalance": 0,
-    "totalGiftsSent": 1,
-    "totalGiftsReceived": 0,
-    "userType": "HOST",
-    "status": "ACTIVE",
-    "isVerified": false,
-    "vipLevel": 0,
-    "xp": 3821,
-    "rank": {
-     "level": 4,
-     "name": "Silver I",
-     "badge": "/badges/trace/level-4.png",
-     "accent": "#a8b0ba",
-     "minXp": 3000
-    },
-    "nextRank": {
      "level": 5,
      "name": "Silver II",
      "badge": "/badges/trace/level-5.png",
      "accent": "#b3bbc4",
-     "minXp": 5000,
-     "remainingXp": 1179
+     "minXp": 5000
     },
     "profileFrame": {
      "key": "ring-bronze",
@@ -460,13 +465,167 @@
      "accent": "#c98a6b"
     },
     "entryEffect": "/effects/room-spectrum.json",
+    "entryRide": {
+     "key": "ride-confetti",
+     "name": "Confetti Arrival",
+     "url": "/effects/room-confetti.json",
+     "format": "LOTTIE",
+     "durationMs": 4000
+    }
+   }
+  },
+  {
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
+   "count": 5,
+   "total": 15,
+   "user": {
+    "id": "76535a80-3cfd-480e-b609-490f51de1385",
+    "username": "wire_host_7233",
+    "avatarUrl": null,
+    "vipLevel": 0,
+    "rank": {
+     "level": 5,
+     "name": "Silver II",
+     "badge": "/badges/trace/level-5.png",
+     "accent": "#b3bbc4",
+     "minXp": 5000
+    },
+    "profileFrame": {
+     "key": "ring-bronze",
+     "name": "Bronze Ring",
+     "art": "/frames/trace/frame-1.png",
+     "accent": "#c98a6b"
+    },
+    "entryEffect": "/effects/room-spectrum.json",
+    "entryRide": {
+     "key": "ride-confetti",
+     "name": "Confetti Arrival",
+     "url": "/effects/room-confetti.json",
+     "format": "LOTTIE",
+     "durationMs": 4000
+    }
+   }
+  }
+ ],
+ "room:hand_raise": [
+  {
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
+   "raised": true,
+   "user": {
+    "id": "f1da9700-b1c7-4b6f-96a8-df832d62031f",
+    "username": "wire_aud_7233",
+    "avatarUrl": null,
+    "vipLevel": 0,
+    "rank": {
+     "level": 0,
+     "name": "Newcomer",
+     "badge": "/badges/trace/level-0.png",
+     "accent": "#9aa5b1",
+     "minXp": 0
+    },
+    "profileFrame": null,
+    "entryEffect": null,
+    "entryRide": null
+   }
+  },
+  {
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
+   "raised": false,
+   "user": {
+    "id": "f1da9700-b1c7-4b6f-96a8-df832d62031f",
+    "username": "wire_aud_7233",
+    "avatarUrl": null,
+    "vipLevel": 0,
+    "rank": {
+     "level": 0,
+     "name": "Newcomer",
+     "badge": "/badges/trace/level-0.png",
+     "accent": "#9aa5b1",
+     "minXp": 0
+    },
+    "profileFrame": null,
+    "entryEffect": null,
+    "entryRide": null
+   }
+  }
+ ],
+ "room:gift_animated": [
+  {
+   "eventId": "1aab0ab8-ff2c-45b4-ba2b-df6abea9c63e",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
+   "gift": {
+    "id": "fdd19c27-ea7a-4dbe-9be6-ad0ea5111d33",
+    "name": "Rose",
+    "iconUrl": "/gifts/rose.png",
+    "animationUrl": "/gifts/rose.json",
+    "soundUrl": "/gifts/sounds/chime.wav",
+    "diamondPrice": 1,
+    "rCoinValue": 1,
+    "category": "ROSE",
+    "effectKind": "TICKER",
+    "animationFormat": "LOTTIE",
+    "durationMs": 2500,
+    "displayPriority": 10,
+    "comboEnabled": true,
+    "comboWindowMs": 5000,
+    "minVipLevel": 0,
+    "sortOrder": 10,
+    "isActive": true,
+    "isLuckyBox": false
+   },
+   "sender": {
+    "id": "76535a80-3cfd-480e-b609-490f51de1385",
+    "phone": "+15557296723301",
+    "username": "wire_host_7233",
+    "avatarUrl": null,
+    "bio": null,
+    "gender": null,
+    "countryCode": null,
+    "diamondBalance": 3699,
+    "rCoinBalance": 0,
+    "totalGiftsSent": 1,
+    "totalGiftsReceived": 0,
+    "userType": "HOST",
+    "status": "ACTIVE",
+    "isVerified": false,
+    "vipLevel": 0,
+    "xp": 6321,
+    "rank": {
+     "level": 5,
+     "name": "Silver II",
+     "badge": "/badges/trace/level-5.png",
+     "accent": "#b3bbc4",
+     "minXp": 5000
+    },
+    "nextRank": {
+     "level": 6,
+     "name": "Silver III",
+     "badge": "/badges/trace/level-6.png",
+     "accent": "#c0c7cf",
+     "minXp": 8000,
+     "remainingXp": 1679
+    },
+    "profileFrame": {
+     "key": "ring-bronze",
+     "name": "Bronze Ring",
+     "art": "/frames/trace/frame-1.png",
+     "accent": "#c98a6b"
+    },
+    "entryEffect": "/effects/room-spectrum.json",
+    "entryRide": {
+     "key": "ride-confetti",
+     "name": "Confetti Arrival",
+     "url": "/effects/room-confetti.json",
+     "format": "LOTTIE",
+     "durationMs": 4000
+    },
     "lastSeenAt": null,
-    "createdAt": "2026-10-30T09:40:28.655Z"
+    "createdAt": "2026-11-06T11:02:47.391Z"
    },
    "receiver": {
-    "id": "474eb99b-9aca-4b89-9648-5a47c5a75871",
-    "phone": "+15557322849002",
-    "username": "wire_seat_8490",
+    "id": "df8ef09a-3dfc-4e05-bc56-a4d3ee0b589b",
+    "phone": "+15557296723302",
+    "username": "wire_seat_7233",
     "avatarUrl": null,
     "bio": null,
     "gender": null,
@@ -502,19 +661,25 @@
      "accent": "#c98a6b"
     },
     "entryEffect": "/effects/room-hearts.json",
+    "entryRide": null,
     "lastSeenAt": null,
-    "createdAt": "2026-10-30T09:40:28.761Z"
+    "createdAt": "2026-11-06T11:02:47.525Z"
    },
    "seatIndex": 1,
    "quantity": 1,
    "animationUrl": "/gifts/rose.json",
    "totalDiamonds": 1,
-   "totalRCoins": 1
+   "totalRCoins": 1,
+   "lucky": null,
+   "comboId": "87ee4cbdad4066e8",
+   "comboCount": 1,
+   "createdAt": "2026-11-06T11:02:52.591Z"
   },
   {
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
+   "eventId": "65e8184b-e0f0-44a2-96bc-5e0e31bbbe14",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
    "gift": {
-    "id": "65314a39-92ef-4cc8-b637-22ecfeae749f",
+    "id": "fdd19c27-ea7a-4dbe-9be6-ad0ea5111d33",
     "name": "Rose",
     "iconUrl": "/gifts/rose.png",
     "animationUrl": "/gifts/rose.json",
@@ -523,19 +688,25 @@
     "rCoinValue": 1,
     "category": "ROSE",
     "effectKind": "TICKER",
+    "animationFormat": "LOTTIE",
+    "durationMs": 2500,
+    "displayPriority": 10,
+    "comboEnabled": true,
+    "comboWindowMs": 5000,
     "minVipLevel": 0,
     "sortOrder": 10,
-    "isActive": true
+    "isActive": true,
+    "isLuckyBox": false
    },
    "sender": {
-    "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-    "phone": "+15557322849001",
-    "username": "wire_host_8490",
+    "id": "76535a80-3cfd-480e-b609-490f51de1385",
+    "phone": "+15557296723301",
+    "username": "wire_host_7233",
     "avatarUrl": null,
     "bio": null,
     "gender": null,
     "countryCode": null,
-    "diamondBalance": 1198,
+    "diamondBalance": 3698,
     "rCoinBalance": 0,
     "totalGiftsSent": 2,
     "totalGiftsReceived": 0,
@@ -543,21 +714,21 @@
     "status": "ACTIVE",
     "isVerified": false,
     "vipLevel": 0,
-    "xp": 3822,
+    "xp": 6322,
     "rank": {
-     "level": 4,
-     "name": "Silver I",
-     "badge": "/badges/trace/level-4.png",
-     "accent": "#a8b0ba",
-     "minXp": 3000
-    },
-    "nextRank": {
      "level": 5,
      "name": "Silver II",
      "badge": "/badges/trace/level-5.png",
      "accent": "#b3bbc4",
-     "minXp": 5000,
-     "remainingXp": 1178
+     "minXp": 5000
+    },
+    "nextRank": {
+     "level": 6,
+     "name": "Silver III",
+     "badge": "/badges/trace/level-6.png",
+     "accent": "#c0c7cf",
+     "minXp": 8000,
+     "remainingXp": 1678
     },
     "profileFrame": {
      "key": "ring-bronze",
@@ -566,13 +737,20 @@
      "accent": "#c98a6b"
     },
     "entryEffect": "/effects/room-spectrum.json",
+    "entryRide": {
+     "key": "ride-confetti",
+     "name": "Confetti Arrival",
+     "url": "/effects/room-confetti.json",
+     "format": "LOTTIE",
+     "durationMs": 4000
+    },
     "lastSeenAt": null,
-    "createdAt": "2026-10-30T09:40:28.655Z"
+    "createdAt": "2026-11-06T11:02:47.391Z"
    },
    "receiver": {
-    "id": "899323e2-5fac-49b4-88ea-a1ab526c0609",
-    "phone": "+15557322849003",
-    "username": "wire_aud_8490",
+    "id": "f1da9700-b1c7-4b6f-96a8-df832d62031f",
+    "phone": "+15557296723303",
+    "username": "wire_aud_7233",
     "avatarUrl": null,
     "bio": null,
     "gender": null,
@@ -603,40 +781,191 @@
     },
     "profileFrame": null,
     "entryEffect": null,
+    "entryRide": null,
     "lastSeenAt": null,
-    "createdAt": "2026-10-30T09:40:28.888Z"
+    "createdAt": "2026-11-06T11:02:47.666Z"
    },
    "seatIndex": null,
    "quantity": 1,
    "animationUrl": "/gifts/rose.json",
    "totalDiamonds": 1,
-   "totalRCoins": 1
-  }
- ],
- "wallet:update": [
-  {
-   "diamondBalance": 1199
+   "totalRCoins": 1,
+   "lucky": null,
+   "comboId": "6558600170360b34",
+   "comboCount": 1,
+   "createdAt": "2026-11-06T11:02:52.639Z"
   },
   {
-   "diamondBalance": 1198
+   "eventId": "877ca818-93bb-4b41-80e2-aa748be4804d",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
+   "gift": {
+    "id": "1f25c8b1-f1a2-42a7-9dd6-da2ff1895dcf",
+    "name": "Lucky Pouch",
+    "iconUrl": "/gifts/fireworks.png",
+    "animationUrl": "/gifts/fireworks.json",
+    "soundUrl": "/gifts/sounds/chime.wav",
+    "diamondPrice": 100,
+    "rCoinValue": 90,
+    "category": "SPECIAL",
+    "effectKind": "FULLSCREEN",
+    "animationFormat": "LOTTIE",
+    "durationMs": 0,
+    "displayPriority": 0,
+    "comboEnabled": false,
+    "comboWindowMs": 5000,
+    "minVipLevel": 0,
+    "sortOrder": 51,
+    "isActive": true,
+    "isLuckyBox": true,
+    "receiverShareBps": 6000
+   },
+   "sender": {
+    "id": "76535a80-3cfd-480e-b609-490f51de1385",
+    "phone": "+15557296723301",
+    "username": "wire_host_7233",
+    "avatarUrl": null,
+    "bio": null,
+    "gender": null,
+    "countryCode": null,
+    "diamondBalance": 3398,
+    "rCoinBalance": 0,
+    "totalGiftsSent": 5,
+    "totalGiftsReceived": 0,
+    "userType": "HOST",
+    "status": "ACTIVE",
+    "isVerified": false,
+    "vipLevel": 0,
+    "xp": 6652,
+    "rank": {
+     "level": 5,
+     "name": "Silver II",
+     "badge": "/badges/trace/level-5.png",
+     "accent": "#b3bbc4",
+     "minXp": 5000
+    },
+    "nextRank": {
+     "level": 6,
+     "name": "Silver III",
+     "badge": "/badges/trace/level-6.png",
+     "accent": "#c0c7cf",
+     "minXp": 8000,
+     "remainingXp": 1348
+    },
+    "profileFrame": {
+     "key": "ring-bronze",
+     "name": "Bronze Ring",
+     "art": "/frames/trace/frame-1.png",
+     "accent": "#c98a6b"
+    },
+    "entryEffect": "/effects/room-spectrum.json",
+    "entryRide": {
+     "key": "ride-confetti",
+     "name": "Confetti Arrival",
+     "url": "/effects/room-confetti.json",
+     "format": "LOTTIE",
+     "durationMs": 4000
+    },
+    "lastSeenAt": null,
+    "createdAt": "2026-11-06T11:02:47.391Z"
+   },
+   "receiver": {
+    "id": "df8ef09a-3dfc-4e05-bc56-a4d3ee0b589b",
+    "phone": "+15557296723302",
+    "username": "wire_seat_7233",
+    "avatarUrl": null,
+    "bio": null,
+    "gender": null,
+    "countryCode": null,
+    "diamondBalance": 3500,
+    "rCoinBalance": 487,
+    "totalGiftsSent": 0,
+    "totalGiftsReceived": 4,
+    "userType": "USER",
+    "status": "ACTIVE",
+    "isVerified": false,
+    "vipLevel": 0,
+    "xp": 1743,
+    "rank": {
+     "level": 3,
+     "name": "Bronze III",
+     "badge": "/badges/trace/level-3.png",
+     "accent": "#b8835a",
+     "minXp": 1600
+    },
+    "nextRank": {
+     "level": 4,
+     "name": "Silver I",
+     "badge": "/badges/trace/level-4.png",
+     "accent": "#a8b0ba",
+     "minXp": 3000,
+     "remainingXp": 1257
+    },
+    "profileFrame": {
+     "key": "ring-bronze",
+     "name": "Bronze Ring",
+     "art": "/frames/trace/frame-1.png",
+     "accent": "#c98a6b"
+    },
+    "entryEffect": "/effects/room-hearts.json",
+    "entryRide": null,
+    "lastSeenAt": null,
+    "createdAt": "2026-11-06T11:02:47.525Z"
+   },
+   "seatIndex": 1,
+   "quantity": 3,
+   "animationUrl": "/gifts/fireworks.json",
+   "totalDiamonds": 300,
+   "totalRCoins": 486,
+   "lucky": {
+    "outcomes": [
+     {
+      "label": "5x",
+      "multiplierBps": 50000,
+      "chanceBps": 900,
+      "count": 1
+     },
+     {
+      "label": "2x",
+      "multiplierBps": 20000,
+      "chanceBps": 2000,
+      "count": 2
+     }
+    ],
+    "headline": {
+     "label": "5x",
+     "multiplierBps": 50000,
+     "chanceBps": 900,
+     "count": 1
+    },
+    "grossRCoins": 810,
+    "receiverRCoins": 486,
+    "platformTaxRCoins": 324,
+    "receiverShareBps": 6000
+   },
+   "comboId": "48ed79922d82a69a",
+   "comboCount": 1,
+   "createdAt": "2026-11-06T11:02:52.654Z"
   }
  ],
  "room:theme_changed": [
   {
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
    "theme": "nebula",
    "wallpaper": "/themes/nebula/wallpaper.png"
   }
  ],
  "room:profile_updated": [
   {
-   "roomId": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
-   "title": "Wire Room Edited 3228490",
+   "roomId": "d41e936a-a885-452d-816b-87f3701571bc",
+   "title": "Wire Room Edited 2967233",
    "description": "captured profile",
    "category": "CHAT",
    "language": "en",
    "region": "BD",
-   "rules": "mic off when not on the seat"
+   "rules": "mic off when not on the seat",
+   "announcement": null,
+   "announcementUpdatedAt": null,
+   "speakerApprovalRequired": false
   }
  ]
 }

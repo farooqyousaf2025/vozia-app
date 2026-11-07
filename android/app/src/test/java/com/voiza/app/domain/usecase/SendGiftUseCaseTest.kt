@@ -2,14 +2,20 @@ package com.voiza.app.domain.usecase
 
 import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.domain.model.Gift
+import com.voiza.app.domain.model.GiftCatalogue
 import com.voiza.app.domain.model.Leaderboard
 import com.voiza.app.domain.model.RankBoard
+import com.voiza.app.domain.model.SendGiftOutcome
 import com.voiza.app.domain.model.Transaction
 import com.voiza.app.domain.repository.GiftRepository
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+
+/** What a non-replayed, non-combo send answers: the shape every test below starts from. */
+private fun sendOutcome(transaction: Transaction, replayed: Boolean = false, comboCount: Int = 1) =
+    SendGiftOutcome(transaction, replayed, if (comboCount > 1) "c1" else null, comboCount)
 
 /**
  * The client-side purchase guard is only a UX check — the ledger is authoritative
@@ -20,11 +26,17 @@ class SendGiftUseCaseTest {
 
     private class FakeGiftRepository : GiftRepository {
         var call: Quad? = null
-        var outcome: ApiResult<Transaction> = ApiResult.Success(transaction)
+        var outcome: ApiResult<SendGiftOutcome> = ApiResult.Success(sendOutcome(transaction))
 
-        data class Quad(val roomId: String, val receiverId: String, val giftId: String, val quantity: Int)
+        data class Quad(
+            val roomId: String,
+            val receiverId: String,
+            val giftId: String,
+            val quantity: Int,
+            val idempotencyKey: String?,
+        )
 
-        override suspend fun getGifts(): ApiResult<List<Gift>> =
+        override suspend fun getGifts(): ApiResult<GiftCatalogue> =
             ApiResult.Failure("not used")
 
         override suspend fun sendGift(
@@ -32,8 +44,9 @@ class SendGiftUseCaseTest {
             receiverId: String,
             giftId: String,
             quantity: Int,
-        ): ApiResult<Transaction> {
-            call = Quad(roomId, receiverId, giftId, quantity)
+            idempotencyKey: String?,
+        ): ApiResult<SendGiftOutcome> {
+            call = Quad(roomId, receiverId, giftId, quantity, idempotencyKey)
             return outcome
         }
 
@@ -96,7 +109,26 @@ class SendGiftUseCaseTest {
         val result = SendGiftUseCase(repo)("r1", "u2", rose, 3, senderDiamondBalance = null)
 
         assertTrue(result is ApiResult.Success)
-        assertEquals(FakeGiftRepository.Quad("r1", "u2", "g1", 3), repo.call)
+        assertEquals(FakeGiftRepository.Quad("r1", "u2", "g1", 3, null), repo.call)
+    }
+
+    @Test
+    fun `an idempotency key reaches the server untouched`() = runTest {
+        val repo = FakeGiftRepository()
+        SendGiftUseCase(repo)("r1", "u2", rose, 2, 100, idempotencyKey = "k-42")
+
+        assertEquals("k-42", repo.call?.idempotencyKey)
+    }
+
+    @Test
+    fun `the server replay flag and combo tally ride along on the receipt`() = runTest {
+        val repo = FakeGiftRepository().apply {
+            outcome = ApiResult.Success(sendOutcome(FakeGiftRepository.transaction, replayed = true, comboCount = 4))
+        }
+        val receipt = (SendGiftUseCase(repo)("r1", "u2", rose, 1, 100) as ApiResult.Success).data
+
+        assertTrue(receipt.replayed)
+        assertEquals(4, receipt.comboCount)
     }
 
     @Test

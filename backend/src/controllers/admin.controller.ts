@@ -3,15 +3,18 @@ import { one } from '../config/db';
 import {
   createEffect,
   createFrame,
+  createRide,
   createTheme,
   deleteEffect,
   deleteFrame,
+  deleteRide,
   deleteTheme,
   listAdminCatalogue,
   setCategoryEffect,
   themeSlugs,
   updateEffect,
   updateFrame,
+  updateRide,
   updateTheme,
 } from '../services/theme.service';
 import {
@@ -20,6 +23,17 @@ import {
   listAdminEmoji,
   updateEmoji,
 } from '../services/emoji.service';
+import {
+  createBanner,
+  deleteBanner,
+  listBanners,
+  updateBanner,
+} from '../services/banner.service';
+import {
+  BoxOutcome,
+  readBoxOutcomes,
+  readReceiverShareBps,
+} from '../services/lucky-box.service';
 import {
   MAX_LEVEL,
   createRank,
@@ -49,14 +63,18 @@ import {
   requireString,
   requireUuid,
 } from '../utils/http';
-import { toAdmin, toUser, toWithdrawal, UserDto } from '../utils/serialize';
+import { GiftDto, toAdmin, toUser, toWithdrawal, UserDto } from '../utils/serialize';
 import {
   adjustUserXp,
   createGift,
+  createGiftCategory,
   dashboardStats,
   deleteGift,
+  deleteGiftCategory,
   findAdminByUsername,
+  giftAnalytics,
   getAdminWithdrawal,
+  listGiftCategories,
   listGifts,
   listRoomsForAdmin,
   listWithdrawals,
@@ -65,6 +83,8 @@ import {
   setUserStatus,
   setUserVipLevel,
   updateGift,
+  updateGiftCategory,
+  GIFT_ANIMATION_FORMATS,
   GIFT_EFFECT_KINDS,
   GiftInput,
 } from '../services/admin.service';
@@ -114,6 +134,13 @@ import {
   reviewDispute,
   updateGameDefinition,
 } from '../services/game.service';
+import {
+  REPORT_DECISIONS,
+  listReports,
+  reviewReport,
+  socialSummaryForAdmin,
+} from '../services/social.service';
+import { setAnnouncement } from '../services/room-community.service';
 import { AuditEntry, listAudit, recordAudit } from '../services/audit.service';
 import { adminPermissions } from '../services/rbac.service';
 
@@ -199,6 +226,89 @@ export const setVipLevel = asyncHandler(async (req: Request, res: Response) => {
     details: { vipLevel: level },
   });
   res.json({ user: toUser(row) });
+});
+
+// ---------------------------------------------------------------------------
+// Social moderation. The queue is read with `user:read`; deciding it is
+// `user:moderate`. A review may ban the target, but that is a second, explicit
+// flag — dismissing a report with a ban attached would be a contradiction the
+// controller refuses rather than a state the operator discovers later.
+// ---------------------------------------------------------------------------
+
+export const reports = asyncHandler(async (req: Request, res: Response) => {
+  const status = optionalString(req.query.status, 'status', 12)?.toUpperCase();
+  const targetUserId = optionalString(req.query.targetUserId, 'targetUserId', 36);
+  const reporterId = optionalString(req.query.reporterId, 'reporterId', 36);
+  res.json(
+    await listReports({
+      status,
+      targetUserId: targetUserId ? requireUuid(targetUserId, 'targetUserId') : undefined,
+      reporterId: reporterId ? requireUuid(reporterId, 'reporterId') : undefined,
+      page: optionalInt(req.query.page, 'page', { min: 1 }) ?? 1,
+      limit: optionalInt(req.query.limit, 'limit', { min: 1, max: 100 }) ?? 25,
+    }),
+  );
+});
+
+export const reviewReportEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const reportId = requireUuid(req.params.id, 'reportId');
+  const decision = requireEnum(req.body?.decision, 'decision', REPORT_DECISIONS);
+  const resolution = optionalString(req.body?.resolution, 'resolution', 300);
+  const banUser = req.body?.banUser === undefined ? false : requireBoolean(req.body.banUser, 'banUser');
+  if (banUser && decision === 'DISMISSED') {
+    throw ApiError.badRequest('A dismissed report cannot ban its target', 'ban_requires_action');
+  }
+
+  const result = await reviewReport({
+    reportId,
+    adminId: req.admin!.sub,
+    decision,
+    resolution,
+  });
+
+  let banned = false;
+  if (banUser) {
+    const row = await setUserStatus(result.targetId, true);
+    banned = row.status === 'BANNED';
+    emitToUser(result.targetId, 'account:status', {
+      status: row.status,
+      reason: resolution ?? 'Reported behaviour',
+    });
+  }
+
+  await logAction(req, {
+    action: banUser ? 'REPORT_REVIEW_BAN' : 'REPORT_REVIEW',
+    targetType: 'user',
+    targetId: result.targetId,
+    summary: `Report ${reportId} ${decision.toLowerCase()}${banned ? ' and the account banned' : ''}`,
+    details: { reportId, decision, resolution: resolution ?? null, banned },
+  });
+  res.json({ report: result.report, banned });
+});
+
+/** The social graph around one account, for the panel's user drawer. */
+export const userSocial = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUuid(req.params.id, 'userId');
+  res.json(await socialSummaryForAdmin(userId));
+});
+
+/** Operator override for a pinned notice, including clearing one a host will not remove. */
+export const setRoomAnnouncement = asyncHandler(async (req: Request, res: Response) => {
+  const id = requireUuid(req.params.id, 'roomId');
+  const room = await setAnnouncement(id, req.admin!.sub, req.body?.announcement, { asAdmin: true });
+  await logAction(req, {
+    action: 'ROOM_ANNOUNCEMENT',
+    targetType: 'room',
+    targetId: id,
+    summary: room.announcement ? `Pinned a notice: ${room.announcement}` : 'Cleared the pinned notice',
+    details: { announcement: room.announcement },
+  });
+  emitToRoom(id, 'room:announcement', {
+    roomId: id,
+    announcement: room.announcement,
+    updatedAt: room.announcementUpdatedAt,
+  });
+  res.json({ room });
 });
 
 export const rooms = asyncHandler(async (req: Request, res: Response) => {
@@ -382,7 +492,7 @@ export const liftBan = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const gifts = asyncHandler(async (_req: Request, res: Response) => {
-  res.json({ gifts: await listGifts({ includeInactive: true }) });
+  res.json({ gifts: await listGifts({ includeInactive: true, includeWeights: true }) });
 });
 
 // In partial mode only the keys the client actually sent may survive: updateGift
@@ -406,9 +516,34 @@ function parseGiftInput(body: Record<string, unknown>, partial: boolean): Partia
     minVipLevel: pick('minVipLevel', (raw) => requireInt(raw, 'minVipLevel', { min: 0, max: 999 }), 0),
     sortOrder: pick('sortOrder', (raw) => requireInt(raw, 'sortOrder', { min: -9999, max: 9999 }), 0),
     effectKind: pick('effectKind', (raw) => requireEnum(raw, 'effectKind', GIFT_EFFECT_KINDS), 'TICKER'),
+    animationFormat: pick('animationFormat', (raw) => requireEnum(raw, 'animationFormat', GIFT_ANIMATION_FORMATS), 'LOTTIE'),
+    durationMs: pick('durationMs', (raw) => requireInt(raw, 'durationMs', { min: 0, max: 30_000 }), 0),
+    displayPriority: pick('displayPriority', (raw) => requireInt(raw, 'displayPriority', { min: 0, max: 1000 }), 0),
+    comboEnabled: pick('comboEnabled', (raw) => requireBoolean(raw, 'comboEnabled'), false),
+    comboWindowMs: pick('comboWindowMs', (raw) => requireInt(raw, 'comboWindowMs', { min: 1_000, max: 15_000 }), 5_000),
     isActive: pick('isActive', (raw) => requireBoolean(raw, 'isActive'), true),
+    isLuckyBox: pick('isLuckyBox', (raw) => requireBoolean(raw, 'isLuckyBox'), false),
+    receiverShareBps: pick('receiverShareBps', (raw) => readReceiverShareBps(raw), 10_000),
+    // Deliberately no fallback: absent means "do not touch the prize table", while an empty array is
+    // an explicit answer the service refuses. A `pick` that filled `[]` here would make every
+    // name-only PATCH of a box fail as if somebody had deleted its prizes.
+    boxOutcomes: pick<BoxOutcome[] | undefined>('boxOutcomes', (raw) => readBoxOutcomes(raw), undefined),
   };
   return input;
+}
+
+/**
+ * What a gift write is worth recording.
+ *
+ * A box's audit line names the take as well as the price, because the two dials that decide what a
+ * box pays out — the prize table and the receiver's share — are the only thing a month from now that
+ * explains why the ledger looks the way it does.
+ */
+function giftAuditLine(gift: GiftDto): string {
+  if (!gift.isLuckyBox) return `${gift.diamondPrice} diamonds`;
+  const prizes = gift.boxOutcomes?.length ?? 0;
+  const tax = ((10_000 - (gift.receiverShareBps ?? 10_000)) / 100).toFixed(2);
+  return `${gift.diamondPrice} diamonds, a box of ${prizes} prizes that keeps ${tax}% of what it rolls`;
 }
 
 export const createGiftEndpoint = asyncHandler(async (req: Request, res: Response) => {
@@ -421,7 +556,7 @@ export const createGiftEndpoint = asyncHandler(async (req: Request, res: Respons
     action: 'GIFT_CREATE',
     targetType: 'gift',
     targetId: gift.id,
-    summary: `Added gift ${gift.name} at ${gift.diamondPrice} diamonds`,
+    summary: `Added gift ${gift.name} at ${giftAuditLine(gift)}`,
     details: { gift },
   });
   res.status(201).json({ gift });
@@ -435,7 +570,7 @@ export const updateGiftEndpoint = asyncHandler(async (req: Request, res: Respons
     action: 'GIFT_UPDATE',
     targetType: 'gift',
     targetId: id,
-    summary: `Updated gift ${gift.name}`,
+    summary: `Updated gift ${gift.name} at ${giftAuditLine(gift)}`,
     details: { changes: input },
   });
   res.json({ gift });
@@ -446,6 +581,78 @@ export const removeGiftEndpoint = asyncHandler(async (req: Request, res: Respons
   const result = await deleteGift(id);
   await logAction(req, { action: 'GIFT_DELETE', targetType: 'gift', targetId: id, summary: 'Removed a gift from the catalogue', details: result });
   res.json(result);
+});
+
+// --- Gift categories and gift analytics -----------------------------------
+//
+// The shelves the gift panel tabs are drawn from (migration 0025) and the one question the
+// catalogue cannot answer on its own: which of these gifts actually earns. Writing a gift now names
+// a row here, so the list has to be editable from the same screen rather than by hand in SQL.
+// `gift:manage` is the right power for both — a category is a shelf in the gift catalogue, not a
+// piece of room decoration, and analytics read the ledger the gifts wrote.
+
+export const giftCategoriesEndpoint = asyncHandler(async (_req: Request, res: Response) => {
+  res.json({ categories: await listGiftCategories() });
+});
+
+export const createGiftCategoryEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const key = requireString(body.key, 'key', { max: 24 }).toUpperCase();
+  const name = requireString(body.name, 'name', { min: 1, max: 40 });
+  const sortOrder = requireInt(body.sortOrder ?? 0, 'sortOrder', { min: -9999, max: 9999 });
+  const category = await createGiftCategory({ key, name, sortOrder });
+  await logAction(req, {
+    action: 'GIFT_CATEGORY_CREATE',
+    targetType: 'gift_category',
+    targetId: category.key,
+    summary: `Added gift category ${category.name} (${category.key})`,
+    details: { category },
+  });
+  res.status(201).json({ category });
+});
+
+export const updateGiftCategoryEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const key = requireString(req.params.key, 'key', { max: 24 });
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  // `key` is an identity — gift rows store it. A rename means a new `name`, exactly like a theme
+  // slug or a frame key, because rewriting the key would leave every gift filed under the old one.
+  if (body.key !== undefined && body.key !== key) {
+    throw ApiError.badRequest(
+      'key is an identity — gifts are filed under it. Add the new key and delete this one instead',
+      'category_key_immutable',
+    );
+  }
+  const category = await updateGiftCategory(key, {
+    name: body.name === undefined ? undefined : requireString(body.name, 'name', { min: 1, max: 40 }),
+    sortOrder:
+      body.sortOrder === undefined ? undefined : requireInt(body.sortOrder, 'sortOrder', { min: -9999, max: 9999 }),
+  });
+  await logAction(req, {
+    action: 'GIFT_CATEGORY_UPDATE',
+    targetType: 'gift_category',
+    targetId: key,
+    summary: `Updated gift category ${category.name} — ${category.gifts} gift(s) on the shelf`,
+    details: { changes: body, category },
+  });
+  res.json({ category });
+});
+
+export const deleteGiftCategoryEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const key = requireString(req.params.key, 'key', { max: 24 });
+  const result = await deleteGiftCategory(key);
+  await logAction(req, {
+    action: 'GIFT_CATEGORY_DELETE',
+    targetType: 'gift_category',
+    targetId: key,
+    summary: `Removed the empty gift category ${key}`,
+    details: result,
+  });
+  res.json(result);
+});
+
+export const giftAnalyticsEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const days = optionalInt(req.query.days, 'days', { min: 1, max: 365 });
+  res.json(await giftAnalytics({ days }));
 });
 
 // --- Uploaded media -------------------------------------------------------
@@ -678,6 +885,60 @@ export const frameHoldersEndpoint = asyncHandler(async (req: Request, res: Respo
   res.json({ key, holders: await holdersOf('FRAME', key) });
 });
 
+// --- Entrance rides (migration 0026) -------------------------------------
+//
+// A ride is sold like a ring and worn like a flourish, but it is the first cosmetic that takes the
+// whole screen from the room, so its row carries the two things a renderer needs: the container the
+// bytes were sniffed as, and the operator's ceiling on how long the cinematic holds the screen.
+
+export const createRideEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const ride = await createRide(req.body ?? {});
+  await logAction(req, {
+    action: 'RIDE_CREATE',
+    targetType: 'ride',
+    targetId: ride.key,
+    summary: ride.forSale
+      ? `Added entrance ride ${ride.name} (${ride.key}) at ${ride.priceDiamonds} diamonds — ${ride.format}, ${ride.durationMs ? `${ride.durationMs} ms` : 'asset length'}`
+      : `Added entrance ride ${ride.name} (${ride.key}), not for sale`,
+    details: { ride },
+  });
+  res.status(201).json({ ride });
+});
+
+export const updateRideEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const key = requireIdentity(req.params.key, 'key');
+  const ride = await updateRide(key, req.body ?? {});
+  await logAction(req, {
+    action: 'RIDE_UPDATE',
+    targetType: 'ride',
+    targetId: key,
+    summary: ride.forSale
+      ? `Updated entrance ride ${ride.name} — on sale at ${ride.priceDiamonds} diamonds, ${ride.holders} holder(s)`
+      : `Updated entrance ride ${ride.name} — off sale, ${ride.holders} holder(s) keep it`,
+    details: { changes: req.body ?? {}, ride },
+  });
+  res.json({ ride });
+});
+
+export const deleteRideEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const key = requireIdentity(req.params.key, 'key');
+  const result = await deleteRide(key);
+  await logAction(req, {
+    action: 'RIDE_DELETE',
+    targetType: 'ride',
+    targetId: key,
+    summary: `Removed entrance ride ${key}; ${result.membersStillHolding} member(s) keep their receipt and stop playing it`,
+    details: result,
+  });
+  res.json(result);
+});
+
+/** Who holds a ride — the same dispute question as a ring, asked of the other sold-and-worn catalogue. */
+export const rideHoldersEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const key = requireIdentity(req.params.key, 'key');
+  res.json({ key, holders: await holdersOf('RIDE', key) });
+});
+
 /**
  * Give a member an item without diamonds moving.
  *
@@ -749,6 +1010,64 @@ export const deleteEmojiEndpoint = asyncHandler(async (req: Request, res: Respon
   });
   res.json(result);
 });
+
+// --- Promotional banners (migration 0028) ---------------------------------
+//
+// The art on the wall: splash, home strip, gift panel, game desk. Reading is a dashboard concern —
+// an operator answering "why is that campaign not showing" needs the window and the counts, not
+// only the row — while switching one on changes what every phone draws at cold start, which is
+// `config:manage`. The delete is audited harder than the others because it takes the numbers with
+// it; retiring with `isActive: false` is the route that keeps a campaign's history readable.
+
+export const bannersEndpoint = asyncHandler(async (_req: Request, res: Response) => {
+  res.json({ banners: await listBanners() });
+});
+
+export const createBannerEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const banner = await createBanner(req.body ?? {});
+  await logAction(req, {
+    action: 'BANNER_CREATE',
+    targetType: 'banner',
+    targetId: banner.key,
+    summary: `Added ${banner.placement.toLowerCase()} banner ${banner.title} (${banner.key}) — ${banner.format}${banner.isActive ? ', live now' : ', switched off'}${bannerWindow(banner)}`,
+    details: { banner },
+  });
+  res.status(201).json({ banner });
+});
+
+export const updateBannerEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const id = requireUuid(req.params.id, 'id');
+  const banner = await updateBanner(id, req.body ?? {});
+  await logAction(req, {
+    action: 'BANNER_UPDATE',
+    targetType: 'banner',
+    targetId: banner.key,
+    summary: `Updated ${banner.placement.toLowerCase()} banner ${banner.title} (${banner.key}) — ${banner.isActive ? 'live' : 'retired'}, ${banner.impressions} impression(s) and ${banner.taps} tap(s) counted${bannerWindow(banner)}`,
+    details: { changes: req.body ?? {}, banner },
+  });
+  res.json({ banner });
+});
+
+export const deleteBannerEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const id = requireUuid(req.params.id, 'id');
+  const result = await deleteBanner(id);
+  await logAction(req, {
+    action: 'BANNER_DELETE',
+    targetType: 'banner',
+    targetId: result.key,
+    summary: `Removed ${result.placement.toLowerCase()} banner ${result.key}; its counts went with the row — switch isActive off to retire a campaign and keep them`,
+    details: result,
+  });
+  res.json(result);
+});
+
+/** ` from 2026-11-01 to 2026-11-08` — an audit line that says "live" without saying since when is not much use. */
+function bannerWindow(banner: { startsAt: string | null; endsAt: string | null }): string {
+  if (!banner.startsAt && !banner.endsAt) return '';
+  const from = banner.startsAt ? banner.startsAt.slice(0, 16).replace('T', ' ') : 'now';
+  const to = banner.endsAt ? banner.endsAt.slice(0, 16).replace('T', ' ') : 'no end';
+  return ` — window ${from} to ${to} UTC`;
+}
 
 /**
  * The earned-level ladder (migration 0017). Reading it is a `user:read` concern — an operator who

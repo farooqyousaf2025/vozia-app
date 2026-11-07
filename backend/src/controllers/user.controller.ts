@@ -1,8 +1,22 @@
 import { Request, Response } from 'express';
 import { many, one } from '../config/db';
 import { rankFor } from '../services/rank.service';
+import {
+  blockUser,
+  createReport,
+  followUser,
+  listBlocked,
+  listFollowers,
+  listFollowing,
+  normalizeBlockReason,
+  relationship,
+  socialCounts,
+  unfollowUser,
+  unblockUser,
+} from '../services/social.service';
+import { emitToUser } from '../services/socket.service';
 import { RoomRow, UserRow } from '../types/db';
-import { ApiError, asyncHandler, requireInt, requireString } from '../utils/http';
+import { ApiError, asyncHandler, optionalInt, requireInt, requireString } from '../utils/http';
 import { toRoom, toUser } from '../utils/serialize';
 
 const PUBLIC_PROFILE = `
@@ -26,7 +40,89 @@ export const profile = asyncHandler(async (req: Request, res: Response) => {
     `SELECT r.* FROM rooms r WHERE r.host_id = $1 AND r.status = 'ACTIVE' ORDER BY r.created_at DESC LIMIT 1`,
     [id],
   );
-  res.json({ user, liveRoom: liveRoom ? toRoom(liveRoom) : null, agency: row.agency_name });
+  // Follower counts are public — they are part of who the profile is. The list of *which*
+  // accounts follow is behind `GET /users/:id/followers` and requires a signed-in caller.
+  const social = await socialCounts(id);
+  res.json({ user, liveRoom: liveRoom ? toRoom(liveRoom) : null, agency: row.agency_name, social });
+});
+
+/** How the signed-in caller relates to this member: following, blocked either way. */
+export const relationshipStatus = asyncHandler(async (req: Request, res: Response) => {
+  const id = requireString(req.params.id, 'userId', { min: 36, max: 36 });
+  const target = await one<{ id: string }>('SELECT id FROM users WHERE id = $1', [id]);
+  if (!target) throw ApiError.notFound('User not found');
+  res.json(await relationship(req.user!.sub, id));
+});
+
+const listPaging = (req: Request) => ({
+  page: optionalInt(req.query.page, 'page', { min: 1 }) ?? 1,
+  limit: optionalInt(req.query.limit, 'limit', { min: 1, max: 100 }) ?? 20,
+});
+
+export const followers = asyncHandler(async (req: Request, res: Response) => {
+  const id = requireString(req.params.id, 'userId', { min: 36, max: 36 });
+  const target = await one<{ id: string }>('SELECT id FROM users WHERE id = $1', [id]);
+  if (!target) throw ApiError.notFound('User not found');
+  const { page, limit } = listPaging(req);
+  res.json(await listFollowers(id, page, limit));
+});
+
+export const following = asyncHandler(async (req: Request, res: Response) => {
+  const id = requireString(req.params.id, 'userId', { min: 36, max: 36 });
+  const target = await one<{ id: string }>('SELECT id FROM users WHERE id = $1', [id]);
+  if (!target) throw ApiError.notFound('User not found');
+  const { page, limit } = listPaging(req);
+  res.json(await listFollowing(id, page, limit));
+});
+
+/** The caller's own block list. Registered at `/blocked`, before `/:id`. */
+export const blockedList = asyncHandler(async (req: Request, res: Response) => {
+  const { page, limit } = listPaging(req);
+  res.json(await listBlocked(req.user!.sub, page, limit));
+});
+
+export const follow = asyncHandler(async (req: Request, res: Response) => {
+  const targetId = requireString(req.params.id, 'userId', { min: 36, max: 36 });
+  const result = await followUser(req.user!.sub, targetId);
+  // The followed member sees it live; the follower is the actor in the payload.
+  emitToUser(targetId, 'user:followed', { user: result.actor });
+  res.json({ following: result.following, counts: result.counts });
+});
+
+export const unfollow = asyncHandler(async (req: Request, res: Response) => {
+  const targetId = requireString(req.params.id, 'userId', { min: 36, max: 36 });
+  const result = await unfollowUser(req.user!.sub, targetId);
+  res.json({ following: result.following, counts: result.counts });
+});
+
+export const block = asyncHandler(async (req: Request, res: Response) => {
+  const targetId = requireString(req.params.id, 'userId', { min: 36, max: 36 });
+  const reason = normalizeBlockReason(req.body?.reason);
+  const result = await blockUser(req.user!.sub, targetId, reason);
+  // The blocked account is told only that the interaction is closed, never the reason: the
+  // reason field is the blocking member's private note.
+  emitToUser(targetId, 'user:blocked', { userId: req.user!.sub });
+  res.json({ blocked: result.blocked, counts: result.counts });
+});
+
+export const unblock = asyncHandler(async (req: Request, res: Response) => {
+  const targetId = requireString(req.params.id, 'userId', { min: 36, max: 36 });
+  const result = await unblockUser(req.user!.sub, targetId);
+  res.json({ blocked: result.blocked, counts: result.counts });
+});
+
+export const report = asyncHandler(async (req: Request, res: Response) => {
+  const targetId = requireString(req.params.id, 'userId', { min: 36, max: 36 });
+  const report = await createReport({
+    reporterId: req.user!.sub,
+    targetId,
+    reason: req.body?.reason,
+    details: req.body?.details,
+    roomId: req.body?.roomId ? requireString(req.body.roomId, 'roomId', { min: 36, max: 36 }) : null,
+  });
+  // Deliberately no notification to the reported account: the queue is the operator's, and a
+  // live "you were reported" event would let a harasser retaliate before review.
+  res.status(201).json({ report });
 });
 
 const WINDOWS = { day: '1 day', week: '7 days', month: '30 days' } as const;

@@ -8,14 +8,20 @@ import com.voiza.app.data.remote.dto.SocketGameEndedDto
 import com.voiza.app.data.remote.dto.GameSessionDto
 import com.voiza.app.data.remote.dto.PkBattleDto
 import com.voiza.app.data.remote.dto.SocketGiftAnimatedDto
+import com.voiza.app.data.remote.dto.SocketGiftHistoryDto
 import com.voiza.app.data.remote.dto.SocketHandRaiseDto
 import com.voiza.app.data.remote.dto.SocketKickedDto
 import com.voiza.app.data.remote.dto.SocketLikeDto
 import com.voiza.app.data.remote.dto.SocketListenerCountDto
 import com.voiza.app.data.remote.dto.SocketMicToggleDto
+import com.voiza.app.data.remote.dto.SocketReactionDto
 import com.voiza.app.data.remote.dto.SocketRoomClosedDto
+import com.voiza.app.data.remote.dto.SocketAnnouncementDto
 import com.voiza.app.data.remote.dto.SocketRoomProfileDto
+import com.voiza.app.data.remote.dto.SocketSeatInvitedDto
 import com.voiza.app.data.remote.dto.SocketSeatUpdateDto
+import com.voiza.app.data.remote.dto.SocketSpeakerDecisionDto
+import com.voiza.app.data.remote.dto.SocketSpeakerRequestChangedDto
 import com.voiza.app.data.remote.dto.SocketThemeChangedDto
 import com.voiza.app.data.remote.dto.SocketUserJoinedDto
 import com.voiza.app.data.remote.dto.SocketUserLeftDto
@@ -34,7 +40,11 @@ import com.voiza.app.domain.model.RoomChatEvent
 import com.voiza.app.domain.model.RoomClosedEvent
 import com.voiza.app.domain.model.RoomLikeEvent
 import com.voiza.app.domain.model.RoomProfileEvent
+import com.voiza.app.domain.model.RoomReactionEvent
+import com.voiza.app.domain.model.RoomAnnouncementEvent
+import com.voiza.app.domain.model.SeatInviteEvent
 import com.voiza.app.domain.model.SeatUpdateEvent
+import com.voiza.app.domain.model.SpeakerDecisionEvent
 import com.voiza.app.domain.model.ThemeChangedEvent
 import com.voiza.app.domain.model.UserJoinedEvent
 import com.voiza.app.domain.model.UserLeftEvent
@@ -60,7 +70,7 @@ import org.json.JSONObject
  * Server events are exposed as cold-friendly MutableSharedFlows (extraBuffer
  * + DROP_OLDEST so bursts of chat never suspend the socket thread). Client
  * emits are fire-and-forget helpers per the contract:
- *   room:join / room:leave / room:chat / room:raise_hand / room:like
+ *   room:join / room:leave / room:chat / room:raise_hand / room:like / room:reaction
  *
  * Reconnect: a token change (login/logout/refresh) tears the socket down and
  * re-dials with the new auth payload automatically.
@@ -78,6 +88,13 @@ class VoizaSocketClient(
     @Volatile
     private var dialledToken: String? = null
 
+    /**
+     * The room the app last asked to be subscribed to, kept so a reconnect can re-ask. Cleared on
+     * `leaveRoom` and on `disconnect`, because neither is a temporary drop.
+     */
+    @Volatile
+    private var joinedRoomId: String? = null
+
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
 
@@ -93,6 +110,15 @@ class VoizaSocketClient(
     )
     val giftAnimated: SharedFlow<GiftAnimatedEvent> = _giftAnimated.asSharedFlow()
 
+    /**
+     * `room:gift_history`: the gifts this room paid for while our socket was down, delivered to us
+     * alone when we join. One page per join, so the buffer only has to hold that page.
+     */
+    private val _giftCatchUp = MutableSharedFlow<List<GiftAnimatedEvent>>(
+        replay = 0, extraBufferCapacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val giftCatchUp: SharedFlow<List<GiftAnimatedEvent>> = _giftCatchUp.asSharedFlow()
+
     private val _seatUpdates = MutableSharedFlow<SeatUpdateEvent>(
         replay = 0, extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
@@ -106,6 +132,16 @@ class VoizaSocketClient(
         replay = 0, extraBufferCapacity = 32, onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     val likes: SharedFlow<RoomLikeEvent> = _likes.asSharedFlow()
+
+    /**
+     * `room:reaction`: a quick emoji one member flew across the room. These are decoration and are
+     * stored nowhere, so a burst is bounded by how long one is in the air rather than by history —
+     * the same small buffer the heart layer is happy with.
+     */
+    private val _reactions = MutableSharedFlow<RoomReactionEvent>(
+        replay = 0, extraBufferCapacity = 32, onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val reactions: SharedFlow<RoomReactionEvent> = _reactions.asSharedFlow()
 
     private val _listenerCounts = MutableSharedFlow<ListenerCountEvent>(
         replay = 0, extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST,
@@ -191,6 +227,38 @@ class VoizaSocketClient(
     )
     val pkInvites: SharedFlow<PkBattle> = _pkInvites.asSharedFlow()
 
+    /**
+     * `room:announcement`: the pinned notice as the host or an operator just set it. A null text is
+     * the notice being cleared, which the dedicated event says unambiguously and a profile broadcast
+     * cannot.
+     */
+    private val _announcements = MutableSharedFlow<RoomAnnouncementEvent>(
+        replay = 0, extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val announcements: SharedFlow<RoomAnnouncementEvent> = _announcements.asSharedFlow()
+
+    /** Private `room:seat_invited`: the host already seated us; this is the token that says so. */
+    private val _seatInvites = MutableSharedFlow<SeatInviteEvent>(
+        replay = 0, extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val seatInvites: SharedFlow<SeatInviteEvent> = _seatInvites.asSharedFlow()
+
+    /** Private `room:speaker_decision`: the host answered our request to speak. */
+    private val _speakerDecisions = MutableSharedFlow<SpeakerDecisionEvent>(
+        replay = 0, extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val speakerDecisions: SharedFlow<SpeakerDecisionEvent> = _speakerDecisions.asSharedFlow()
+
+    /**
+     * `room:speaker_request` and `room:speaker_request_updated`, both reduced to the room whose
+     * queue moved. The queue is the server's list in the server's order, so a client that patched
+     * its own copy would drift the moment it missed one emit — which it will, on a reconnect.
+     */
+    private val _speakerQueueChanges = MutableSharedFlow<String>(
+        replay = 0, extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val speakerQueueChanges: SharedFlow<String> = _speakerQueueChanges.asSharedFlow()
+
     init {
         // Re-dial whenever the auth token changes (login, re-login, logout).
         scope.launch {
@@ -223,6 +291,14 @@ class VoizaSocketClient(
 
         newSocket.on(Socket.EVENT_CONNECT) {
             _isConnected.value = true
+            // A reconnect is a brand-new server-side connection: the server saw the old one die and
+            // dropped it from `room:<id>`, so nothing re-subscribes it by itself. Without this the
+            // app comes back showing "connected" and hears no chat, gifts or seat changes until the
+            // user leaves and re-enters. Emitted on `newSocket` because the `socket` field is only
+            // assigned after this listener is attached.
+            joinedRoomId?.let { room ->
+                newSocket.emit(EVENT_EMIT_JOIN, JSONObject().put("roomId", room))
+            }
         }.on(Socket.EVENT_DISCONNECT) {
             _isConnected.value = false
         }.on(Socket.EVENT_CONNECT_ERROR) {
@@ -235,11 +311,20 @@ class VoizaSocketClient(
         bindHandler(newSocket, EVENT_GIFT) { args ->
             parse<SocketGiftAnimatedDto>(args)?.let { _giftAnimated.tryEmit(it.toDomain()) }
         }
+        bindHandler(newSocket, EVENT_GIFT_HISTORY) { args ->
+            parse<SocketGiftHistoryDto>(args)
+                ?.toDomain()
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { _giftCatchUp.tryEmit(it) }
+        }
         bindHandler(newSocket, EVENT_SEATS) { args ->
             parse<SocketSeatUpdateDto>(args)?.let { _seatUpdates.tryEmit(it.toDomain()) }
         }
         bindHandler(newSocket, EVENT_LIKED) { args ->
             parse<SocketLikeDto>(args)?.let { _likes.tryEmit(it.toDomain()) }
+        }
+        bindHandler(newSocket, EVENT_REACTION) { args ->
+            parse<SocketReactionDto>(args)?.toDomainOrNull()?.let { _reactions.tryEmit(it) }
         }
         bindHandler(newSocket, EVENT_LISTENERS) { args ->
             parse<SocketListenerCountDto>(args)?.let {
@@ -270,6 +355,22 @@ class VoizaSocketClient(
         }
         bindHandler(newSocket, EVENT_PROFILE_UPDATED) { args ->
             parse<SocketRoomProfileDto>(args)?.let { _profileUpdates.tryEmit(it.toDomain()) }
+        }
+        bindHandler(newSocket, EVENT_ANNOUNCEMENT) { args ->
+            parse<SocketAnnouncementDto>(args)?.let { _announcements.tryEmit(it.toDomain()) }
+        }
+        bindHandler(newSocket, EVENT_SEAT_INVITED) { args ->
+            parse<SocketSeatInvitedDto>(args)?.let { _seatInvites.tryEmit(it.toDomain()) }
+        }
+        bindHandler(newSocket, EVENT_SPEAKER_DECISION) { args ->
+            parse<SocketSpeakerDecisionDto>(args)?.let { _speakerDecisions.tryEmit(it.toDomain()) }
+        }
+        // Both of these mean the same thing to us: the queue this room holds is no longer current.
+        bindHandler(newSocket, EVENT_SPEAKER_REQUEST) { args ->
+            parse<SocketSpeakerRequestChangedDto>(args)?.let { _speakerQueueChanges.tryEmit(it.roomId) }
+        }
+        bindHandler(newSocket, EVENT_SPEAKER_REQUEST_UPDATED) { args ->
+            parse<SocketSpeakerRequestChangedDto>(args)?.let { _speakerQueueChanges.tryEmit(it.roomId) }
         }
         bindHandler(newSocket, EVENT_KICKED) { args ->
             parse<SocketKickedDto>(args)?.let { _kickedFrom.tryEmit(it.roomId) }
@@ -306,13 +407,20 @@ class VoizaSocketClient(
         teardownSocket()
         _isConnected.value = false
         dialledToken = null
+        joinedRoomId = null
     }
 
     // ---- Client emits (contract) -------------------------------------------
 
-    fun joinRoom(roomId: String) = emit(EVENT_EMIT_JOIN, JSONObject().put("roomId", roomId))
+    fun joinRoom(roomId: String) {
+        joinedRoomId = roomId
+        emit(EVENT_EMIT_JOIN, JSONObject().put("roomId", roomId))
+    }
 
-    fun leaveRoom(roomId: String) = emit(EVENT_EMIT_LEAVE, JSONObject().put("roomId", roomId))
+    fun leaveRoom(roomId: String) {
+        if (joinedRoomId == roomId) joinedRoomId = null
+        emit(EVENT_EMIT_LEAVE, JSONObject().put("roomId", roomId))
+    }
 
     fun sendChat(roomId: String, message: String) =
         emit(EVENT_EMIT_CHAT, JSONObject().put("roomId", roomId).put("message", message))
@@ -326,6 +434,14 @@ class VoizaSocketClient(
      */
     fun sendLike(roomId: String, count: Int) =
         emit(EVENT_EMIT_LIKE, JSONObject().put("roomId", roomId).put("count", count))
+
+    /**
+     * `room:reaction` names one emoji from the operator's catalogue and nothing else. The server
+     * looks the key up and broadcasts the art it found, so a device cannot make a room animate a
+     * picture it chose — and a key nobody published is dropped on the floor, unseen.
+     */
+    fun sendReaction(roomId: String, key: String) =
+        emit(EVENT_EMIT_REACTION, JSONObject().put("roomId", roomId).put("key", key))
 
     // ---- Internals -----------------------------------------------------------
 
@@ -360,7 +476,9 @@ class VoizaSocketClient(
         // Server -> client
         const val EVENT_CHAT = "room:chat_message"
         const val EVENT_GIFT = "room:gift_animated"
+        const val EVENT_GIFT_HISTORY = "room:gift_history"
         const val EVENT_LIKED = "room:liked"
+        const val EVENT_REACTION = "room:reaction"
         const val EVENT_SEATS = "room:seat_update"
         const val EVENT_LISTENERS = "room:listener_count"
         const val EVENT_USER_JOINED = "room:user_joined"
@@ -370,6 +488,13 @@ class VoizaSocketClient(
         const val EVENT_HAND_RAISE = "room:hand_raise"
         const val EVENT_THEME_CHANGED = "room:theme_changed"
         const val EVENT_PROFILE_UPDATED = "room:profile_updated"
+        const val EVENT_ANNOUNCEMENT = "room:announcement"
+        const val EVENT_SEAT_INVITED = "room:seat_invited"
+        const val EVENT_SPEAKER_DECISION = "room:speaker_decision"
+        // A request filed and a request decided: two events, one meaning for a client that re-reads
+        // the server's queue instead of keeping its own copy.
+        const val EVENT_SPEAKER_REQUEST = "room:speaker_request"
+        const val EVENT_SPEAKER_REQUEST_UPDATED = "room:speaker_request_updated"
         const val EVENT_KICKED = "room:kicked"
         const val EVENT_WARNING = "room:warning"
         const val EVENT_WALLET = "wallet:update"
@@ -384,5 +509,9 @@ class VoizaSocketClient(
         const val EVENT_EMIT_CHAT = "room:chat"
         const val EVENT_EMIT_RAISE_HAND = "room:raise_hand"
         const val EVENT_EMIT_LIKE = "room:like"
+        // Same wire name in both directions, like `room:chat` and `room:like`: the emit asks for the
+        // reaction and the broadcast reports it, and the server is what decides the art either side
+        // of that pair shows.
+        const val EVENT_EMIT_REACTION = "room:reaction"
     }
 }

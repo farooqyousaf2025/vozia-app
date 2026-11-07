@@ -64,6 +64,14 @@ class StoreViewModel(
 
         /** How many diamonds short a purchase is; zero when it is affordable. */
         fun shortfall(item: StoreItem): Int = (item.priceDiamonds - balance).coerceAtLeast(0)
+
+        /**
+         * Display courtesy only: whether this member's tier is below the row's buy gate. The
+         * server stays authoritative and still answers a below-tier purchase with
+         * `403 vip_required`, so gating here just avoids a doomed request — mirroring the gift sheet.
+         */
+        fun vipLocked(item: StoreItem): Boolean =
+            item.minVipLevel > 0 && (user?.vipLevel ?: 0) < item.minVipLevel
     }
 
     private val _state = MutableStateFlow(StoreUiState())
@@ -136,7 +144,7 @@ class StoreViewModel(
         }
     }
 
-    /** Wear an owned ring or flourish. A theme is worn by a room, so the server refuses it. */
+    /** Wear an owned ring, flourish or arrival ride. A theme is worn by a room, so the server refuses it. */
     fun wear(item: StoreItem) {
         if (!item.wearable || _state.value.busyId != null) return
         viewModelScope.launch {

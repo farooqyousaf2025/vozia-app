@@ -76,7 +76,7 @@ function redact(value) {
   const H = { token: host.token };
   const recharge = await api('POST', '/api/wallet/recharge', {
     token: host.token,
-    body: { amountDiamonds: 5000 },
+    body: { amountDiamonds: 10_000 },
   });
 
   // The capture has to *own* what it wears: a for-sale theme is refused to a host without a live
@@ -97,6 +97,10 @@ function redact(value) {
     body: { kind: 'EFFECT', key: 'welcome-spectrum' },
   });
   await api('POST', '/api/store/purchase', { token: host.token, body: { kind: 'FRAME', key: 'ring-bronze' } });
+  // A worn ride, because the account and the join payload are the only places the app learns what a
+  // member arrives with — and both spell the fields `url`/`format`, which nothing else on the wire does.
+  await api('POST', '/api/store/purchase', { token: host.token, body: { kind: 'RIDE', key: 'ride-confetti' } });
+  await api('POST', '/api/store/equip', { token: host.token, body: { kind: 'RIDE', key: 'ride-confetti' } });
   const storeEquip = await api('POST', '/api/store/equip', {
     token: host.token,
     body: { kind: 'FRAME', key: 'ring-bronze' },
@@ -190,6 +194,16 @@ function redact(value) {
     token: host.token,
     body: { roomId, receiverId: listener.user.id, giftId, quantity: 1 },
   });
+  // A lucky box, so `room:gift_animated` carries a real `lucky` object instead of only the null a
+  // flat gift writes: the prize list, its odds, the tax and the share are shapes nothing else on the
+  // wire produces, and the overlay reads every one of them.
+  const boxGift = gifts.find((g) => g.isLuckyBox);
+  const toBox = boxGift
+    ? await api('POST', '/api/gifts/send', {
+        token: host.token,
+        body: { roomId, receiverId: seated.user.id, giftId: boxGift.id, quantity: 3 },
+      })
+    : null;
 
   // Seat churn so `room:seat_update` carries both an occupied and an emptied seat.
   await api('POST', `/api/rooms/${roomId}/seat/1/leave`, { token: seated.token, body: {} });
@@ -229,7 +243,7 @@ function redact(value) {
   fs.writeFileSync(path.join(OUT_DIR, 'wire-rest.json'), JSON.stringify(redact(rest), null, 1));
   fs.writeFileSync(path.join(OUT_DIR, 'wire-socket.json'), JSON.stringify(redact(raw), null, 1));
   console.log(`REST: ${Object.entries(rest).filter(([, v]) => v && v.status).map(([k, v]) => `${k}=${v.status}`).join(' ')}`);
-  console.log(`side effects: recharge=${recharge.status} theme-buy=${themePurchase.status} buy=${storePurchase.status} gift->seat=${toSeated.status} gift->audience=${toAudience.status} checkin=${questsCheckIn.status}`);
+  console.log(`side effects: recharge=${recharge.status} theme-buy=${themePurchase.status} buy=${storePurchase.status} gift->seat=${toSeated.status} gift->audience=${toAudience.status} gift->box=${toBox ? toBox.status : 'no box seeded'} checkin=${questsCheckIn.status}`);
   console.log(`socket events captured: ${EVENTS.filter((e) => raw[e] && raw[e].length).map((e) => `${e}×${raw[e].length}`).join(' ') || '(none)'}`);
   console.log(`wrote ${path.join(OUT_DIR, 'wire-rest.json')}`);
   console.log(`wrote ${path.join(OUT_DIR, 'wire-socket.json')}`);

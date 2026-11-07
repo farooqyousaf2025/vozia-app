@@ -92,8 +92,10 @@ on the phone), and the SFU runs from `docker-compose.yml` with `livekit.yaml`.
 * Backend: `express`, `socket.io`, `pg`, `ioredis`, `jsonwebtoken`, `cors`, `helmet`,
   `dotenv`, `livekit-server-sdk`
 * Android: Jetpack Compose / AndroidX, `retrofit2` + `converter-gson`, `okhttp3`,
-  `gson`, `coil-compose`, `lottie-compose`, `socket.io-client`, `livekit-android`,
+  `gson`, `coil-compose` + `coil-gif`, `lottie-compose`, `socket.io-client`, `livekit-android`,
   `security-crypto`, `kotlinx-coroutines`
+  (`coil-gif` is the same Coil group and release as `coil-compose`; it is what lets an animated
+  GIF or WebP move instead of drawing its first frame, and it is Apache-2.0 like the rest of Coil)
 * Admin panel: React, `react-router-dom`, `socket.io-client`, `lottie-web`, built with
   Vite + Tailwind CSS (see `admin-panel/package.json`)
 

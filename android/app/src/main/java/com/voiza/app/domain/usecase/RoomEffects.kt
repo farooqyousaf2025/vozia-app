@@ -40,6 +40,26 @@ object RoomEffects {
     const val HEART_LIFE_MS = 1_000L
     const val HEART_MAX = 30
 
+    /**
+     * Quick reactions. A tap flies the emoji more than once because one small picture crossing the
+     * screen reads as nothing, and a life longer than a heart's because art needs a beat to be
+     * recognised. The floor under consecutive sends exists for the server's sake: `room:reaction`
+     * allows twenty per five seconds, and a client that stays under it never has a tap silently
+     * swallowed by a rate limiter.
+     */
+    const val REACTIONS_PER_TAP = 3
+    const val REACTION_STAGGER_MS = 110L
+    const val REACTION_LIFE_MS = 1_400L
+    const val REACTION_MAX = 24
+    const val REACTION_TAP_MS = 300L
+
+    /**
+     * Emoji the strip offers, taken from the front of the picker list. That order is the operator's
+     * — `GET /api/emoji` returns `emoji_characters` in the sequence they set — so the room's most
+     * prominent reactions are theirs to choose, and a panel with one row simply shows one button.
+     */
+    const val REACTION_STRIP_MAX = 6
+
     /** How long a welcome banner holds before it slides away. */
     const val ENTRY_BANNER_MS = 4_000L
 
@@ -55,26 +75,58 @@ object RoomEffects {
      * yours is dropped to make room. If every waiting entry is yours and this is
      * somebody else's gift, the incoming one is dropped instead of pushing our own
      * purchase out of the line.
+     *
+     * `displayPriority` is the catalogue's say-so over that: an operator who priced a whale
+     * animation above a rose means it, so a quieter gift is displaced before a louder one, and a
+     * gift quieter than the whole waiting line never displaces our own.
      */
     fun enqueueTakeover(
         current: List<GiftAnimatedEvent>,
         incoming: GiftAnimatedEvent,
         myUserId: String?,
     ): List<GiftAnimatedEvent> {
+        if (isDuplicateInList(current, incoming)) return current
         if (current.size < TAKEOVER_MAX) return current + incoming
-        val waiting = current.indexOfFirst { it.sender.id != myUserId }
-        if (waiting < 0 && incoming.sender.id != myUserId) return current
-        // Nothing of ours is waiting, so the oldest slot goes; otherwise the first
-        // gift that is not ours does, keeping our own purchases in line.
+        val victim = current.minWith(
+            compareBy({ it.gift.displayPriority }, { if (it.sender.id == myUserId) 1 else 0 })
+        )
+        if (victim.sender.id == myUserId && incoming.sender.id != myUserId &&
+            victim.gift.displayPriority >= incoming.gift.displayPriority
+        ) {
+            return current
+        }
+        // Removed by identity: two events for the same gift from the same sender can be
+        // structurally equal, and the wrong one leaving the line would change what plays.
         val next = current.toMutableList()
-        next.removeAt(if (waiting < 0) 0 else waiting)
-        next.add(incoming)
-        return next
+        next.removeAt(current.indexOfFirst { it === victim })
+        return next + incoming
     }
 
     /** Add a ticker row; the column always shows the most recent [TICKER_MAX]. */
-    fun appendTicker(current: List<GiftAnimatedEvent>, incoming: GiftAnimatedEvent): List<GiftAnimatedEvent> =
-        (current + incoming).takeLast(TICKER_MAX)
+    fun appendTicker(
+        current: List<GiftAnimatedEvent>,
+        incoming: GiftAnimatedEvent,
+    ): List<GiftAnimatedEvent> {
+        if (isDuplicateInList(current, incoming)) return current
+        return (current + incoming).takeLast(TICKER_MAX)
+    }
+
+    /**
+     * Whether this gift is already on the screen the caller is about to update.
+     *
+     * The id is the only key both delivery paths carry: a gift sent while the socket was down
+     * arrives on `room:gift_history` with the same id the live `room:gift_animated` used, and a
+     * gift sent exactly as the join happened can arrive on both. An event with no id — from a
+     * backend predating the gift engine — cannot be recognised, and repeating an animation is the
+     * lesser fault than losing one.
+     */
+    private fun isDuplicateInList(
+        current: List<GiftAnimatedEvent>,
+        incoming: GiftAnimatedEvent,
+    ): Boolean {
+        val key = incoming.eventId ?: return false
+        return current.any { it.eventId == key }
+    }
 
     /**
      * Append a chat line unless that exact message is already on screen.

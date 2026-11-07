@@ -6,6 +6,7 @@ import { env, assertSecretsAreSafe } from './config/env';
 import { bootstrapAdmin } from './controllers/auth.controller';
 import { setGameBroadcaster, sweepExpiredSessions } from './services/game.service';
 import { expireStaleOrders } from './services/seller-recharge.service';
+import { pruneGiftRequests } from './services/ledger.service';
 import { expireInvites, settleDueBattles, setPkBroadcaster } from './services/pk.service';
 import { emitToRoom, emitToUser, initSocket } from './services/socket.service';
 import { loadRankRegistry } from './services/rank.service';
@@ -64,6 +65,13 @@ async function main(): Promise<void> {
         if (result.expired) console.info(`[voiza] expired ${result.expired} stale recharge order(s)`);
       })
       .catch((err) => console.warn('[voiza] recharge sweep failed:', err.message));
+    // Retry keys older than any client could still be holding a request for. The gift they name
+    // stays in the ledger; only the dedupe record goes.
+    pruneGiftRequests()
+      .then((pruned) => {
+        if (pruned) console.info(`[voiza] pruned ${pruned} expired gift idempotency key(s)`);
+      })
+      .catch((err) => console.warn('[voiza] gift key sweep failed:', err.message));
   }, 60_000);
   rechargeSweeper.unref();
 

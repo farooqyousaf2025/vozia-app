@@ -34,6 +34,7 @@ import com.voiza.app.ui.components.Avatar
 import com.voiza.app.ui.components.asAssetUrl
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.OnDarkHigh
+import com.voiza.app.ui.screens.room.gifts.GiftComboBadge
 import kotlinx.coroutines.delay
 
 /**
@@ -117,5 +118,8 @@ private fun TickerRow(event: GiftAnimatedEvent) {
             fontSize = 10.sp,
             fontWeight = FontWeight.Black,
         )
+        // The server's running count for this send's window, when it has one. A row that a
+        // reconnect replayed carries no combo — that window closed before this device arrived.
+        GiftComboBadge(event, compact = true)
     }
 }

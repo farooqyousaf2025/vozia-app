@@ -5,27 +5,36 @@ import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.data.remote.VoizaApiService
 import com.voiza.app.data.remote.apiCall
 import com.voiza.app.data.remote.dto.SendGiftBody
-import com.voiza.app.domain.model.Gift
+import com.voiza.app.domain.model.GiftCatalogue
 import com.voiza.app.domain.model.Leaderboard
 import com.voiza.app.domain.model.RankBoard
-import com.voiza.app.domain.model.Transaction
+import com.voiza.app.domain.model.SendGiftOutcome
 import com.voiza.app.domain.repository.GiftRepository
 
 class GiftRepositoryImpl(
     private val api: VoizaApiService,
 ) : GiftRepository {
 
-    override suspend fun getGifts(): ApiResult<List<Gift>> =
-        apiCall { api.gifts() }.mapSuccess { resp -> resp.gifts.map { it.toDomain() } }
+    override suspend fun getGifts(): ApiResult<GiftCatalogue> =
+        apiCall { api.gifts() }.mapSuccess { resp -> resp.toDomain() }
 
     override suspend fun sendGift(
         roomId: String,
         receiverId: String,
         giftId: String,
         quantity: Int,
-    ): ApiResult<Transaction> =
-        apiCall { api.sendGift(SendGiftBody(roomId, receiverId, giftId, quantity)) }
-            .mapSuccess { it.transaction.toDomain() }
+        idempotencyKey: String?,
+    ): ApiResult<SendGiftOutcome> =
+        apiCall { api.sendGift(SendGiftBody(roomId, receiverId, giftId, quantity, idempotencyKey)) }
+            .mapSuccess { resp ->
+                SendGiftOutcome(
+                    transaction = resp.transaction.toDomain(),
+                    // An absent key is an older backend, which by definition did not replay anything.
+                    replayed = resp.replayed == true,
+                    comboId = resp.combo?.comboId,
+                    comboCount = resp.combo?.count ?: 1,
+                )
+            }
 
     override suspend fun getLeaderboard(window: String, board: RankBoard): ApiResult<Leaderboard> =
         apiCall { api.leaderboard(window, board.name.lowercase(), RANK_LIMIT) }

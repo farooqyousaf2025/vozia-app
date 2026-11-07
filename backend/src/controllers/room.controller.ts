@@ -19,7 +19,6 @@ import {
   setRoomTheme,
   setSeatLock,
   setSeatMute,
-  takeSeat,
   updateRoom,
   vacateSeat,
   type RoomSort,
@@ -32,6 +31,20 @@ import {
   emitToUser,
 } from '../services/socket.service';
 import { themeCatalogue, themeSlugs } from '../services/theme.service';
+import {
+  addFavorite,
+  approveSpeakerRequest,
+  cancelSpeakerRequest,
+  favoriteState,
+  inviteToSeat,
+  listFavoriteRooms,
+  listSpeakerRequests,
+  rejectSpeakerRequest,
+  removeFavorite,
+  setAnnouncement,
+  takeSeatOrRequest,
+  transferRoomOwnership,
+} from '../services/room-community.service';
 import {
   ApiError,
   asyncHandler,
@@ -152,6 +165,11 @@ export const update = asyncHandler(async (req: Request, res: Response) => {
     language: text('language', 16),
     region: text('region', 2),
     rules: text('rules', RULES_MAX_LENGTH),
+    announcement: body.announcement === undefined ? undefined : text('announcement', 300),
+    speakerApprovalRequired:
+      body.speakerApprovalRequired === undefined
+        ? undefined
+        : requireBoolean(body.speakerApprovalRequired, 'speakerApprovalRequired'),
   });
   // Members already inside see the new title and rule line without leaving and rejoining.
   emitToRoom(roomId(req), 'room:profile_updated', {
@@ -162,7 +180,24 @@ export const update = asyncHandler(async (req: Request, res: Response) => {
     language: room.room.language,
     region: room.room.region,
     rules: room.room.rules,
+    announcement: room.room.announcement,
+    announcementUpdatedAt: room.room.announcementUpdatedAt,
+    speakerApprovalRequired: room.room.speakerApprovalRequired,
   });
+  // A pinned notice gets its own event: the chat header can repaint it without re-reading the room.
+  if (body.announcement !== undefined) {
+    emitToRoom(roomId(req), 'room:announcement', {
+      roomId: roomId(req),
+      announcement: room.room.announcement,
+      updatedAt: room.room.announcementUpdatedAt,
+    });
+  }
+  if (body.speakerApprovalRequired !== undefined) {
+    emitToRoom(roomId(req), 'room:speaker_approval', {
+      roomId: roomId(req),
+      required: room.room.speakerApprovalRequired,
+    });
+  }
   res.json({ room: room.room });
 });
 
@@ -210,12 +245,19 @@ export const leave = asyncHandler(async (req: Request, res: Response) => {
 export const seatTake = asyncHandler(async (req: Request, res: Response) => {
   const id = roomId(req);
   const index = requireInt(req.body?.seatIndex, 'seatIndex', { min: 0, max: await maxSeatIndex() });
-  const { seats } = await takeSeat(req.user!.sub, id, index);
+  const outcome = await takeSeatOrRequest(req.user!.sub, id, index);
+  // Approval-enabled rooms answer with 202 and a queued request instead of a seat. The host is
+  // notified privately; the member's client shows "waiting for the host" without a token.
+  if (outcome.kind === 'requested') {
+    emitToUser(outcome.hostId, 'room:speaker_request', { roomId: id, request: outcome.request });
+    res.status(202).json({ requested: true, request: outcome.request });
+    return;
+  }
   // The new speaker needs a publisher token; issue it inline so the client never
   // has to guess whether it may open its microphone.
   const livekit = await getLivekitAccess(req.user!.sub, id);
   await broadcastSeatUpdate(id);
-  res.json({ seats, livekit });
+  res.json({ seats: outcome.seats, livekit });
 });
 
 export const seatLeave = asyncHandler(async (req: Request, res: Response) => {
@@ -286,4 +328,124 @@ export const setTheme = asyncHandler(async (req: Request, res: Response) => {
 export const livekitToken = asyncHandler(async (req: Request, res: Response) => {
   const access = await getLivekitAccess(req.user!.sub, roomId(req));
   res.json(access);
+});
+
+// ---------------------------------------------------------------------------
+// Favourites. A bookmark is per member, so every route here is authenticated; the
+// room itself stays public and its payload does not carry one caller's opinion of it.
+// ---------------------------------------------------------------------------
+
+export const favorites = asyncHandler(async (req: Request, res: Response) => {
+  const limit = optionalInt(req.query.limit, 'limit', { min: 1, max: 100 }) ?? 30;
+  const offset = optionalInt(req.query.offset, 'offset', { min: 0 }) ?? 0;
+  res.json({ rooms: await listFavoriteRooms(req.user!.sub, limit, offset) });
+});
+
+export const favoriteShow = asyncHandler(async (req: Request, res: Response) => {
+  res.json(await favoriteState(req.user!.sub, roomId(req)));
+});
+
+export const favoriteAdd = asyncHandler(async (req: Request, res: Response) => {
+  res.json(await addFavorite(req.user!.sub, roomId(req)));
+});
+
+export const favoriteRemove = asyncHandler(async (req: Request, res: Response) => {
+  res.json(await removeFavorite(req.user!.sub, roomId(req)));
+});
+
+// ---------------------------------------------------------------------------
+// Pinned notice. PATCH /rooms/:id can also write it; this route exists so a phone
+// does not have to resend the whole profile to change one line.
+// ---------------------------------------------------------------------------
+
+export const announcement = asyncHandler(async (req: Request, res: Response) => {
+  const id = roomId(req);
+  const room = await setAnnouncement(id, req.user!.sub, req.body?.announcement);
+  emitToRoom(id, 'room:announcement', {
+    roomId: id,
+    announcement: room.announcement,
+    updatedAt: room.announcementUpdatedAt,
+  });
+  res.json({ room });
+});
+
+// ---------------------------------------------------------------------------
+// Speaker approval queue. The host works through it; a member may only cancel their
+// own request. An approved request also mints the publisher token the member needs,
+// which is why the approval response carries `livekit` in the private notification
+// rather than waiting for the phone to ask again.
+// ---------------------------------------------------------------------------
+
+export const speakerRequests = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ requests: await listSpeakerRequests(roomId(req), req.user!.sub) });
+});
+
+export const speakerRequestCancel = asyncHandler(async (req: Request, res: Response) => {
+  const id = roomId(req);
+  const { cancelled } = await cancelSpeakerRequest(req.user!.sub, id);
+  res.json({ ok: true, cancelled });
+});
+
+export const speakerRequestApprove = asyncHandler(async (req: Request, res: Response) => {
+  const id = roomId(req);
+  const requestId = requireString(req.params.requestId, 'requestId', { min: 36, max: 36 });
+  const result = await approveSpeakerRequest(id, req.user!.sub, requestId);
+  const livekit = await getLivekitAccess(result.userId, id);
+  emitToUser(result.userId, 'room:speaker_decision', {
+    roomId: id,
+    status: 'APPROVED',
+    request: result.request,
+    seatIndex: result.seatIndex,
+    livekit,
+  });
+  emitToRoom(id, 'room:speaker_request_updated', { roomId: id, request: result.request });
+  await broadcastSeatUpdate(id);
+  res.json({ request: result.request, seats: result.seats });
+});
+
+export const speakerRequestReject = asyncHandler(async (req: Request, res: Response) => {
+  const id = roomId(req);
+  const requestId = requireString(req.params.requestId, 'requestId', { min: 36, max: 36 });
+  const result = await rejectSpeakerRequest(id, req.user!.sub, requestId);
+  emitToUser(result.userId, 'room:speaker_decision', {
+    roomId: id,
+    status: 'REJECTED',
+    request: result.request,
+  });
+  emitToRoom(id, 'room:speaker_request_updated', { roomId: id, request: result.request });
+  res.json({ request: result.request });
+});
+
+export const seatInvite = asyncHandler(async (req: Request, res: Response) => {
+  const id = roomId(req);
+  const index = await seatIndex(req);
+  const userId = requireString(req.body?.userId, 'userId', { min: 36, max: 36 });
+  const result = await inviteToSeat(id, req.user!.sub, index, userId);
+  const livekit = await getLivekitAccess(result.userId, id);
+  emitToUser(result.userId, 'room:seat_invited', {
+    roomId: id,
+    seatIndex: result.seatIndex,
+    livekit,
+  });
+  await broadcastSeatUpdate(id);
+  res.json({ seats: result.seats });
+});
+
+// ---------------------------------------------------------------------------
+// Ownership transfer. The room row is locked in the service, so a second transfer
+// racing this one fails instead of producing two hosts.
+// ---------------------------------------------------------------------------
+
+export const transfer = asyncHandler(async (req: Request, res: Response) => {
+  const id = roomId(req);
+  const userId = requireString(req.body?.userId, 'userId', { min: 36, max: 36 });
+  const result = await transferRoomOwnership(id, req.user!.sub, userId, req.body?.note);
+  await broadcastSeatUpdate(id);
+  emitToRoom(id, 'room:ownership_transferred', {
+    roomId: id,
+    previousHostId: result.previousHostId,
+    host: result.host,
+    room: result.room,
+  });
+  res.json(result);
 });

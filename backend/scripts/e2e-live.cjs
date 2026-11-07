@@ -72,6 +72,26 @@ async function sql(q) {
   return res.rows.map((row) => Object.values(row).join('|')).join('\n').trim();
 }
 
+/**
+ * Two values that came from the same object, compared without caring about key order.
+ *
+ * A `lucky` roll travels twice: once straight out of the draw into a response, and once through a
+ * `jsonb` column and back. PostgreSQL stores object keys sorted by length and then alphabetically,
+ * so `JSON.stringify` of the two never matches even when every number does — and the byte order of a
+ * receipt is exactly the thing a test must not assert.
+ */
+function sameJson(a, b) {
+  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+}
+
+function canonical(value) {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]));
+  }
+  return value;
+}
+
 async function api(method, p, { token, body } = {}) {
   const started = Date.now();
   trace('->', method, p);
@@ -435,7 +455,7 @@ function loadLivekitService() {
 
   const vipGift = await api('POST', '/api/admin/gifts', {
     token: adminToken,
-    body: { name: `E2E Crown ${stamp}`, iconUrl: '/assets/gifts/rose.png', diamondPrice: 50, rCoinValue: 40, category: 'E2E', minVipLevel: 5, sortOrder: 900 },
+    body: { name: `E2E Crown ${stamp}`, iconUrl: '/assets/gifts/rose.png', diamondPrice: 50, rCoinValue: 40, category: 'SPECIAL', minVipLevel: 5, sortOrder: 900 },
   });
   const vipGiftId = vipGift.json && vipGift.json.gift && vipGift.json.gift.id;
   check('admin: a gift can be created with a VIP tier', vipGift.status === 201 && !!vipGiftId && vipGift.json.gift.minVipLevel === 5, { status: vipGift.status, body: vipGift.json });
@@ -466,6 +486,116 @@ function loadLivekitService() {
   await api('DELETE', `/api/admin/gifts/${vipGiftId}`, { token: adminToken });
   check('admin: the throwaway VIP gift is removed again', await sql(`select count(*) from gifts where id='${vipGiftId}'`) === '0');
 
+  // ---- H. gift categories --------------------------------------------------
+  // Migration 0025 made the gift panel's tabs a table the operator owns, and a foreign key. The two
+  // contracts worth a check each: a gift cannot be filed under a shelf nobody added (and the refusal
+  // names the word rather than a constraint), and a shelf cannot vanish while gifts sit in it —
+  // because "the category is in use" tells an operator nothing they can act on.
+  const catKey = `E2E_CAT${stamp.slice(-4)}`;
+  const unknownCat = await api('POST', '/api/admin/gifts', {
+    token: adminToken, body: { name: `E2E Uncategorised ${stamp}`, iconUrl: '/assets/gifts/rose.png', diamondPrice: 5, category: catKey },
+  });
+  check('categories: a gift cannot be filed under a shelf the operator has not added',
+    unknownCat.status === 400 && unknownCat.json.error.code === 'gift_category_unknown' &&
+    unknownCat.json.error.message.includes(catKey),
+    { status: unknownCat.status, error: unknownCat.json && unknownCat.json.error });
+
+  const madeCategory = await api('POST', '/api/admin/gift-categories', {
+    token: adminToken, body: { key: catKey.toLowerCase(), name: 'E2E shelf', sortOrder: 900 },
+  });
+  check('categories: the key is upper-cased on the way in, because every gift row stores it',
+    madeCategory.status === 201 && madeCategory.json.category.key === catKey && madeCategory.json.category.gifts === 0,
+    { status: madeCategory.status, category: madeCategory.json && madeCategory.json.category });
+  const dupCategory = await api('POST', '/api/admin/gift-categories', { token: adminToken, body: { key: catKey, name: 'Second', sortOrder: 901 } });
+  check('categories: a second shelf with the same key is a conflict, not a silent rename',
+    dupCategory.status === 409 && dupCategory.json.error.code === 'category_exists', { status: dupCategory.status });
+  const badKey = await api('POST', '/api/admin/gift-categories', { token: adminToken, body: { key: 'not a key!', name: 'Bad', sortOrder: 1 } });
+  check('categories: a key that could not be stored on a gift row is refused',
+    badKey.status === 400 && badKey.json.error.code === 'category_key_invalid', { status: badKey.status });
+
+  const catGift = await api('POST', '/api/admin/gifts', {
+    token: adminToken, body: { name: `E2E Shelved ${stamp}`, iconUrl: '/assets/gifts/rose.png', diamondPrice: 5, rCoinValue: 4, category: catKey, sortOrder: 902 },
+  });
+  const catGiftId = catGift.json && catGift.json.gift && catGift.json.gift.id;
+  check('categories: once the shelf exists a gift can be filed under it',
+    catGift.status === 201 && catGift.json.gift.category === catKey, { status: catGift.status });
+
+  const renamed = await api('PUT', `/api/admin/gift-categories/${catKey}`, { token: adminToken, body: { name: 'E2E renamed' } });
+  check('categories: renaming a shelf edits its label and counts what sits on it',
+    renamed.status === 200 && renamed.json.category.name === 'E2E renamed' && renamed.json.category.gifts === 1,
+    { status: renamed.status, category: renamed.json && renamed.json.category });
+  const rekeyed = await api('PUT', `/api/admin/gift-categories/${catKey}`, { token: adminToken, body: { key: 'E2E_OTHER' } });
+  check('categories: a shelf key is an identity and cannot be swapped in place',
+    rekeyed.status === 400 && rekeyed.json.error.code === 'category_key_immutable', { status: rekeyed.status });
+  const badMove = await api('PUT', `/api/admin/gifts/${catGiftId}`, { token: adminToken, body: { category: 'E2E_NO_SHELF' } });
+  check('categories: moving a gift onto a shelf that does not exist is refused the same way',
+    badMove.status === 400 && badMove.json.error.code === 'gift_category_unknown' &&
+    await sql(`select category from gifts where id='${catGiftId}'`) === catKey,
+    { status: badMove.status });
+
+  const busyDelete = await api('DELETE', `/api/admin/gift-categories/${catKey}`, { token: adminToken });
+  check('categories: a shelf with gifts on it is not deleted, and the refusal names them',
+    busyDelete.status === 409 && busyDelete.json.error.code === 'category_in_use' &&
+    busyDelete.json.error.message.includes(`E2E Shelved ${stamp}`) &&
+    await sql(`select count(*) from gift_categories where key='${catKey}'`) === '1',
+    { status: busyDelete.status, msg: busyDelete.json && busyDelete.json.error && busyDelete.json.error.message });
+
+  // The tabs are the operator's list, in the operator's order, with the operator's words — not
+  // distinct strings a device scraped off whatever gifts happened to be loaded.
+  const servedCats = await api('GET', '/api/gifts', {});
+  const shippedCats = (servedCats.json && servedCats.json.categories) || [];
+  const orders = shippedCats.map((c) => c.sortOrder);
+  check('categories: the public catalogue ships the shelves beside the gifts',
+    servedCats.status === 200 && shippedCats.length >= 4 &&
+    shippedCats.some((c) => c.key === catKey && c.name === 'E2E renamed') &&
+    shippedCats.every((c) => typeof c.key === 'string' && typeof c.name === 'string' && typeof c.sortOrder === 'number'),
+    { rows: shippedCats.length, first: shippedCats[0] });
+  check('categories: the shipped list arrives in the order the operator set',
+    orders.every((o, i) => i === 0 || orders[i - 1] <= o), orders);
+
+  const movedBack = await api('PUT', `/api/admin/gifts/${catGiftId}`, { token: adminToken, body: { category: 'SPECIAL' } });
+  const emptiedDelete = await api('DELETE', `/api/admin/gift-categories/${catKey}`, { token: adminToken });
+  check('categories: an emptied shelf deletes, and the run leaves the list as it found it',
+    movedBack.status === 200 && emptiedDelete.status === 200 &&
+    await sql(`select count(*) from gift_categories where key like 'E2E_CAT%'`) === '0',
+    { move: movedBack.status, del: emptiedDelete.status });
+  await api('DELETE', `/api/admin/gifts/${catGiftId}`, { token: adminToken });
+
+  // ---- H. gift analytics ---------------------------------------------------
+  // The catalogue says what a Rose costs; only the ledger says whether anybody sent one. The check
+  // that matters is that the totals come from the transactions table itself — a per-gift page capped
+  // at 100 rows, or a roll-up of that page, would quietly under-report a busy platform.
+  const analytics = await api('GET', '/api/admin/gifts/analytics?days=30', { token: adminToken });
+  const byGift = (analytics.json && analytics.json.gifts) || [];
+  const ledgerDiamonds = Number(await sql(`select coalesce(sum(amount_diamonds),0) from transactions where type='GIFT_SENT' and status='COMPLETED' and created_at >= now() - interval '30 days'`));
+  check('analytics: the console can rank every gift by what it earned over a window',
+    analytics.status === 200 && byGift.length > 0 &&
+    byGift.every((r) => typeof r.giftId === 'string' && typeof r.sends === 'number' && typeof r.gifts === 'number' && typeof r.diamonds === 'number' && typeof r.rCoins === 'number' && typeof r.senders === 'number') &&
+    byGift[0].diamonds >= byGift[byGift.length - 1].diamonds,
+    { status: analytics.status, rows: byGift.length, top: byGift[0] });
+  check('analytics: the totals are the ledger summed, not the page added up',
+    analytics.json.totals.diamonds === ledgerDiamonds,
+    { api: analytics.json.totals && analytics.json.totals.diamonds, db: ledgerDiamonds });
+  check('analytics: average gift value is diamonds per gift, to the hundredth',
+    analytics.json.totals.gifts > 0 &&
+    Math.abs(analytics.json.totals.averageDiamondPerGift - Math.round((analytics.json.totals.diamonds / analytics.json.totals.gifts) * 100) / 100) < 0.01,
+    analytics.json.totals);
+  check('analytics: a gift retired from the catalogue is counted but unattributed',
+    Number(await sql(`select count(*) from transactions where type='GIFT_SENT' and gift_id is null and status='COMPLETED'`)) >= 1 &&
+    analytics.json.totals.unattributedDiamonds > 0 &&
+    analytics.json.totals.diamonds >= analytics.json.totals.unattributedDiamonds,
+    { unattributed: analytics.json.totals.unattributedDiamonds, total: analytics.json.totals.diamonds });
+  const oneDay = await api('GET', '/api/admin/gifts/analytics?days=1', { token: adminToken });
+  check('analytics: a shorter window never reports more than a longer one',
+    oneDay.status === 200 && oneDay.json.days === 1 && oneDay.json.totals.diamonds <= analytics.json.totals.diamonds,
+    { day: oneDay.json.totals.diamonds, month: analytics.json.totals.diamonds });
+  const clamped = await api('GET', '/api/admin/gifts/analytics?days=9999', { token: adminToken });
+  check('analytics: a window the ledger is not indexed for is refused, not silently truncated',
+    clamped.status === 400, { status: clamped.status });
+  const memberAnalytics = await api('GET', '/api/admin/gifts/analytics', { token: a.token });
+  check('analytics: per-gift revenue is an operator view, not a member route',
+    memberAnalytics.status === 401 || memberAnalytics.status === 403, { status: memberAnalytics.status });
+
   // ---- H1b. uploaded media -------------------------------------------------
   // "Add and remove gifts from the admin panel" needs somewhere for the art to come
   // from. These drive the real upload path: bytes in, file on disk, row in the
@@ -476,6 +606,16 @@ function loadLivekitService() {
     'base64',
   );
   const LOTTIE = Buffer.from(JSON.stringify({ v: '5.7.4', fr: 30, ip: 0, op: 10, w: 100, h: 100, layers: [{ ty: 4 }] }));
+  // A real ISO base-media header: a 24-byte `ftyp` box naming video brands, then anything. The
+  // sniffer reads the box and stops, which is exactly why the bytes below pass as video and a
+  // renamed PNG does not.
+  const MP4_MINI = Buffer.concat([
+    Buffer.from([0, 0, 0, 24]),
+    Buffer.from('ftypisom', 'ascii'),
+    Buffer.from([0, 0, 0, 0]),
+    Buffer.from('isommp42', 'ascii'),
+    Buffer.from('e2e-not-a-real-track'),
+  ]);
   const b64 = (buf) => buf.toString('base64');
   const upload = (body) => api('POST', '/api/admin/uploads', { token: adminToken, body });
 
@@ -524,7 +664,7 @@ function loadLivekitService() {
 
   const usedGift = await api('POST', '/api/admin/gifts', {
     token: adminToken,
-    body: { name: `E2E Uploaded ${stamp}`, iconUrl, diamondPrice: 7, rCoinValue: 5, category: 'E2E', minVipLevel: 0, sortOrder: 901, animationUrl: scene.json.asset.url },
+    body: { name: `E2E Uploaded ${stamp}`, iconUrl, diamondPrice: 7, rCoinValue: 5, category: 'SPECIAL', minVipLevel: 0, sortOrder: 901, animationUrl: scene.json.asset.url },
   });
   const usedGiftId = usedGift.json && usedGift.json.gift && usedGift.json.gift.id;
   check('upload: a catalogue row can point at uploaded art', usedGift.status === 201 && usedGift.json.gift.iconUrl === iconUrl, { status: usedGift.status });
@@ -955,10 +1095,16 @@ function loadLivekitService() {
   const shelf = (shop.json && shop.json.items) || [];
   const itemOn = (kind, key) => shelf.find((i) => i.kind === kind && i.key === key);
   const bronze = itemOn('FRAME', 'ring-bronze');
-  check('store: one shop lists all three catalogues at the prices an operator set',
-    shop.status === 200 && shelf.length >= 16 && !!itemOn('THEME', 'nebula') && !!itemOn('EFFECT', 'welcome-confetti') &&
+  const seededRide = itemOn('RIDE', 'ride-confetti');
+  check('store: one shop lists all four catalogues at the prices an operator set',
+    shop.status === 200 && shelf.length >= 19 && !!itemOn('THEME', 'nebula') && !!itemOn('EFFECT', 'welcome-confetti') &&
     !!bronze && bronze.priceDiamonds === 300 && bronze.owned === false && bronze.equipped === false,
     { status: shop.status, rows: shelf.length, kinds: shelf.reduce((acc, i) => ({ ...acc, [i.kind]: (acc[i.kind] || 0) + 1 }), {}) });
+  check('store: a ride names the renderer a device opens it with, never a thing to guess from a name',
+    !!seededRide && seededRide.animationFormat === 'LOTTIE' && seededRide.durationMs === 4000 &&
+    seededRide.priceDiamonds === 2500 && seededRide.periodDays === 30 &&
+    !shelf.some((i) => i.kind === 'FRAME' && i.animationFormat !== undefined),
+    { ride: seededRide });
   const ringArt = bronze ? await fetch(`${API}${bronze.art}`) : null;
   check('store: the ring the shop names is art the server really serves',
     !!ringArt && ringArt.status === 200 && (ringArt.headers.get('content-type') || '').includes('image'),
@@ -1097,6 +1243,61 @@ function loadLivekitService() {
     effectBuy.status === 201 && effectEquip.status === 200 && meEffect.entryEffect === effectUrl,
     { status: effectBuy.status, entryEffect: meEffect.entryEffect, url: effectUrl });
 
+  // Entrance rides (migration 0026) are bought and equipped here rather than in the ride block
+  // below, because the point of a ride is that *other* members see it — and the only proof of that
+  // is the join banner the sockets two paragraphs down receive.
+  const e2eRide = `e2e-ride-${stamp}`;
+  const rideArtUrl = '/effects/room-hearts.json';
+  // Uploads dedupe on (sha256, kind) and answer 200 with the existing row, so reusing the shared
+  // fixtures byte-for-byte would make these checks depend on whether a previous run cleaned up.
+  // A Lottie tolerates an extra key and an mp4 tolerates trailing padding, so each run gets its own
+  // bytes and always sees the insert path.
+  const rideLottieBytes = Buffer.from(JSON.stringify({ ...JSON.parse(LOTTIE.toString('utf8')), _e2e: stamp }));
+  const rideMp4Bytes = Buffer.concat([MP4_MINI, Buffer.from(` e2e-${stamp}`, 'ascii')]);
+  const badRideFormat = await api('POST', '/api/admin/rides', {
+    token: adminToken, body: { key: `${e2eRide}-bad`, name: 'E2E Bad', url: rideArtUrl, format: 'GIF' },
+  });
+  check('ride: a container no renderer opens is refused, not stored',
+    badRideFormat.status === 400 && badRideFormat.json.error.code === 'ride_format_invalid',
+    { status: badRideFormat.status, error: badRideFormat.json && badRideFormat.json.error });
+
+  const blinkRide = await api('POST', '/api/admin/rides', {
+    token: adminToken, body: { key: `${e2eRide}-blink`, name: 'E2E Blink', url: rideArtUrl, format: 'LOTTIE', durationMs: 100 },
+  });
+  check('ride: a cinematic shorter than a blink is refused with the range stated',
+    blinkRide.status === 400 && blinkRide.json.error.code === 'ride_duration_invalid',
+    { status: blinkRide.status, error: blinkRide.json && blinkRide.json.error });
+
+  const madeRide = await api('POST', '/api/admin/rides', {
+    token: adminToken,
+    body: {
+      key: e2eRide, name: 'E2E Ride', url: rideArtUrl, format: 'LOTTIE', durationMs: 4000,
+      sortOrder: 998, priceDiamonds: 200, forSale: true, periodDays: 7,
+    },
+  });
+  check('ride: an operator can add an entrance ride with art, a container and a screen budget',
+    madeRide.status === 201 && madeRide.json.ride.animationFormat === undefined &&
+    madeRide.json.ride.format === 'LOTTIE' && madeRide.json.ride.durationMs === 4000 &&
+    madeRide.json.ride.priceDiamonds === 200 && madeRide.json.ride.holders === 0,
+    { status: madeRide.status, ride: madeRide.json && madeRide.json.ride });
+
+  await api('POST', '/api/wallet/recharge', { token: shopUser.token, body: { amountDiamonds: 300 } });
+  const rideBuy = await api('POST', '/api/store/purchase', { token: shopUser.token, body: { kind: 'RIDE', key: e2eRide } });
+  check('ride: a ride is paid for through the same ledger primitive as a ring',
+    rideBuy.status === 201 && rideBuy.json.item.owned === true && rideBuy.json.item.animationFormat === 'LOTTIE' &&
+    rideBuy.json.item.durationMs === 4000 &&
+    await sql(`select count(*) from transactions where type='ITEM_PURCHASE' and sender_id='${SHOP}' and meta->>'kind'='RIDE'`) === '1' &&
+    await sql(`select count(*) from user_items where user_id='${SHOP}' and kind='RIDE' and item_key='${e2eRide}'`) === '1',
+    { status: rideBuy.status, item: rideBuy.json && rideBuy.json.item });
+
+  const rideEquip = await api('POST', '/api/store/equip', { token: shopUser.token, body: { kind: 'RIDE', key: e2eRide } });
+  check('ride: equipping writes the ride columns a synchronous seat DTO reads',
+    rideEquip.status === 200 && !!rideEquip.json.user.entryRide &&
+    rideEquip.json.user.entryRide.key === e2eRide && rideEquip.json.user.entryRide.url === rideArtUrl &&
+    rideEquip.json.user.entryRide.format === 'LOTTIE' && rideEquip.json.user.entryRide.durationMs === 4000 &&
+    await sql(`select profile_ride_key from users where id='${SHOP}'`) === e2eRide,
+    { status: rideEquip.status, entryRide: rideEquip.json && rideEquip.json.user && rideEquip.json.user.entryRide });
+
   // The banner is a socket event, not a row: a member buys the flourish so that *other* people see
   // it, which is only true if the join payload carries it. Two throwaway sockets, one observer.
   const delay = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -1109,12 +1310,16 @@ function loadLivekitService() {
       new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} socket never connected`)), 20000)),
     ]);
   };
+  // A socket only subscribes a client the room already accepted, so both of these join over REST
+  // first — which is what the app does, and what keeps a moderator's kick from being undone here.
+  await api('POST', `/api/rooms/${shopRoomId}/join`, { token: watcher.token, body: {} });
   const watchSocket = socketFor(watcher.token);
   watchSocket.on('room:user_joined', (p) => entrances.push(p));
   trace('-> socket watcher connect');
   await connected(watchSocket, 'watcher');
   watchSocket.emit('room:join', { roomId: shopRoomId }, () => {});
   await delay(400);
+  await api('POST', `/api/rooms/${shopRoomId}/join`, { token: shopUser.token, body: {} });
   const wearerSocket = socketFor(shopUser.token);
   trace('-> socket wearer connect');
   await connected(wearerSocket, 'wearer');
@@ -1124,6 +1329,10 @@ function loadLivekitService() {
   check('store: the entry banner another member receives carries the paid flourish and ring',
     !!banner && banner.user.entryEffect === effectUrl && !!banner.user.profileFrame && banner.user.profileFrame.key === 'ring-bronze',
     banner && banner.user);
+  check('ride: the join banner is where a ride is worth buying, so the cinematic rides on it',
+    !!banner && !!banner.user.entryRide && banner.user.entryRide.key === e2eRide &&
+    banner.user.entryRide.url === rideArtUrl && banner.user.entryRide.durationMs === 4000,
+    banner && banner.user.entryRide);
   watchSocket.close();
   wearerSocket.close();
   await delay(300);
@@ -1164,6 +1373,55 @@ function loadLivekitService() {
     madeFrame.status === 201 && madeFrame.json.frame.forSale === true && madeFrame.json.frame.priceDiamonds === 400 && madeFrame.json.frame.holders === 0,
     { status: madeFrame.status, frame: madeFrame.json && madeFrame.json.frame });
 
+  // The rank gate. Same rule the gift ledger applies, for the same reason: the tier is checked
+  // before the balance, so a low-rank member with a full wallet is told which level unlocks the
+  // ring instead of being pushed into a top-up they cannot spend. The gate prices the *counter*,
+  // not the item — the grant two lines below and the equip after it both land on a VIP-0 account,
+  // which is what lets support hand a VIP ring to somebody who never earned the rank.
+  const tiered = await api('PUT', `/api/admin/frames/${e2eFrame}`, {
+    token: adminToken, body: { minVipLevel: 5, recommended: true },
+  });
+  check('store: an operator can put a rank tier and a shelf flag on an item',
+    tiered.status === 200 && tiered.json.frame.minVipLevel === 5 && tiered.json.frame.recommended === true,
+    { status: tiered.status, frame: tiered.json && tiered.json.frame });
+
+  await api('POST', '/api/wallet/recharge', { token: watcher.token, body: { amountDiamonds: 1000 } });
+  const WATCHER = watcher.user.id;
+  const tooLowRank = await api('POST', '/api/store/purchase', { token: watcher.token, body: { kind: 'FRAME', key: e2eFrame } });
+  check('store: a rank-gated item is refused before the wallet is opened, with the tier named',
+    tooLowRank.status === 403 && tooLowRank.json.error.code === 'vip_required' &&
+    tooLowRank.json.error.details.required === 5 && tooLowRank.json.error.details.current === 0 &&
+    tooLowRank.json.error.details.itemName === 'E2E Ring' &&
+    await sql(`select diamond_balance from users where id='${WATCHER}'`) === '1000' &&
+    await sql(`select count(*) from transactions where sender_id='${WATCHER}'`) === '0' &&
+    await sql(`select count(*) from user_items where user_id='${WATCHER}'`) === '0',
+    { status: tooLowRank.status, error: tooLowRank.json && tooLowRank.json.error });
+
+  const watcherShop = await api('GET', '/api/store', { token: watcher.token });
+  const vipShelf = watcherShop.json.items;
+  check('store: the shop carries the tier and puts recommended rows ahead of the grid',
+    vipShelf[0] && vipShelf[0].key === e2eFrame && vipShelf[0].minVipLevel === 5 && vipShelf[0].recommended === true &&
+    vipShelf[1].recommended === false && vipShelf.every((i) => i.minVipLevel !== undefined && i.recommended !== undefined),
+    { first: vipShelf[0], vipRows: vipShelf.filter((i) => i.minVipLevel > 0).map((i) => i.key) });
+
+  await api('POST', `/api/admin/users/${WATCHER}/vip`, { token: adminToken, body: { vipLevel: 5 } });
+  const tieredBuy = await api('POST', '/api/store/purchase', { token: watcher.token, body: { kind: 'FRAME', key: e2eFrame } });
+  check('store: the identical tap succeeds once the member holds the rank',
+    tieredBuy.status === 201 && tieredBuy.json.item.owned === true &&
+    await sql(`select diamond_balance from users where id='${WATCHER}'`) === '600',
+    { status: tieredBuy.status, wallet: tieredBuy.json && tieredBuy.json.wallet });
+
+  const grantedVipRing = await api('POST', `/api/admin/users/${rivalUser.user.id}/grant`, {
+    token: adminToken, body: { kind: 'FRAME', key: e2eFrame },
+  });
+  const equippedVipRing = await api('POST', '/api/store/equip', {
+    token: rivalUser.token, body: { kind: 'FRAME', key: e2eFrame },
+  });
+  check('store: the tier gates buying, not holding — a granted VIP ring still equips on a level-0 account',
+    rivalUser.user.vipLevel === 0 && grantedVipRing.status === 201 && equippedVipRing.status === 200 &&
+    equippedVipRing.json.user.profileFrame.key === e2eFrame,
+    { grant: grantedVipRing.status, equip: equippedVipRing.status });
+
   const grantedE2e = await api('POST', `/api/admin/users/${SHOP}/grant`, { token: adminToken, body: { kind: 'FRAME', key: e2eFrame } });
   const holders = await api('GET', `/api/admin/frames/${e2eFrame}/holders`, { token: adminToken });
   check('store: the console can see who holds a ring and by which door',
@@ -1190,7 +1448,8 @@ function loadLivekitService() {
     body: { key: e2eFrame, name: 'E2E Ring', artUrl: bronze.art, accent: '#123456', sortOrder: 999, priceDiamonds: 400, forSale: true, periodDays: 7 },
   });
   check('store: the key can be added back and the receipt finds its art again',
-    restoredRing.status === 201 && restoredRing.json.frame.holders === 1,
+    // Two holders by now: the VIP-0 grant above and the rank-holding purchase in the gate checks.
+    restoredRing.status === 201 && restoredRing.json.frame.holders >= 2,
     { status: restoredRing.status, frame: restoredRing.json && restoredRing.json.frame });
 
   const decor = await api('GET', '/api/admin/decor', { token: adminToken });
@@ -1206,6 +1465,332 @@ function loadLivekitService() {
   const grantAudit = await sql(`select count(*) from admin_audit where action='ITEM_GRANT' and target_id='${SHOP}'`);
   check('store: every catalogue write and grant is attributable in the audit log',
     Number(storeAudit) >= 4 && Number(grantAudit) >= 2, { frameRows: storeAudit, grants: grantAudit });
+
+  // ---- H1g. entrance rides --------------------------------------------------
+  // A ride is the first cosmetic that takes the screen from the whole room, so beyond the money
+  // path (already proven for the kind above) what is worth testing here is the wearing machinery it
+  // shares: the same equip/unequip door, the same expiry copy on `users`, the same rank gate before
+  // the balance, and a retired row that stops playing without deleting the receipt.
+  const rideUnequip = await api('POST', '/api/store/unequip', { token: shopUser.token, body: { kind: 'RIDE' } });
+  check('ride: taking a ride off clears both worn columns, not just the ring ones',
+    rideUnequip.status === 200 && rideUnequip.json.user.entryRide === null &&
+    await sql(`select coalesce(profile_ride_key,'none')||'/'||coalesce(profile_ride_expires_at::text,'none') from users where id='${SHOP}'`) === 'none/none',
+    { status: rideUnequip.status, entryRide: rideUnequip.json && rideUnequip.json.user && rideUnequip.json.user.entryRide });
+
+  const rideReEquip = await api('POST', '/api/store/equip', { token: shopUser.token, body: { kind: 'RIDE', key: e2eRide } });
+  check('ride: a live receipt can be put back on, so unequipping was a choice and not a loss',
+    rideReEquip.status === 200 && rideReEquip.json.user.entryRide.key === e2eRide,
+    { status: rideReEquip.status });
+
+  const lapsedRideAt = new Date(Date.now() - 86_400_000).toISOString();
+  await sql(`update user_items set expires_at = '${lapsedRideAt}' where user_id='${SHOP}' and kind='RIDE' and item_key='${e2eRide}'`);
+  await sql(`update users set profile_ride_expires_at = '${lapsedRideAt}' where id='${SHOP}'`);
+  const meRideLapsed = (await api('GET', '/api/auth/me', { token: shopUser.token })).json.user;
+  const lapsedRideEquip = await api('POST', '/api/store/equip', { token: shopUser.token, body: { kind: 'RIDE', key: e2eRide } });
+  check('ride: an expired ride stops playing for everybody and cannot be put back on',
+    meRideLapsed.entryRide === null && lapsedRideEquip.status === 403 && lapsedRideEquip.json.error.code === 'item_expired',
+    { entryRide: meRideLapsed.entryRide, status: lapsedRideEquip.status });
+
+  const rideGrant = await api('POST', `/api/admin/users/${WATCHER}/grant`, {
+    token: adminToken, body: { kind: 'RIDE', key: e2eRide, days: null },
+  });
+  check('ride: an operator can hand a ride over without money moving, permanently',
+    rideGrant.status === 201 && rideGrant.json.item.expiresAt === null && rideGrant.json.item.animationFormat === 'LOTTIE' &&
+    await sql(`select count(*) from user_items where user_id='${WATCHER}' and kind='RIDE' and acquired_via='ADMIN_GRANT' and transaction_id is null`) === '1',
+    { status: rideGrant.status, item: rideGrant.json && rideGrant.json.item });
+
+  const rideEquipGranted = await api('POST', '/api/store/equip', { token: watcher.token, body: { kind: 'RIDE', key: e2eRide } });
+  check('ride: a granted ride equips the moment it is handed over, with no purchase behind it',
+    rideEquipGranted.status === 200 && rideEquipGranted.json.user.entryRide.key === e2eRide,
+    { status: rideEquipGranted.status, entryRide: rideEquipGranted.json && rideEquipGranted.json.user && rideEquipGranted.json.user.entryRide });
+
+  const gateRideAt = await api('PUT', `/api/admin/rides/${e2eRide}`, { token: adminToken, body: { minVipLevel: 6 } });
+  const rivalRides = await api('POST', '/api/store/purchase', { token: rivalUser.token, body: { kind: 'RIDE', key: e2eRide } });
+  check('ride: the rank gate runs before the balance here too — a broke account is told the tier',
+    gateRideAt.status === 200 && gateRideAt.json.ride.minVipLevel === 6 &&
+    rivalRides.status === 403 && rivalRides.json.error.code === 'vip_required' &&
+    rivalRides.json.error.details.required === 6 && rivalRides.json.error.details.current === 0,
+    { status: rivalRides.status, error: rivalRides.json && rivalRides.json.error });
+  await api('PUT', `/api/admin/rides/${e2eRide}`, { token: adminToken, body: { minVipLevel: 0, recommended: true } });
+
+  const rideShelf = (await api('GET', '/api/store', { token: shopUser.token })).json.items;
+  check('ride: a flagged ride leads the shop, ahead of the frame the same flag points at',
+    rideShelf[0] && rideShelf[0].kind === 'RIDE' && rideShelf[0].key === e2eRide && rideShelf[0].recommended === true,
+    { first: rideShelf[0] });
+
+  const rideHolders = await api('GET', `/api/admin/rides/${e2eRide}/holders`, { token: adminToken });
+  check('ride: the console can see who holds a ride and by which door',
+    rideHolders.status === 200 &&
+    rideHolders.json.holders.some((h) => h.userId === WATCHER && h.acquiredVia === 'ADMIN_GRANT') &&
+    rideHolders.json.holders.some((h) => h.userId === SHOP && h.acquiredVia === 'PURCHASE'),
+    { status: rideHolders.status, holders: rideHolders.json && rideHolders.json.holders });
+
+  const retiredRide = await api('DELETE', `/api/admin/rides/${e2eRide}`, { token: adminToken });
+  const watcherAfterRetire = (await api('GET', '/api/auth/me', { token: watcher.token })).json.user;
+  check('ride: retiring one keeps every receipt and silences the cinematic it no longer has art for',
+    retiredRide.status === 200 && retiredRide.json.membersStillHolding >= 2 && watcherAfterRetire.entryRide === null &&
+    await sql(`select count(*) from user_items where kind='RIDE' and item_key='${e2eRide}'`) === '2',
+    { status: retiredRide.status, body: retiredRide.json, entryRide: watcherAfterRetire.entryRide });
+
+  const revivedRide = await api('POST', '/api/admin/rides', {
+    token: adminToken,
+    body: { key: e2eRide, name: 'E2E Ride', url: rideArtUrl, format: 'LOTTIE', durationMs: 4000, priceDiamonds: 200, forSale: true, periodDays: 7 },
+  });
+  const watcherAfterRevive = (await api('GET', '/api/auth/me', { token: watcher.token })).json.user;
+  check('ride: adding the key back needs no repair pass — the worn key resolves again at once',
+    revivedRide.status === 201 && revivedRide.json.ride.holders >= 2 &&
+    !!watcherAfterRevive.entryRide && watcherAfterRevive.entryRide.key === e2eRide,
+    { status: revivedRide.status, entryRide: watcherAfterRevive.entryRide });
+
+  const rideLottie = await upload({ kind: 'RIDE', fileName: 'e2e-ride.json', data: b64(rideLottieBytes) });
+  check('ride: a Lottie scene is accepted as ride art',
+    rideLottie.status === 201 && !!rideLottie.json.asset && rideLottie.json.asset.kind === 'RIDE' &&
+    (await fetch(`${API}${rideLottie.json.asset.url}`)).status === 200,
+    { status: rideLottie.status, code: rideLottie.json && rideLottie.json.error && rideLottie.json.error.code });
+
+  const rideMp4 = await upload({ kind: 'RIDE', fileName: 'e2e-ride.mp4', data: b64(rideMp4Bytes) });
+  const mp4AsEffect = await upload({ kind: 'EFFECT', fileName: 'e2e-ride-again.mp4', data: b64(rideMp4Bytes) });
+  check('ride: a ride can be a short video, which is the one reason it is not an EFFECT slot',
+    rideMp4.status === 201 && rideMp4.json.asset.contentType === 'video/mp4' &&
+    mp4AsEffect.status === 400 && mp4AsEffect.json.error.code === 'upload_format_unsupported',
+    { ride: rideMp4.status, code: rideMp4.json && rideMp4.json.error && rideMp4.json.error.code, effect: mp4AsEffect.status });
+  const mp4RideRow = await api('POST', '/api/admin/rides', {
+    token: adminToken,
+    body: { key: `${e2eRide}-mp4`, name: 'E2E Video Ride', url: rideMp4.json.asset.url, format: 'MP4', durationMs: 6000 },
+  });
+  check('ride: the format an operator stores is the format the sniffer already agreed to',
+    mp4RideRow.status === 201 && mp4RideRow.json.ride.format === 'MP4' && mp4RideRow.json.ride.durationMs === 6000,
+    { status: mp4RideRow.status, body: mp4RideRow.json });
+
+  const rideAudit = await sql(`select count(*) from admin_audit where action in ('RIDE_CREATE','RIDE_UPDATE','RIDE_DELETE') and target_id='${e2eRide}'`);
+  check('ride: every ride write is attributable in the audit log', Number(rideAudit) >= 4, rideAudit);
+
+  const cleanedRide = await api('DELETE', `/api/admin/rides/${e2eRide}`, { token: adminToken });
+  await api('DELETE', `/api/admin/rides/${e2eRide}-mp4`, { token: adminToken });
+  // The uploads go after the rows: an asset a ride still points at is refused on purpose, so
+  // deleting in this order also proves the guard releases the file once the catalogue lets go.
+  const droppedRideArt = await api('DELETE', `/api/admin/uploads/${rideLottie.json.asset.id}`, { token: adminToken });
+  const droppedRideVideo = await api('DELETE', `/api/admin/uploads/${rideMp4.json.asset.id}`, { token: adminToken });
+  check('ride: the e2e rides are retired again, leaving the shop as this run found it',
+    cleanedRide.status === 200 && await sql(`select count(*) from profile_rides where key like 'e2e-%'`) === '0',
+    { status: cleanedRide.status });
+  check('ride: the art added only to prove the container is deleted too, so the next run sees an insert',
+    droppedRideArt.status === 200 && droppedRideVideo.status === 200 &&
+    await sql(`select count(*) from media_assets where file_name like 'e2e-ride%'`) === '0',
+    { lottie: droppedRideArt.status, mp4: droppedRideVideo.status });
+
+  // ---- H1h. lucky gift boxes --------------------------------------------------
+  // A box is the one gift whose credit the server draws, which makes two things worth pinning down:
+  // the price never moves with the roll, and every number anybody is told — in the response, the
+  // room's tail, a replay, an audit — comes out of the ledger row rather than a fresh draw. The
+  // prize table below is two equally likely prizes, so a 20-box send is a coin flip repeated and the
+  // arithmetic is checked against the roll the server actually reported, not against luck.
+  const catalogue = ((await api('GET', '/api/gifts')).json || {}).gifts || [];
+  const flatRose = catalogue.find((g) => g.name === 'Rose');
+  const seededBox = catalogue.find((g) => g.isLuckyBox);
+  check('box: the catalogue ships a box whose published odds are its prize table',
+    !!seededBox && Array.isArray(seededBox.boxOutcomes) && seededBox.boxOutcomes.length > 0 &&
+    seededBox.boxOutcomes.every((o) => Number.isInteger(o.chanceBps) && Number.isInteger(o.multiplierBps)) &&
+    seededBox.receiverShareBps > 0 && seededBox.receiverShareBps <= 10_000 &&
+    // The published chances are the weights divided by the total, so they have to add up to a
+    // hundred percent — within one basis point per row, which is what flooring costs.
+    Math.abs(seededBox.boxOutcomes.reduce((s, o) => s + o.chanceBps, 0) - 10_000) <= seededBox.boxOutcomes.length &&
+    // A device must not be able to compute an expected payout above the pool the box sells for.
+    Math.floor((seededBox.boxOutcomes.reduce((s, o) => s + o.multiplierBps * o.chanceBps, 0) / 10_000) *
+      seededBox.receiverShareBps / 10_000) <= 10_000,
+    { name: seededBox && seededBox.name, odds: seededBox && seededBox.boxOutcomes, share: seededBox && seededBox.receiverShareBps });
+  check('box: a flat gift publishes no odds and no share, so no client renders a number it was not given',
+    !!flatRose && flatRose.isLuckyBox === false && flatRose.boxOutcomes === undefined && flatRose.receiverShareBps === undefined,
+    { rose: flatRose });
+
+  const e2eBoxName = `E2E Box ${stamp}`;
+  const emptyDraw = await api('POST', '/api/admin/gifts', {
+    token: adminToken,
+    body: { name: `${e2eBoxName} Empty`, iconUrl: flatRose.iconUrl, diamondPrice: 50, rCoinValue: 45, category: 'SPECIAL', isLuckyBox: true, boxOutcomes: [] },
+  });
+  check('box: a box with no prizes is refused instead of quietly paying nothing',
+    emptyDraw.status === 400 && emptyDraw.json.error.code === 'lucky_box_needs_outcomes',
+    { status: emptyDraw.status, error: emptyDraw.json && emptyDraw.json.error });
+
+  const unbounded = await api('POST', '/api/admin/gifts', {
+    token: adminToken,
+    body: {
+      name: `${e2eBoxName} Greedy`, iconUrl: flatRose.iconUrl, diamondPrice: 100, rCoinValue: 90, category: 'SPECIAL',
+      isLuckyBox: true, receiverShareBps: 10_000, boxOutcomes: [{ label: '50x', multiplierBps: 500_000, weight: 10_000 }],
+    },
+  });
+  check('box: odds that pay more than the box sells for are refused on the write, not in a month of ledger rows',
+    unbounded.status === 400 && unbounded.json.error.code === 'lucky_box_payout_unbounded' &&
+    unbounded.json.error.details.payoutRatioBps === 500_000 && unbounded.json.error.details.receiverShareBps === 10_000 &&
+    (await sql(`select count(*) from gifts where name like 'E2E Box%Greedy'`)) === '0',
+    { status: unbounded.status, details: unbounded.json && unbounded.json.error && unbounded.json.error.details });
+
+  const prizesOnFlat = await api('POST', '/api/admin/gifts', {
+    token: adminToken,
+    body: { name: `${e2eBoxName} Flat`, iconUrl: flatRose.iconUrl, diamondPrice: 20, rCoinValue: 18, category: 'SPECIAL', boxOutcomes: [{ label: '2x', multiplierBps: 20_000, weight: 1 }] },
+  });
+  check('box: a prize table without the box flag is refused rather than ignored',
+    prizesOnFlat.status === 400 && prizesOnFlat.json.error.code === 'lucky_box_outcomes_without_box',
+    { status: prizesOnFlat.status, error: prizesOnFlat.json && prizesOnFlat.json.error });
+
+  const madeBox = await api('POST', '/api/admin/gifts', {
+    token: adminToken,
+    body: {
+      name: e2eBoxName, iconUrl: flatRose.iconUrl, animationUrl: flatRose.animationUrl, soundUrl: flatRose.soundUrl,
+      diamondPrice: 100, rCoinValue: 90, category: 'SPECIAL', isLuckyBox: true, receiverShareBps: 1_000,
+      boxOutcomes: [{ label: '1x', multiplierBps: 10_000, weight: 1 }, { label: '10x', multiplierBps: 100_000, weight: 1 }],
+    },
+  });
+  const boxId = madeBox.json && madeBox.json.gift && madeBox.json.gift.id;
+  check('box: one write stores the gift, the share and the whole prize table',
+    madeBox.status === 201 && madeBox.json.gift.isLuckyBox === true && madeBox.json.gift.receiverShareBps === 1_000 &&
+    madeBox.json.gift.boxOutcomes.length === 2 &&
+    madeBox.json.gift.boxOutcomes.every((o) => o.chanceBps === 5_000 && o.weight === 1) &&
+    (await sql(`select count(*) from gift_box_outcomes where gift_id='${boxId}'`)) === '2',
+    { status: madeBox.status, gift: madeBox.json && madeBox.json.gift });
+
+  const boxAdminView = (await api('GET', '/api/admin/gifts', { token: adminToken })).json.gifts.find((g) => g.id === boxId);
+  const boxClientView = ((await api('GET', '/api/gifts')).json || {}).gifts.find((g) => g.id === boxId);
+  check('box: the operator reads the weights the odds were divided from; a phone gets only the odds',
+    boxAdminView && boxAdminView.boxOutcomes.every((o) => o.weight === 1) &&
+    boxClientView && boxClientView.boxOutcomes.every((o) => o.weight === undefined && o.chanceBps === 5_000),
+    { admin: boxAdminView && boxAdminView.boxOutcomes, client: boxClientView && boxClientView.boxOutcomes });
+
+  const boxSender = await login(`+15559${stamp}30`, `e2e_box_sender_${stamp.slice(-4)}`);
+  const boxHost = await login(`+15559${stamp}31`, `e2e_box_host_${stamp.slice(-4)}`);
+  await api('POST', '/api/wallet/recharge', { token: boxSender.token, body: { amountDiamonds: 100_000 } });
+
+  const bulkSend = await api('POST', '/api/gifts/send', {
+    token: boxSender.token, body: { giftId: boxId, receiverId: boxHost.user.id, quantity: 20 },
+  });
+  const roll = bulkSend.json && bulkSend.json.lucky;
+  // The arithmetic the ledger owes for the roll it reported: 90 R-coins of pool per box times the
+  // prize, floored per box, then the receiver's tenth of the total. Recomputed from `roll` rather
+  // than from the catalogue, because the catalogue is what the roll was drawn from.
+  const expectedGross = roll && roll.outcomes.reduce((sum, o) => sum + Math.floor((90 * o.multiplierBps) / 10_000) * o.count, 0);
+  const expectedCredit = roll && Math.floor((expectedGross * 1_000) / 10_000);
+  check('box: twenty boxes cost exactly twenty prices, whatever the draw said',
+    bulkSend.status === 201 && roll &&
+    bulkSend.json.transaction.amountDiamonds === 2_000 &&
+    (await sql(`select diamond_balance from users where id='${boxSender.user.id}'`)) === String(100_000 - 2_000),
+    { status: bulkSend.status, diamonds: bulkSend.json && bulkSend.json.sender && bulkSend.json.sender.diamondBalance });
+  check('box: the credit is the roll, per box and floored per box, and the tax is what is left',
+    !!roll && roll.receiverRCoins === expectedCredit && roll.grossRCoins === expectedGross &&
+    roll.platformTaxRCoins === expectedGross - expectedCredit &&
+    bulkSend.json.transaction.amountRCoins === expectedCredit &&
+    (await sql(`select r_coin_balance from users where id='${boxHost.user.id}'`)) === String(expectedCredit),
+    { roll, expectedCredit });
+  check('box: the draw counts every unit, so a bulk send is not one coin flip for the room',
+    !!roll && roll.outcomes.reduce((sum, o) => sum + o.count, 0) === 20 &&
+    roll.headline.multiplierBps === Math.max(...roll.outcomes.map((o) => o.multiplierBps)) &&
+    roll.outcomes.every((o) => o.chanceBps === 5_000),
+    roll);
+  check('box: the prize is written into the ledger row, not only answered to the sender',
+    (await sql(`select meta->'lucky' is not null from transactions where id='${bulkSend.json.transaction.id}'`)) === 'true' &&
+    (await sql(`select (meta->'lucky'->>'receiverRCoins')::text from transactions where id='${bulkSend.json.transaction.id}'`)) === String(expectedCredit),
+    await sql(`select meta->'lucky' from transactions where id='${bulkSend.json.transaction.id}'`));
+
+  // Two prizes at equal weight: the odds of twenty-four single sends all landing on one of them are
+  // two in sixteen million, so a failure here means the draw is stuck on a row rather than that the
+  // night was strange.
+  const seen = {};
+  for (let i = 0; i < 24; i += 1) {
+    const one = await api('POST', '/api/gifts/send', { token: boxSender.token, body: { giftId: boxId, receiverId: boxHost.user.id, quantity: 1 } });
+    const single = one.json && one.json.lucky;
+    if (single && single.outcomes.length === 1) seen[single.outcomes[0].label] = (seen[single.outcomes[0].label] || 0) + 1;
+  }
+  check('box: the same box lands on both prizes, so the draw walks the table and not just its first row',
+    Object.keys(seen).length === 2 && seen['1x'] + seen['10x'] === 24, seen);
+  const balanceAfterSingles = await sql(`select r_coin_balance from users where id='${boxHost.user.id}'`);
+  check('box: each single draw paid its own prize, so the running balance is the sum of the rolls',
+    Number(balanceAfterSingles) === expectedCredit + seen['1x'] * 9 + seen['10x'] * 90,
+    { balance: balanceAfterSingles, ones: seen['1x'], tens: seen['10x'] });
+
+  const firstKey = `e2e-box-${stamp}-replay`;
+  const originalSend = await api('POST', '/api/gifts/send', { token: boxSender.token, body: { giftId: boxId, receiverId: boxHost.user.id, quantity: 1, idempotencyKey: firstKey } });
+  const retrySend = await api('POST', '/api/gifts/send', { token: boxSender.token, body: { giftId: boxId, receiverId: boxHost.user.id, quantity: 1, idempotencyKey: firstKey } });
+  check('box: a retry answers the roll it already bought instead of drawing again',
+    originalSend.status === 201 && retrySend.status === 200 && retrySend.json.replayed === true &&
+    !!retrySend.json.lucky && !!originalSend.json.lucky &&
+    sameJson(retrySend.json.lucky, originalSend.json.lucky) &&
+    retrySend.json.transaction.id === originalSend.json.transaction.id,
+    { first: originalSend.json.lucky, retry: retrySend.json.lucky });
+
+  // ---- box money inside a room, where the event is the product ---------------
+  const boxRoom = await api('POST', '/api/rooms', { token: boxSender.token, body: { title: `E2E Box Room ${stamp}`, category: 'CHAT', type: 'PUBLIC' } });
+  const boxRoomId = boxRoom.json && boxRoom.json.room && boxRoom.json.room.id;
+  await api('POST', `/api/rooms/${boxRoomId}/join`, { token: boxSender.token, body: {} });
+  await api('POST', `/api/rooms/${boxRoomId}/join`, { token: boxHost.token, body: {} });
+  const roomBoxSend = await api('POST', '/api/gifts/send', { token: boxSender.token, body: { giftId: boxId, receiverId: boxHost.user.id, quantity: 3, roomId: boxRoomId } });
+  const roomRoll = roomBoxSend.json && roomBoxSend.json.lucky;
+  const roomCredit = roomRoll && Math.floor(roomRoll.outcomes.reduce((s, o) => s + Math.floor((90 * o.multiplierBps) / 10_000) * o.count, 0) / 10);
+  const roomTail = (await api('GET', `/api/rooms/${boxRoomId}/gifts?limit=10`, { token: boxHost.token })).json.gifts;
+  const tailRoll = roomTail.find((g) => g.eventId === roomBoxSend.json.transaction.id);
+  check('box: what the room is told about the prize is what the ledger paid',
+    roomBoxSend.status === 201 && !!tailRoll && sameJson(tailRoll.lucky, roomRoll) &&
+    tailRoll.totalRCoins === roomCredit && tailRoll.totalDiamonds === 300 &&
+    !!tailRoll.gift.isLuckyBox,
+    { status: roomBoxSend.status, tail: tailRoll && tailRoll.lucky, roll: roomRoll });
+  check('box: a room counts a box at what it paid out, which is the one number a PK board is made of',
+    (await sql(`select total_gift_value from rooms where id='${boxRoomId}'`)) === String(roomCredit),
+    { total: await sql(`select total_gift_value from rooms where id='${boxRoomId}'`), credit: roomCredit });
+
+  const boxAnalytics = (await api('GET', '/api/admin/gifts/analytics?days=30', { token: adminToken })).json.gifts.find((g) => g.giftId === boxId);
+  check('analytics: a box is marked as one, so a payout rate is read instead of guessed',
+    !!boxAnalytics && boxAnalytics.isLuckyBox === true && boxAnalytics.diamonds > boxAnalytics.rCoins,
+    boxAnalytics);
+
+  // ---- reweighting after the fact, which is the whole point of a draw ---------
+  const reweighted = await api('PUT', `/api/admin/gifts/${boxId}`, {
+    token: adminToken,
+    body: { receiverShareBps: 5_000, boxOutcomes: [{ label: '1x', multiplierBps: 10_000, weight: 1 }] },
+  });
+  const afterRoll = await api('POST', '/api/gifts/send', { token: boxSender.token, body: { giftId: boxId, receiverId: boxHost.user.id, quantity: 1 } });
+  check('box: the next send rolls the table as it now reads — one prize, so no other answer is possible',
+    reweighted.status === 200 && reweighted.json.gift.receiverShareBps === 5_000 &&
+    reweighted.json.gift.boxOutcomes.length === 1 &&
+    afterRoll.status === 201 && afterRoll.json.lucky.outcomes.length === 1 &&
+    afterRoll.json.lucky.outcomes[0].multiplierBps === 10_000 &&
+    afterRoll.json.lucky.receiverRCoins === Math.floor(90 * 5_000 / 10_000) &&
+    (await sql(`select count(*) from gift_box_outcomes where gift_id='${boxId}'`)) === '1',
+    { share: reweighted.json && reweighted.json.gift.receiverShareBps, roll: afterRoll.json && afterRoll.json.lucky });
+  const historicRoll = await sql(`select (meta->'lucky'->>'receiverRCoins')::text from transactions where id='${bulkSend.json.transaction.id}'`);
+  check('box: the receipts already paid keep the odds they were rolled at',
+    historicRoll === String(expectedCredit) &&
+    (await sql(`select jsonb_array_length(meta->'lucky'->'outcomes') from transactions where id='${bulkSend.json.transaction.id}'`)) === String(roll.outcomes.length),
+    { stored: historicRoll, now: expectedCredit });
+
+  const emptiedBox = await api('PUT', `/api/admin/gifts/${boxId}`, { token: adminToken, body: { boxOutcomes: [] } });
+  check('box: emptying the prize table of a live box is refused — a box that cannot be rolled is a payout that stopped',
+    emptiedBox.status === 400 && emptiedBox.json.error.code === 'lucky_box_needs_outcomes' &&
+    (await sql(`select count(*) from gift_box_outcomes where gift_id='${boxId}'`)) === '1',
+    { status: emptiedBox.status, error: emptiedBox.json && emptiedBox.json.error });
+  const unboxed = await api('PUT', `/api/admin/gifts/${boxId}`, { token: adminToken, body: { isLuckyBox: false } });
+  check('box: turning the box off takes its prizes with it, so nothing stale waits for the flag to come back',
+    unboxed.status === 200 && unboxed.json.gift.isLuckyBox === false && unboxed.json.gift.boxOutcomes === undefined &&
+    unboxed.json.gift.receiverShareBps === undefined &&
+    (await sql(`select count(*) from gift_box_outcomes where gift_id='${boxId}'`)) === '0',
+    { gift: unboxed.json && unboxed.json.gift });
+  const reborn = await api('PUT', `/api/admin/gifts/${boxId}`, { token: adminToken, body: { isLuckyBox: true } });
+  check('box: switching it back on with the prizes left empty is the refusal above, in the other direction',
+    reborn.status === 400 && reborn.json.error.code === 'lucky_box_needs_outcomes',
+    { status: reborn.status, error: reborn.json && reborn.json.error });
+
+  // `transactions.gift_id` is `ON DELETE SET NULL`, so the receipts do not keep the id of the box
+  // that earned them — they keep their own rows and their own `meta.lucky`. Counting the dead id
+  // afterwards would prove nothing; naming the ids on both sides of the delete is what shows the
+  // money history survived, and that a payout an operator already paid for is still auditable.
+  const boxReceipts = await sql(`select id from transactions where gift_id='${boxId}' order by id limit 5`);
+  const droppedBox = await api('DELETE', `/api/admin/gifts/${boxId}`, { token: adminToken });
+  const survived = boxReceipts
+    ? await sql(`select count(*) from transactions where id in ('${boxReceipts.split('\n').join("','")}') and gift_id is null and meta ? 'lucky'`)
+    : '0';
+  check('box: retiring a box takes its prize table with it, and the receipts it paid stay',
+    boxReceipts.split('\n').length >= 5 && droppedBox.status === 200 &&
+    (await sql(`select count(*) from gift_box_outcomes where gift_id='${boxId}'`)) === '0' &&
+    survived === String(boxReceipts.split('\n').length) &&
+    (await sql(`select count(*) from gifts where name like 'E2E Box%'`)) === '0',
+    { status: droppedBox.status, receipts: boxReceipts.split('\n').length, survived });
 
   // ---- H1c. daily quests and the check-in ------------------------------------
   await questPhase(adminToken, rose);
@@ -1599,10 +2184,12 @@ async function socketPhase(tokenA, tokenB, roomId, gifts, A, B, nameA, nameB) {
   const chat = [];
   const joined = [];
   const liked = [];
+  const reacted = [];
   const animated = [];
   sa.on('room:chat_message', (m) => chat.push(m));
   sa.on('room:user_joined', (p) => joined.push(p));
   sa.on('room:liked', (p) => liked.push(p));
+  sa.on('room:reaction', (p) => reacted.push(p));
   sa.on('room:gift_animated', (p) => animated.push(p));
 
   // Connect first, then emit: socket.io buffers an `emit` made before the socket
@@ -1706,6 +2293,30 @@ async function socketPhase(tokenA, tokenB, roomId, gifts, A, B, nameA, nameB) {
     pass: errorsB.filter((e) => /between 1 and 100/.test(String(e.error))).length >= 2 &&
       (await sql(`select like_count from rooms where id='${roomId}'`)) === '12',
     detail: { errors: errorsB.map((e) => e.error), like_count: await sql(`select like_count from rooms where id='${roomId}'`) },
+  };
+
+  // A quick reaction is decoration, not a ledger line: the server resolves the key against the
+  // operator's own catalogue, broadcasts the art it found, and stores nothing. A key it does not
+  // publish must not reach anyone, because the client sends a name and never a URL.
+  reacted.length = 0;
+  const reactKey = ((await api('GET', '/api/emoji')).json.emojis[0] || {}).key;
+  const chatRowsBefore = await sql(`select count(*)::text from chat_messages where room_id = '${roomId}'`);
+  sb2.emit('room:reaction', { roomId, key: reactKey });
+  sb2.emit('room:reaction', { roomId, key: 'no-such-reaction' });
+  sb2.emit('room:reaction', { roomId, key: '' });
+  await wait(700);
+  res['socket: a catalogue reaction flies to the room with the operator art'] = {
+    pass: reacted.length === 1 && reacted[0].key === reactKey && !!reacted[0].url &&
+      reacted[0].code === `[${reactKey}]` && !!reacted[0].userId,
+    detail: reacted,
+  };
+  res['socket: a reaction nobody published is dropped, not broadcast'] = {
+    pass: reacted.length === 1,
+    detail: { broadcasts: reacted.length, wanted: reactKey },
+  };
+  res['socket: a reaction persists nothing'] = {
+    pass: (await sql(`select count(*)::text from chat_messages where room_id = '${roomId}'`)) === chatRowsBefore,
+    detail: { chatRowsBefore },
   };
 
   // A gift animation carries the tier the operator set, which is what decides
@@ -1889,9 +2500,14 @@ async function questPhase(adminToken, rose) {
   const chatSock = conn(chatter.token);
   await connected(hostSock);
   await connected(chatSock);
+  // The host is a member by creating the room; the chatter has to walk in over REST first, because a
+  // socket only subscribes someone the room already accepted.
+  const chatterJoin = await api('POST', `/api/rooms/${qRoomId}/join`, { token: chatter.token, body: {} });
   const jHost = await joinRoom(hostSock, qRoomId);
   const jChat = await joinRoom(chatSock, qRoomId);
-  check('quests: both members join the room socket', !!(jHost && jHost.ok && jChat && jChat.ok), { jHost, jChat });
+  check('quests: both members join the room socket',
+    !!(chatterJoin.status === 200 && jHost && jHost.ok && jChat && jChat.ok),
+    { chatter: chatterJoin.status, jHost, jChat });
 
   const beforeChats = await statusOf(chatter.token);
   const chatQuest = questByMetric(beforeChats, 'CHAT_MESSAGE');
@@ -1926,6 +2542,10 @@ async function questPhase(adminToken, rose) {
   const cheap = allGifts.filter((g) => (g.minVipLevel || 0) === 0).sort((x, y) => x.diamondPrice - y.diamondPrice)[0] || rose;
   const price = cheap.diamondPrice;
   await api('POST', '/api/wallet/recharge', { token: gifter.token, body: { amountDiamonds: price * 4 } });
+  // An in-room gift is broadcast to that room, so the ledger refuses one unless both halves of the
+  // pair are live members of it. The host is a member by creating the room; the gifter has to walk in.
+  const gifterJoin = await api('POST', `/api/rooms/${qRoomId}/join`, { token: gifter.token, body: {} });
+  check('quests: the gifter is a member of the room before spending in it', gifterJoin.status === 200, { status: gifterJoin.status });
   const giftBefore = await statusOf(gifter.token);
   const giftQ = questByMetric(giftBefore, 'GIFT_SENT');
   const spendQ = questByMetric(giftBefore, 'DIAMONDS_SPENT');
@@ -2108,6 +2728,16 @@ async function pkPhase(adminToken) {
     [roomA, roomB, roomC, roomD].every(Boolean) && await sql(`select status from rooms where id='${roomD}'`) === 'CLOSED',
     { rooms: [roomA, roomB, roomC, roomD] });
 
+  // The two supporters walk into the rooms they spend in first: a gift that names a room is
+  // broadcast there, so the ledger only accepts it while sender and receiver are both members of
+  // it. The hosts already are — creating a room writes their participant row.
+  const supporterJoins = [];
+  for (const [supporter, stage] of [[gifterA, roomA], [gifterA, roomC], [gifterB, roomB]]) {
+    supporterJoins.push(await api('POST', `/api/rooms/${stage}/join`, { token: supporter.token, body: {} }));
+  }
+  check('pk: the supporters are members of the rooms they gift into',
+    supporterJoins.every((r) => r.status === 200), supporterJoins.map((r) => r.status));
+
   const anonBoard = await api('GET', `/api/pk/rooms/${roomA}`);
   const anonInvite = await api('POST', '/api/pk/invites', { body: { roomId: roomA, opponentRoomId: roomB } });
   const anonSettings = await api('GET', '/api/pk/settings');
@@ -2255,16 +2885,19 @@ async function pkPhase(adminToken) {
     roomAEvents.some((e) => e.id === battleId && e.status === 'ACTIVE'),
     roomAEvents.map((e) => e.status));
 
-  // A socket that walks into a running room learns the board without a REST call.
+  // A member who walks into a running room learns the board over the socket, not by polling
+  // /api/pk. The REST join is what makes them a member; the board still arrives unprompted.
   const sockLate = conn(member.token);
   const lateEvents = [];
   sockLate.on('pk:state', (b) => lateEvents.push(b));
   await connected(sockLate);
+  const lateJoin = await api('POST', `/api/rooms/${roomB}/join`, { token: member.token, body: {} });
   await joinRoom(sockLate, roomB);
   await wait(700);
   check('pk: joining a room mid-battle pushes the current board to that socket',
     lateEvents.some((e) => e.id === battleId && e.status === 'ACTIVE' && e.scores.b === 0),
-    lateEvents.map((e) => `${e.status}:${e.scores.a}-${e.scores.b}`));
+    lateEvents.map((e) => `${e.status}:${e.scores.a}-${e.scores.b}`)
+      .concat(`rest:${lateJoin.status}`));
 
   // ---- gifts decide the score -------------------------------------------------
   const inA = await api('POST', '/api/gifts/send', {

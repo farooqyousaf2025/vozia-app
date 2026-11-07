@@ -17,6 +17,16 @@ fun prop(name: String, default: String): String {
         )
 }
 
+/** The same lookup with no fallback: null means "nobody told me". */
+fun explicitProp(name: String): String? =
+    providers.gradleProperty(name).orNull ?: providers.environmentVariable(name).orNull
+
+// Whether this invocation builds the release variant at all. The release address check is gated on
+// it so `assembleDebug` — the emulator build — still needs no flags.
+val wantsRelease = gradle.startParameter.taskNames.any {
+    it.contains("Release", ignoreCase = true) || it == "assemble" || it == "build"
+}
+
 // ---------------------------------------------------------------------------
 // Release signing. Keys never live in the repo: `android/keystore.properties`
 // (git ignored) supplies them, optionally relocated via VOIZA_KEYSTORE_PROPERTIES.
@@ -50,7 +60,8 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        // Backend API base (emulator -> host machine; override via gradle.properties or env)
+        // Backend API base. These defaults are the emulator's route to this machine and are for
+        // debug builds only; the release block below refuses to ship them.
         buildConfigField(
             "String",
             "VOIZA_API_BASE_URL",
@@ -90,6 +101,23 @@ android {
             // release to prove the R8/ProGuard config, then the operator signs
             // the real artefact locally.
             if (signingConfigured) signingConfig = signingConfigs.getByName("release")
+
+            // A release has to be told where its backend lives. 10.0.2.2 is the emulator's path to
+            // whichever machine ran Gradle, so an artefact assembled without these — which is what a
+            // plain `assembleRelease` in CI does today — would ship cleartext endpoints that resolve
+            // to nothing on a customer's phone.
+            val apiBaseUrl = explicitProp("VOIZA_API_BASE_URL")
+            val livekitUrl = explicitProp("VOIZA_LIVEKIT_URL")
+            if (wantsRelease) {
+                require(!apiBaseUrl.isNullOrBlank()) {
+                    "VOIZA_API_BASE_URL is required for a release build (e.g. -PVOIZA_API_BASE_URL=https://api.example.com)"
+                }
+                require(!livekitUrl.isNullOrBlank()) {
+                    "VOIZA_LIVEKIT_URL is required for a release build (e.g. -PVOIZA_LIVEKIT_URL=wss://rtc.example.com:7880)"
+                }
+            }
+            if (!apiBaseUrl.isNullOrBlank()) buildConfigField("String", "VOIZA_API_BASE_URL", "\"$apiBaseUrl\"")
+            if (!livekitUrl.isNullOrBlank()) buildConfigField("String", "VOIZA_LIVEKIT_URL", "\"$livekitUrl\"")
         }
     }
 
@@ -163,6 +191,10 @@ dependencies {
 
     // Image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
+    // Animated GIF and WebP. Without it Coil's default loader decodes the first frame of a moving
+    // image and stops there, which is what a promotional banner (and any GIF art an operator
+    // uploads) needs to keep moving. Apache-2.0, same group and release as coil-compose.
+    implementation("io.coil-kt:coil-gif:2.7.0")
 
     // Encrypted SharedPreferences for the JWT session (Keystore-backed master key)
     implementation("androidx.security:security-crypto:1.1.0-alpha06")

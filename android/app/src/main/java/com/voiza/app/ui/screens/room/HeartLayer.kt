@@ -99,11 +99,12 @@ private val SPRITES = listOf(
 /**
  * Ten tracks, built from the index rather than random, so the arc a heart takes
  * is stable across recomposition. Control points are in unit space: x is the
- * layer's width and y runs 1 (bottom) up to the apex.
+ * layer's width and y runs 1 (bottom) up to the apex. [ReactionLayer] flies emoji
+ * along these same arcs, so a puff of hearts and a puff of art read as one language.
  */
-private class Track(val start: Offset, val c1: Offset, val c2: Offset, val end: Offset)
+internal class Track(val start: Offset, val c1: Offset, val c2: Offset, val end: Offset)
 
-private val TRACKS: List<Track> = (0 until 10).map { i ->
+internal val TRACKS: List<Track> = (0 until 10).map { i ->
     val sway = if (i % 2 == 0) 1f else -1f
     val wide = 0.09f + 0.022f * (i % 5)
     Track(
@@ -116,7 +117,7 @@ private val TRACKS: List<Track> = (0 until 10).map { i ->
 
 private const val HEART_LIFE_NANOS = RoomEffects.HEART_LIFE_MS * 1_000_000L
 
-private fun cubicPoint(track: Track, t: Float): Offset {
+internal fun cubicPoint(track: Track, t: Float): Offset {
     val u = 1f - t
     return Offset(
         u * u * u * track.start.x + 3f * u * u * t * track.c1.x + 3f * u * t * t * track.c2.x + t * t * t * track.end.x,
@@ -124,7 +125,7 @@ private fun cubicPoint(track: Track, t: Float): Offset {
     )
 }
 
-private fun easeOut(t: Float): Float = 1f - (1f - t) * (1f - t)
+internal fun easeOut(t: Float): Float = 1f - (1f - t) * (1f - t)
 
 /** Unit heart, scaled to the sprite size at draw time. */
 private val HEART_PATH = Path().apply {

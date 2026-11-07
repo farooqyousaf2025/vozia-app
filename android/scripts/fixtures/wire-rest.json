@@ -4,31 +4,34 @@
   "body": {
    "rooms": [
     {
-     "id": "9c0f9ee3-fb83-447b-a9a8-1920a5e089d8",
-     "roomNumber": 735466,
-     "title": "Wire Room 7256248",
-     "description": null,
+     "id": "22222222-2222-2222-2222-222222222203",
+     "roomNumber": 100003,
+     "title": "VIP Truth or Dare",
+     "description": "Password: 8888",
      "coverUrl": null,
-     "theme": "nebula",
-     "themeWallpaper": "/themes/nebula/wallpaper.png",
+     "theme": "aurora",
+     "themeWallpaper": "/themes/aurora/wallpaper.png",
      "category": "CHAT",
      "language": null,
      "region": null,
      "rules": null,
+     "announcement": null,
+     "announcementUpdatedAt": null,
+     "speakerApprovalRequired": false,
      "ambientEffect": "/effects/room-glow.json",
-     "type": "PUBLIC",
-     "seatCapacity": 4,
+     "type": "PRIVATE",
+     "seatCapacity": 9,
      "status": "ACTIVE",
-     "listenerCount": 4,
-     "likeCount": 15,
-     "totalGiftValue": 2,
-     "livekitRoomName": "voiza-room-735466",
-     "createdAt": "2026-10-22T13:54:16.865Z",
+     "listenerCount": 6,
+     "likeCount": 0,
+     "totalGiftValue": 900,
+     "livekitRoomName": "voiza-room-100003",
+     "createdAt": "2026-11-05T18:45:25.433Z",
      "closedAt": null,
      "host": {
-      "id": "14cbe792-a25d-4621-ae3d-96ea2ee75acb",
-      "username": "wire_host_6248",
-      "avatarUrl": null,
+      "id": "00000000-0000-0000-0000-0000000000a1",
+      "username": "nova_host",
+      "avatarUrl": "/avatars/host-nova.png",
       "profileFrame": null
      },
      "seats": [
@@ -38,23 +41,18 @@
        "isMuted": false,
        "isSpeaker": true,
        "user": {
-        "id": "14cbe792-a25d-4621-ae3d-96ea2ee75acb",
-        "username": "wire_host_6248",
-        "avatarUrl": null,
+        "id": "00000000-0000-0000-0000-0000000000a1",
+        "username": "nova_host",
+        "avatarUrl": "/avatars/host-nova.png",
         "profileFrame": null
        }
       },
       {
        "seatIndex": 1,
-       "status": "OCCUPIED",
+       "status": "EMPTY",
        "isMuted": false,
-       "isSpeaker": true,
-       "user": {
-        "id": "28cbb917-cd35-411e-bd1c-966fe1363bec",
-        "username": "wire_aud_6248",
-        "avatarUrl": null,
-        "profileFrame": null
-       }
+       "isSpeaker": false,
+       "user": null
       },
       {
        "seatIndex": 2,
@@ -69,34 +67,72 @@
        "isMuted": false,
        "isSpeaker": false,
        "user": null
+      },
+      {
+       "seatIndex": 4,
+       "status": "EMPTY",
+       "isMuted": false,
+       "isSpeaker": false,
+       "user": null
+      },
+      {
+       "seatIndex": 5,
+       "status": "EMPTY",
+       "isMuted": false,
+       "isSpeaker": false,
+       "user": null
+      },
+      {
+       "seatIndex": 6,
+       "status": "EMPTY",
+       "isMuted": false,
+       "isSpeaker": false,
+       "user": null
+      },
+      {
+       "seatIndex": 7,
+       "status": "EMPTY",
+       "isMuted": false,
+       "isSpeaker": false,
+       "user": null
+      },
+      {
+       "seatIndex": 8,
+       "status": "EMPTY",
+       "isMuted": false,
+       "isSpeaker": false,
+       "user": null
       }
      ]
     },
     {
-     "id": "b7363209-fb4e-4292-bd06-2c58ee6bd62c",
-     "roomNumber": 848915,
-     "title": "Wire Room 3214890",
-     "description": null,
+     "id": "8d1b3045-e4f4-45ac-95fc-d349670625fc",
+     "roomNumber": 116895,
+     "title": "Wire Room Edited 2692725",
+     "description": "captured profile",
      "coverUrl": null,
-     "theme": "aurora",
-     "themeWallpaper": "/themes/aurora/wallpaper.png",
+     "theme": "nebula",
+     "themeWallpaper": "/themes/nebula/wallpaper.png",
      "category": "CHAT",
-     "language": null,
-     "region": null,
-     "rules": null,
+     "language": "en",
+     "region": "BD",
+     "rules": "mic off when not on the seat",
+     "announcement": null,
+     "announcementUpdatedAt": null,
+     "speakerApprovalRequired": false,
      "ambientEffect": "/effects/room-glow.json",
      "type": "PUBLIC",
      "seatCapacity": 4,
      "status": "ACTIVE",
      "listenerCount": 3,
-     "likeCount": 0,
-     "totalGiftValue": 0,
-     "livekitRoomName": "voiza-room-848915",
-     "createdAt": "2026-10-30T09:40:15.523Z",
+     "likeCount": 15,
+     "totalGiftValue": 2,
+     "livekitRoomName": "voiza-room-116895",
+     "createdAt": "2026-11-06T10:58:13.500Z",
      "closedAt": null,
      "host": {
-      "id": "d05e8199-e9b4-414b-9390-fafc85cf3398",
-      "username": "wire_host_4890",
+      "id": "d0f6a144-1bf8-4d0e-a5f0-61ef52be9808",
+      "username": "wire_host_2725",
       "avatarUrl": null,
       "profileFrame": {
        "key": "ring-bronze",
@@ -112,8 +148,8 @@
        "isMuted": false,
        "isSpeaker": true,
        "user": {
-        "id": "d05e8199-e9b4-414b-9390-fafc85cf3398",
-        "username": "wire_host_4890",
+        "id": "d0f6a144-1bf8-4d0e-a5f0-61ef52be9808",
+        "username": "wire_host_2725",
         "avatarUrl": null,
         "profileFrame": {
          "key": "ring-bronze",
@@ -129,82 +165,8 @@
        "isMuted": false,
        "isSpeaker": true,
        "user": {
-        "id": "92fdf6b2-b621-4f7f-b4b9-e63377ab9dc4",
-        "username": "wire_seat_4890",
-        "avatarUrl": null,
-        "profileFrame": {
-         "key": "ring-bronze",
-         "name": "Bronze Ring",
-         "art": "/frames/trace/frame-1.png",
-         "accent": "#c98a6b"
-        }
-       }
-      },
-      {
-       "seatIndex": 2,
-       "status": "EMPTY",
-       "isMuted": false,
-       "isSpeaker": false,
-       "user": null
-      },
-      {
-       "seatIndex": 3,
-       "status": "EMPTY",
-       "isMuted": false,
-       "isSpeaker": false,
-       "user": null
-      }
-     ]
-    },
-    {
-     "id": "407f087c-f31d-4901-a31d-429b012e34d5",
-     "roomNumber": 764862,
-     "title": "Anim Fix Proof",
-     "description": null,
-     "coverUrl": null,
-     "theme": "nebula",
-     "themeWallpaper": "/themes/nebula/wallpaper.png",
-     "category": "PARTY",
-     "language": null,
-     "region": null,
-     "rules": null,
-     "ambientEffect": "/effects/room-confetti.json",
-     "type": "PUBLIC",
-     "seatCapacity": 4,
-     "status": "ACTIVE",
-     "listenerCount": 3,
-     "likeCount": 0,
-     "totalGiftValue": 4050,
-     "livekitRoomName": "voiza-room-764862",
-     "createdAt": "2026-10-21T20:54:36.358Z",
-     "closedAt": null,
-     "host": {
-      "id": "90bcb99c-7c79-469e-966d-fd891dcdd1f0",
-      "username": "voiza_551234",
-      "avatarUrl": null,
-      "profileFrame": null
-     },
-     "seats": [
-      {
-       "seatIndex": 0,
-       "status": "OCCUPIED",
-       "isMuted": false,
-       "isSpeaker": true,
-       "user": {
-        "id": "90bcb99c-7c79-469e-966d-fd891dcdd1f0",
-        "username": "voiza_551234",
-        "avatarUrl": null,
-        "profileFrame": null
-       }
-      },
-      {
-       "seatIndex": 1,
-       "status": "OCCUPIED",
-       "isMuted": false,
-       "isSpeaker": true,
-       "user": {
-        "id": "efa0dd1b-40a6-4345-8823-aa2a363b1ff9",
-        "username": "gfx_sender",
+        "id": "62aaaa06-87b8-480f-820d-c9a0a8b032b4",
+        "username": "wire_aud_2725",
         "avatarUrl": null,
         "profileFrame": null
        }
@@ -231,7 +193,90 @@
  "discovery": {
   "status": 200,
   "body": {
-   "rooms": []
+   "rooms": [
+    {
+     "id": "8d1b3045-e4f4-45ac-95fc-d349670625fc",
+     "roomNumber": 116895,
+     "title": "Wire Room Edited 2692725",
+     "description": "captured profile",
+     "coverUrl": null,
+     "theme": "nebula",
+     "themeWallpaper": "/themes/nebula/wallpaper.png",
+     "category": "CHAT",
+     "language": "en",
+     "region": "BD",
+     "rules": "mic off when not on the seat",
+     "announcement": null,
+     "announcementUpdatedAt": null,
+     "speakerApprovalRequired": false,
+     "ambientEffect": "/effects/room-glow.json",
+     "type": "PUBLIC",
+     "seatCapacity": 4,
+     "status": "ACTIVE",
+     "listenerCount": 3,
+     "likeCount": 15,
+     "totalGiftValue": 2,
+     "livekitRoomName": "voiza-room-116895",
+     "createdAt": "2026-11-06T10:58:13.500Z",
+     "closedAt": null,
+     "host": {
+      "id": "d0f6a144-1bf8-4d0e-a5f0-61ef52be9808",
+      "username": "wire_host_2725",
+      "avatarUrl": null,
+      "profileFrame": {
+       "key": "ring-bronze",
+       "name": "Bronze Ring",
+       "art": "/frames/trace/frame-1.png",
+       "accent": "#c98a6b"
+      }
+     },
+     "seats": [
+      {
+       "seatIndex": 0,
+       "status": "OCCUPIED",
+       "isMuted": false,
+       "isSpeaker": true,
+       "user": {
+        "id": "d0f6a144-1bf8-4d0e-a5f0-61ef52be9808",
+        "username": "wire_host_2725",
+        "avatarUrl": null,
+        "profileFrame": {
+         "key": "ring-bronze",
+         "name": "Bronze Ring",
+         "art": "/frames/trace/frame-1.png",
+         "accent": "#c98a6b"
+        }
+       }
+      },
+      {
+       "seatIndex": 1,
+       "status": "OCCUPIED",
+       "isMuted": false,
+       "isSpeaker": true,
+       "user": {
+        "id": "62aaaa06-87b8-480f-820d-c9a0a8b032b4",
+        "username": "wire_aud_2725",
+        "avatarUrl": null,
+        "profileFrame": null
+       }
+      },
+      {
+       "seatIndex": 2,
+       "status": "EMPTY",
+       "isMuted": false,
+       "isSpeaker": false,
+       "user": null
+      },
+      {
+       "seatIndex": 3,
+       "status": "EMPTY",
+       "isMuted": false,
+       "isSpeaker": false,
+       "user": null
+      }
+     ]
+    }
+   ]
   }
  },
  "myRooms": {
@@ -239,9 +284,9 @@
   "body": {
    "rooms": [
     {
-     "id": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
-     "roomNumber": 618924,
-     "title": "Wire Room 3228490",
+     "id": "d41e936a-a885-452d-816b-87f3701571bc",
+     "roomNumber": 756697,
+     "title": "Wire Room 2967233",
      "description": null,
      "coverUrl": null,
      "theme": "aurora",
@@ -250,6 +295,9 @@
      "language": null,
      "region": null,
      "rules": null,
+     "announcement": null,
+     "announcementUpdatedAt": null,
+     "speakerApprovalRequired": false,
      "ambientEffect": "/effects/room-glow.json",
      "type": "PUBLIC",
      "seatCapacity": 4,
@@ -257,12 +305,12 @@
      "listenerCount": 3,
      "likeCount": 0,
      "totalGiftValue": 0,
-     "livekitRoomName": "voiza-room-618924",
-     "createdAt": "2026-10-30T09:40:28.985Z",
+     "livekitRoomName": "voiza-room-756697",
+     "createdAt": "2026-11-06T11:02:47.878Z",
      "closedAt": null,
      "host": {
-      "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-      "username": "wire_host_8490",
+      "id": "76535a80-3cfd-480e-b609-490f51de1385",
+      "username": "wire_host_7233",
       "avatarUrl": null,
       "profileFrame": {
        "key": "ring-bronze",
@@ -279,32 +327,40 @@
   "status": 200,
   "body": {
    "room": {
-    "id": "9c0f9ee3-fb83-447b-a9a8-1920a5e089d8",
-    "roomNumber": 735466,
-    "title": "Wire Room 7256248",
-    "description": null,
+    "id": "8d1b3045-e4f4-45ac-95fc-d349670625fc",
+    "roomNumber": 116895,
+    "title": "Wire Room Edited 2692725",
+    "description": "captured profile",
     "coverUrl": null,
     "theme": "nebula",
     "themeWallpaper": "/themes/nebula/wallpaper.png",
     "category": "CHAT",
-    "language": null,
-    "region": null,
-    "rules": null,
+    "language": "en",
+    "region": "BD",
+    "rules": "mic off when not on the seat",
+    "announcement": null,
+    "announcementUpdatedAt": null,
+    "speakerApprovalRequired": false,
     "ambientEffect": "/effects/room-glow.json",
     "type": "PUBLIC",
     "seatCapacity": 4,
     "status": "ACTIVE",
-    "listenerCount": 4,
+    "listenerCount": 3,
     "likeCount": 15,
     "totalGiftValue": 2,
-    "livekitRoomName": "voiza-room-735466",
-    "createdAt": "2026-10-22T13:54:16.865Z",
+    "livekitRoomName": "voiza-room-116895",
+    "createdAt": "2026-11-06T10:58:13.500Z",
     "closedAt": null,
     "host": {
-     "id": "14cbe792-a25d-4621-ae3d-96ea2ee75acb",
-     "username": "wire_host_6248",
+     "id": "d0f6a144-1bf8-4d0e-a5f0-61ef52be9808",
+     "username": "wire_host_2725",
      "avatarUrl": null,
-     "profileFrame": null
+     "profileFrame": {
+      "key": "ring-bronze",
+      "name": "Bronze Ring",
+      "art": "/frames/trace/frame-1.png",
+      "accent": "#c98a6b"
+     }
     }
    }
   }
@@ -325,9 +381,9 @@
   "status": 201,
   "body": {
    "room": {
-    "id": "da4c646c-f468-4b18-88a5-864feb45601e",
-    "roomNumber": 912788,
-    "title": "Wire Seats 3228490",
+    "id": "61d98d01-e092-4a16-b481-8f3900dfc555",
+    "roomNumber": 776191,
+    "title": "Wire Seats 2967233",
     "description": null,
     "coverUrl": null,
     "theme": "aurora",
@@ -336,6 +392,9 @@
     "language": null,
     "region": null,
     "rules": null,
+    "announcement": null,
+    "announcementUpdatedAt": null,
+    "speakerApprovalRequired": false,
     "ambientEffect": "/effects/room-glow.json",
     "type": "PUBLIC",
     "seatCapacity": 16,
@@ -343,12 +402,12 @@
     "listenerCount": 0,
     "likeCount": 0,
     "totalGiftValue": 0,
-    "livekitRoomName": "voiza-room-912788",
-    "createdAt": "2026-10-30T09:40:29.059Z",
+    "livekitRoomName": "voiza-room-776191",
+    "createdAt": "2026-11-06T11:02:48.001Z",
     "closedAt": null,
     "host": {
-     "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-     "username": "wire_host_8490",
+     "id": "76535a80-3cfd-480e-b609-490f51de1385",
+     "username": "wire_host_7233",
      "avatarUrl": null,
      "profileFrame": {
       "key": "ring-bronze",
@@ -364,8 +423,8 @@
       "isMuted": false,
       "isSpeaker": true,
       "user": {
-       "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-       "username": "wire_host_8490",
+       "id": "76535a80-3cfd-480e-b609-490f51de1385",
+       "username": "wire_host_7233",
        "avatarUrl": null,
        "profileFrame": {
         "key": "ring-bronze",
@@ -488,9 +547,9 @@
   "status": 200,
   "body": {
    "room": {
-    "id": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
-    "roomNumber": 618924,
-    "title": "Wire Room 3228490",
+    "id": "d41e936a-a885-452d-816b-87f3701571bc",
+    "roomNumber": 756697,
+    "title": "Wire Room 2967233",
     "description": null,
     "coverUrl": null,
     "theme": "aurora",
@@ -499,6 +558,9 @@
     "language": null,
     "region": null,
     "rules": null,
+    "announcement": null,
+    "announcementUpdatedAt": null,
+    "speakerApprovalRequired": false,
     "ambientEffect": "/effects/room-glow.json",
     "type": "PUBLIC",
     "seatCapacity": 4,
@@ -506,12 +568,12 @@
     "listenerCount": 3,
     "likeCount": 0,
     "totalGiftValue": 0,
-    "livekitRoomName": "voiza-room-618924",
-    "createdAt": "2026-10-30T09:40:28.985Z",
+    "livekitRoomName": "voiza-room-756697",
+    "createdAt": "2026-11-06T11:02:47.878Z",
     "closedAt": null,
     "host": {
-     "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-     "username": "wire_host_8490",
+     "id": "76535a80-3cfd-480e-b609-490f51de1385",
+     "username": "wire_host_7233",
      "avatarUrl": null,
      "profileFrame": {
       "key": "ring-bronze",
@@ -528,8 +590,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-      "username": "wire_host_8490",
+      "id": "76535a80-3cfd-480e-b609-490f51de1385",
+      "username": "wire_host_7233",
       "avatarUrl": null,
       "profileFrame": {
        "key": "ring-bronze",
@@ -545,8 +607,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "474eb99b-9aca-4b89-9648-5a47c5a75871",
-      "username": "wire_seat_8490",
+      "id": "df8ef09a-3dfc-4e05-bc56-a4d3ee0b589b",
+      "username": "wire_seat_7233",
       "avatarUrl": null,
       "profileFrame": {
        "key": "ring-bronze",
@@ -573,8 +635,8 @@
    ],
    "audience": [
     {
-     "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-     "username": "wire_host_8490",
+     "id": "76535a80-3cfd-480e-b609-490f51de1385",
+     "username": "wire_host_7233",
      "avatarUrl": null,
      "profileFrame": {
       "key": "ring-bronze",
@@ -584,8 +646,8 @@
      }
     },
     {
-     "id": "474eb99b-9aca-4b89-9648-5a47c5a75871",
-     "username": "wire_seat_8490",
+     "id": "df8ef09a-3dfc-4e05-bc56-a4d3ee0b589b",
+     "username": "wire_seat_7233",
      "avatarUrl": null,
      "profileFrame": {
       "key": "ring-bronze",
@@ -595,8 +657,8 @@
      }
     },
     {
-     "id": "899323e2-5fac-49b4-88ea-a1ab526c0609",
-     "username": "wire_aud_8490",
+     "id": "f1da9700-b1c7-4b6f-96a8-df832d62031f",
+     "username": "wire_aud_7233",
      "avatarUrl": null,
      "profileFrame": null
     }
@@ -610,9 +672,9 @@
   "status": 200,
   "body": {
    "room": {
-    "id": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
-    "roomNumber": 618924,
-    "title": "Wire Room 3228490",
+    "id": "d41e936a-a885-452d-816b-87f3701571bc",
+    "roomNumber": 756697,
+    "title": "Wire Room 2967233",
     "description": null,
     "coverUrl": null,
     "theme": "aurora",
@@ -621,6 +683,9 @@
     "language": null,
     "region": null,
     "rules": null,
+    "announcement": null,
+    "announcementUpdatedAt": null,
+    "speakerApprovalRequired": false,
     "ambientEffect": "/effects/room-glow.json",
     "type": "PUBLIC",
     "seatCapacity": 4,
@@ -628,12 +693,12 @@
     "listenerCount": 3,
     "likeCount": 0,
     "totalGiftValue": 0,
-    "livekitRoomName": "voiza-room-618924",
-    "createdAt": "2026-10-30T09:40:28.985Z",
+    "livekitRoomName": "voiza-room-756697",
+    "createdAt": "2026-11-06T11:02:47.878Z",
     "closedAt": null,
     "host": {
-     "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-     "username": "wire_host_8490",
+     "id": "76535a80-3cfd-480e-b609-490f51de1385",
+     "username": "wire_host_7233",
      "avatarUrl": null,
      "profileFrame": {
       "key": "ring-bronze",
@@ -650,8 +715,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-      "username": "wire_host_8490",
+      "id": "76535a80-3cfd-480e-b609-490f51de1385",
+      "username": "wire_host_7233",
       "avatarUrl": null,
       "profileFrame": {
        "key": "ring-bronze",
@@ -667,8 +732,8 @@
      "isMuted": false,
      "isSpeaker": true,
      "user": {
-      "id": "474eb99b-9aca-4b89-9648-5a47c5a75871",
-      "username": "wire_seat_8490",
+      "id": "df8ef09a-3dfc-4e05-bc56-a4d3ee0b589b",
+      "username": "wire_seat_7233",
       "avatarUrl": null,
       "profileFrame": {
        "key": "ring-bronze",
@@ -695,17 +760,17 @@
    ],
    "audience": [
     {
-     "id": "899323e2-5fac-49b4-88ea-a1ab526c0609",
-     "username": "wire_aud_8490",
+     "id": "f1da9700-b1c7-4b6f-96a8-df832d62031f",
+     "username": "wire_aud_7233",
      "avatarUrl": null,
      "profileFrame": null
     }
    ],
    "livekit": {
-    "url": "ws://127.0.0.1:7880",
+    "url": "ws://192.168.1.104:7880",
     "token": "redacted-token",
-    "roomName": "voiza-room-618924",
-    "identity": "f8285f64-89f7-4a11-b922-d8252997dd68",
+    "roomName": "voiza-room-756697",
+    "identity": "76535a80-3cfd-480e-b609-490f51de1385",
     "canPublish": true
    }
   }
@@ -714,9 +779,9 @@
   "status": 201,
   "body": {
    "room": {
-    "id": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
-    "roomNumber": 618924,
-    "title": "Wire Room 3228490",
+    "id": "d41e936a-a885-452d-816b-87f3701571bc",
+    "roomNumber": 756697,
+    "title": "Wire Room 2967233",
     "description": null,
     "coverUrl": null,
     "theme": "aurora",
@@ -725,6 +790,9 @@
     "language": null,
     "region": null,
     "rules": null,
+    "announcement": null,
+    "announcementUpdatedAt": null,
+    "speakerApprovalRequired": false,
     "ambientEffect": "/effects/room-glow.json",
     "type": "PUBLIC",
     "seatCapacity": 4,
@@ -732,12 +800,12 @@
     "listenerCount": 0,
     "likeCount": 0,
     "totalGiftValue": 0,
-    "livekitRoomName": "voiza-room-618924",
-    "createdAt": "2026-10-30T09:40:28.985Z",
+    "livekitRoomName": "voiza-room-756697",
+    "createdAt": "2026-11-06T11:02:47.878Z",
     "closedAt": null,
     "host": {
-     "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-     "username": "wire_host_8490",
+     "id": "76535a80-3cfd-480e-b609-490f51de1385",
+     "username": "wire_host_7233",
      "avatarUrl": null,
      "profileFrame": {
       "key": "ring-bronze",
@@ -753,8 +821,8 @@
       "isMuted": false,
       "isSpeaker": true,
       "user": {
-       "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-       "username": "wire_host_8490",
+       "id": "76535a80-3cfd-480e-b609-490f51de1385",
+       "username": "wire_host_7233",
        "avatarUrl": null,
        "profileFrame": {
         "key": "ring-bronze",
@@ -793,14 +861,14 @@
   "status": 200,
   "body": {
    "user": {
-    "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-    "phone": "+15557322849001",
-    "username": "wire_host_8490",
+    "id": "76535a80-3cfd-480e-b609-490f51de1385",
+    "phone": "+15557296723301",
+    "username": "wire_host_7233",
     "avatarUrl": null,
     "bio": null,
     "gender": null,
     "countryCode": null,
-    "diamondBalance": 1200,
+    "diamondBalance": 3700,
     "rCoinBalance": 0,
     "totalGiftsSent": 0,
     "totalGiftsReceived": 0,
@@ -808,21 +876,21 @@
     "status": "ACTIVE",
     "isVerified": false,
     "vipLevel": 0,
-    "xp": 3800,
+    "xp": 6300,
     "rank": {
-     "level": 4,
-     "name": "Silver I",
-     "badge": "/badges/trace/level-4.png",
-     "accent": "#a8b0ba",
-     "minXp": 3000
-    },
-    "nextRank": {
      "level": 5,
      "name": "Silver II",
      "badge": "/badges/trace/level-5.png",
      "accent": "#b3bbc4",
-     "minXp": 5000,
-     "remainingXp": 1200
+     "minXp": 5000
+    },
+    "nextRank": {
+     "level": 6,
+     "name": "Silver III",
+     "badge": "/badges/trace/level-6.png",
+     "accent": "#c0c7cf",
+     "minXp": 8000,
+     "remainingXp": 1700
     },
     "profileFrame": {
      "key": "ring-bronze",
@@ -831,12 +899,36 @@
      "accent": "#c98a6b"
     },
     "entryEffect": "/effects/room-spectrum.json",
+    "entryRide": {
+     "key": "ride-confetti",
+     "name": "Confetti Arrival",
+     "url": "/effects/room-confetti.json",
+     "format": "LOTTIE",
+     "durationMs": 4000
+    },
     "lastSeenAt": null,
-    "createdAt": "2026-10-30T09:40:28.655Z"
+    "createdAt": "2026-11-06T11:02:47.391Z"
    },
    "transactions": [
     {
-     "id": "adf4733e-f885-41c3-b4a2-91b1fc0d3ec1",
+     "id": "a518b9c0-e8b1-4dfa-85d4-6eef6bf6eef0",
+     "type": "ITEM_PURCHASE",
+     "status": "COMPLETED",
+     "quantity": 1,
+     "amountDiamonds": 2500,
+     "amountRCoins": 0,
+     "giftName": null,
+     "sender": {
+      "id": "76535a80-3cfd-480e-b609-490f51de1385",
+      "username": "wire_host_7233",
+      "avatarUrl": null
+     },
+     "receiver": null,
+     "note": "Store: Confetti Arrival",
+     "createdAt": "2026-11-06T11:02:47.852Z"
+    },
+    {
+     "id": "d1bb830f-92d2-46a0-a1b1-576562d3ce3f",
      "type": "ITEM_PURCHASE",
      "status": "COMPLETED",
      "quantity": 1,
@@ -844,16 +936,16 @@
      "amountRCoins": 0,
      "giftName": null,
      "sender": {
-      "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-      "username": "wire_host_8490",
+      "id": "76535a80-3cfd-480e-b609-490f51de1385",
+      "username": "wire_host_7233",
       "avatarUrl": null
      },
      "receiver": null,
      "note": "Store: Bronze Ring",
-     "createdAt": "2026-10-30T09:40:28.960Z"
+     "createdAt": "2026-11-06T11:02:47.837Z"
     },
     {
-     "id": "923f09cf-c44e-454a-8b3b-ef79611686ea",
+     "id": "2ea15ef4-5970-4cba-84ff-12423b90ad5f",
      "type": "ITEM_PURCHASE",
      "status": "COMPLETED",
      "quantity": 1,
@@ -861,16 +953,16 @@
      "amountRCoins": 0,
      "giftName": null,
      "sender": {
-      "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-      "username": "wire_host_8490",
+      "id": "76535a80-3cfd-480e-b609-490f51de1385",
+      "username": "wire_host_7233",
       "avatarUrl": null
      },
      "receiver": null,
      "note": "Store: Spectrum Flash",
-     "createdAt": "2026-10-30T09:40:28.951Z"
+     "createdAt": "2026-11-06T11:02:47.825Z"
     },
     {
-     "id": "1e2c6162-74f8-4a17-aa90-c2cd557913db",
+     "id": "1f6e3ce0-e75d-4c7e-8069-5a9f239ebdef",
      "type": "ITEM_PURCHASE",
      "status": "COMPLETED",
      "quantity": 1,
@@ -878,30 +970,30 @@
      "amountRCoins": 0,
      "giftName": null,
      "sender": {
-      "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-      "username": "wire_host_8490",
+      "id": "76535a80-3cfd-480e-b609-490f51de1385",
+      "username": "wire_host_7233",
       "avatarUrl": null
      },
      "receiver": null,
      "note": "Store: Nebula",
-     "createdAt": "2026-10-30T09:40:28.942Z"
+     "createdAt": "2026-11-06T11:02:47.814Z"
     },
     {
-     "id": "73a9f24d-e07d-42c6-97db-0d44cdaedc2a",
+     "id": "62d48f40-8cbc-4993-a8e8-2b7ef329c885",
      "type": "RECHARGE",
      "status": "COMPLETED",
      "quantity": 1,
-     "amountDiamonds": 5000,
+     "amountDiamonds": 10000,
      "amountRCoins": 0,
      "giftName": null,
      "sender": null,
      "receiver": {
-      "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-      "username": "wire_host_8490",
+      "id": "76535a80-3cfd-480e-b609-490f51de1385",
+      "username": "wire_host_7233",
       "avatarUrl": null
      },
      "note": null,
-     "createdAt": "2026-10-30T09:40:28.891Z"
+     "createdAt": "2026-11-06T11:02:47.671Z"
     }
    ],
    "stats": {
@@ -916,7 +1008,7 @@
   "body": {
    "gifts": [
     {
-     "id": "65314a39-92ef-4cc8-b637-22ecfeae749f",
+     "id": "fdd19c27-ea7a-4dbe-9be6-ad0ea5111d33",
      "name": "Rose",
      "iconUrl": "/gifts/rose.png",
      "animationUrl": "/gifts/rose.json",
@@ -925,12 +1017,18 @@
      "rCoinValue": 1,
      "category": "ROSE",
      "effectKind": "TICKER",
+     "animationFormat": "LOTTIE",
+     "durationMs": 2500,
+     "displayPriority": 10,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 0,
      "sortOrder": 10,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
     },
     {
-     "id": "68ee7951-a395-407d-8973-e75d2a453b71",
+     "id": "dd066375-2a0b-400f-b4c7-5cb8188db6e0",
      "name": "True Heart",
      "iconUrl": "/gifts/heart.png",
      "animationUrl": "/gifts/heart.json",
@@ -939,12 +1037,18 @@
      "rCoinValue": 2,
      "category": "SPECIAL",
      "effectKind": "TICKER",
+     "animationFormat": "LOTTIE",
+     "durationMs": 2500,
+     "displayPriority": 10,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 0,
      "sortOrder": 15,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
     },
     {
-     "id": "af705a5e-9809-4cd2-a97c-e80406522763",
+     "id": "4587ad27-d607-487d-830f-2ede51a3a540",
      "name": "Ice Cream",
      "iconUrl": "/gifts/icecream.png",
      "animationUrl": "/gifts/icecream.json",
@@ -953,12 +1057,18 @@
      "rCoinValue": 5,
      "category": "SPECIAL",
      "effectKind": "TICKER",
+     "animationFormat": "LOTTIE",
+     "durationMs": 2500,
+     "displayPriority": 10,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 0,
      "sortOrder": 20,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
     },
     {
-     "id": "b3ffc53d-6ef0-4bd5-adc3-5365a5e16806",
+     "id": "67674581-168f-4acb-a8dd-484faa65747a",
      "name": "Lucky Star",
      "iconUrl": "/gifts/star.png",
      "animationUrl": "/gifts/star.json",
@@ -967,12 +1077,18 @@
      "rCoinValue": 9,
      "category": "SPECIAL",
      "effectKind": "TICKER",
+     "animationFormat": "LOTTIE",
+     "durationMs": 2500,
+     "displayPriority": 10,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 0,
      "sortOrder": 24,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
     },
     {
-     "id": "47f601a7-85e4-46c5-9852-ed8d612d88c8",
+     "id": "2c987d81-f3a3-4733-bf83-03ae51fe7f24",
      "name": "Balloon",
      "iconUrl": "/gifts/balloon.png",
      "animationUrl": "/gifts/balloon.json",
@@ -981,12 +1097,18 @@
      "rCoinValue": 14,
      "category": "SPECIAL",
      "effectKind": "TICKER",
+     "animationFormat": "LOTTIE",
+     "durationMs": 2500,
+     "displayPriority": 10,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 0,
      "sortOrder": 27,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
     },
     {
-     "id": "24cdfb52-f7df-4d3c-9770-6017f61995c8",
+     "id": "c6a579e3-a849-4bcb-9099-07a7aba72d83",
      "name": "Perfume",
      "iconUrl": "/gifts/perfume.png",
      "animationUrl": "/gifts/perfume.json",
@@ -995,12 +1117,18 @@
      "rCoinValue": 18,
      "category": "SPECIAL",
      "effectKind": "TICKER",
+     "animationFormat": "LOTTIE",
+     "durationMs": 2500,
+     "displayPriority": 10,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 0,
      "sortOrder": 30,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
     },
     {
-     "id": "2ad0854a-7ae9-4509-a696-de9b6d2c4af4",
+     "id": "529f718c-a211-4ba1-a81a-2a53ee7b5208",
      "name": "Lollipop",
      "iconUrl": "/gifts/lollipop.png",
      "animationUrl": "/gifts/lollipop.json",
@@ -1009,12 +1137,18 @@
      "rCoinValue": 32,
      "category": "SPECIAL",
      "effectKind": "TICKER",
+     "animationFormat": "LOTTIE",
+     "durationMs": 2500,
+     "displayPriority": 10,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 0,
      "sortOrder": 35,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
     },
     {
-     "id": "19882022-ee4e-4bb2-bd81-6223745931fb",
+     "id": "9d318a4e-552e-4dd3-8553-2bd5593c6edf",
      "name": "Teddy",
      "iconUrl": "/gifts/teddy.png",
      "animationUrl": "/gifts/teddy.json",
@@ -1023,12 +1157,18 @@
      "rCoinValue": 45,
      "category": "SPECIAL",
      "effectKind": "TICKER",
+     "animationFormat": "LOTTIE",
+     "durationMs": 2500,
+     "displayPriority": 10,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 0,
      "sortOrder": 40,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
     },
     {
-     "id": "d23fded8-7be4-47f8-ac3f-ebc3d8cbe682",
+     "id": "12a6cf19-a3f3-4c93-a00c-2fb73637af17",
      "name": "Ring",
      "iconUrl": "/gifts/ring.png",
      "animationUrl": "/gifts/ring.json",
@@ -1037,12 +1177,66 @@
      "rCoinValue": 90,
      "category": "SPECIAL",
      "effectKind": "TICKER",
+     "animationFormat": "LOTTIE",
+     "durationMs": 2500,
+     "displayPriority": 10,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 1,
      "sortOrder": 50,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
     },
     {
-     "id": "e7268a00-4180-49ed-862b-174a69e7e4d5",
+     "id": "1f25c8b1-f1a2-42a7-9dd6-da2ff1895dcf",
+     "name": "Lucky Pouch",
+     "iconUrl": "/gifts/fireworks.png",
+     "animationUrl": "/gifts/fireworks.json",
+     "soundUrl": "/gifts/sounds/chime.wav",
+     "diamondPrice": 100,
+     "rCoinValue": 90,
+     "category": "SPECIAL",
+     "effectKind": "FULLSCREEN",
+     "animationFormat": "LOTTIE",
+     "durationMs": 0,
+     "displayPriority": 0,
+     "comboEnabled": false,
+     "comboWindowMs": 5000,
+     "minVipLevel": 0,
+     "sortOrder": 51,
+     "isActive": true,
+     "isLuckyBox": true,
+     "receiverShareBps": 6000,
+     "boxOutcomes": [
+      {
+       "label": "0.5x",
+       "multiplierBps": 5000,
+       "chanceBps": 4000
+      },
+      {
+       "label": "1x",
+       "multiplierBps": 10000,
+       "chanceBps": 3000
+      },
+      {
+       "label": "2x",
+       "multiplierBps": 20000,
+       "chanceBps": 2000
+      },
+      {
+       "label": "5x",
+       "multiplierBps": 50000,
+       "chanceBps": 900
+      },
+      {
+       "label": "20x",
+       "multiplierBps": 200000,
+       "chanceBps": 100
+      }
+     ]
+    },
+    {
+     "id": "c282f4c2-cc21-486f-8d26-46ddf9d3260f",
      "name": "Happy Cake",
      "iconUrl": "/gifts/cake.png",
      "animationUrl": "/gifts/cake.json",
@@ -1051,12 +1245,18 @@
      "rCoinValue": 135,
      "category": "EVENT",
      "effectKind": "TICKER",
+     "animationFormat": "LOTTIE",
+     "durationMs": 2500,
+     "displayPriority": 10,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 2,
      "sortOrder": 55,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
     },
     {
-     "id": "d625451f-2eff-4578-bc82-e4795ce39fe5",
+     "id": "f8c6a364-db59-4cca-9656-f4fdc7369e7b",
      "name": "Rocket",
      "iconUrl": "/gifts/rocket.png",
      "animationUrl": "/gifts/rocket.json",
@@ -1065,12 +1265,18 @@
      "rCoinValue": 450,
      "category": "LUXURY",
      "effectKind": "FULLSCREEN",
+     "animationFormat": "LOTTIE",
+     "durationMs": 6000,
+     "displayPriority": 100,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 3,
      "sortOrder": 60,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
     },
     {
-     "id": "88ea2053-edf8-4d01-876a-db501ded16af",
+     "id": "76506a17-547b-486f-9fe1-7f682f3986ee",
      "name": "Sports Car",
      "iconUrl": "/gifts/car.png",
      "animationUrl": "/gifts/car.json",
@@ -1079,12 +1285,18 @@
      "rCoinValue": 900,
      "category": "LUXURY",
      "effectKind": "FULLSCREEN",
+     "animationFormat": "LOTTIE",
+     "durationMs": 6000,
+     "displayPriority": 100,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 5,
      "sortOrder": 70,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
     },
     {
-     "id": "e51c9b63-99f3-401f-91dd-9466695bf1f5",
+     "id": "46ac2ae4-a4f2-43a3-a9b0-0453e373de8c",
      "name": "Fireworks",
      "iconUrl": "/gifts/fireworks.png",
      "animationUrl": "/gifts/fireworks.json",
@@ -1093,12 +1305,18 @@
      "rCoinValue": 2250,
      "category": "LUXURY",
      "effectKind": "FULLSCREEN",
+     "animationFormat": "LOTTIE",
+     "durationMs": 6000,
+     "displayPriority": 100,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 6,
      "sortOrder": 75,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
     },
     {
-     "id": "2d081b16-9f72-4c0e-9605-13d53887a658",
+     "id": "abcafc7f-025e-4527-b7a3-d319ffebf132",
      "name": "Castle",
      "iconUrl": "/gifts/castle.png",
      "animationUrl": "/gifts/castle.json",
@@ -1107,12 +1325,18 @@
      "rCoinValue": 4500,
      "category": "LUXURY",
      "effectKind": "FULLSCREEN",
+     "animationFormat": "LOTTIE",
+     "durationMs": 6000,
+     "displayPriority": 100,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 8,
      "sortOrder": 80,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
     },
     {
-     "id": "957e5082-212c-4190-a0af-bf28b4751aa2",
+     "id": "42783f8f-c170-4eaf-a66e-9b047d9a3e38",
      "name": "King Crown",
      "iconUrl": "/gifts/crown.png",
      "animationUrl": "/gifts/crown.json",
@@ -1121,12 +1345,18 @@
      "rCoinValue": 9000,
      "category": "EVENT",
      "effectKind": "FULLSCREEN",
+     "animationFormat": "LOTTIE",
+     "durationMs": 6000,
+     "displayPriority": 100,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 12,
      "sortOrder": 90,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
     },
     {
-     "id": "b295ad63-dfa2-4963-b7a6-efe8c43a8227",
+     "id": "3c592301-36fe-4e02-a27c-a5017b1b3e59",
      "name": "Private Jet",
      "iconUrl": "/gifts/jet.png",
      "animationUrl": "/gifts/jet.json",
@@ -1135,9 +1365,41 @@
      "rCoinValue": 18000,
      "category": "EVENT",
      "effectKind": "FULLSCREEN",
+     "animationFormat": "LOTTIE",
+     "durationMs": 6000,
+     "displayPriority": 100,
+     "comboEnabled": true,
+     "comboWindowMs": 5000,
      "minVipLevel": 15,
      "sortOrder": 100,
-     "isActive": true
+     "isActive": true,
+     "isLuckyBox": false
+    }
+   ],
+   "categories": [
+    {
+     "key": "ROSE",
+     "name": "Roses",
+     "sortOrder": 10,
+     "gifts": 1
+    },
+    {
+     "key": "SPECIAL",
+     "name": "Special",
+     "sortOrder": 20,
+     "gifts": 9
+    },
+    {
+     "key": "LUXURY",
+     "name": "Luxury",
+     "sortOrder": 30,
+     "gifts": 4
+    },
+    {
+     "key": "EVENT",
+     "name": "Events",
+     "sortOrder": 40,
+     "gifts": 3
     }
    ]
   }
@@ -1156,79 +1418,79 @@
    "unit": "r_coin",
    "leaders": [
     {
-     "id": "59bbc238-a535-4104-a879-7dbb78147655",
-     "username": "e2e_carol_6858",
+     "id": "907df350-d891-4a58-88bb-afdffd6b5311",
+     "username": "Chauhan",
      "avatarUrl": null,
-     "userType": "USER",
+     "userType": "HOST",
      "isVerified": false,
      "rank": {
-      "level": 0,
-      "name": "Newcomer",
-      "badge": "/badges/trace/level-0.png",
-      "accent": "#9aa5b1",
-      "minXp": 0
+      "level": 20,
+      "name": "Immortal",
+      "badge": "/badges/trace/level-20.png",
+      "accent": "#ff6b3d",
+      "minXp": 950000
      },
-     "earned": 540
+     "earned": 3195010
     },
     {
-     "id": "6f89ac0f-5947-4bc5-9355-97b2f9dbaa8c",
-     "username": "e2e_carol_3376",
+     "id": "a1cf8401-6449-4fc4-95af-615c07f7c9f9",
+     "username": "social_b_8301718",
      "avatarUrl": null,
      "userType": "USER",
      "isVerified": false,
      "rank": {
-      "level": 0,
-      "name": "Newcomer",
-      "badge": "/badges/trace/level-0.png",
-      "accent": "#9aa5b1",
-      "minXp": 0
+      "level": 13,
+      "name": "Diamond I",
+      "badge": "/badges/trace/level-13.png",
+      "accent": "#7ea8ff",
+      "minXp": 125000
      },
-     "earned": 540
+     "earned": 252000
     },
     {
-     "id": "c11b44ac-33b7-4d3b-acf2-fdd31fe69ad0",
-     "username": "e2e_carol_1610",
+     "id": "03a612e7-1338-4bc1-a924-42ba24bff263",
+     "username": "Ayaan",
      "avatarUrl": null,
-     "userType": "USER",
+     "userType": "HOST",
      "isVerified": false,
      "rank": {
-      "level": 0,
-      "name": "Newcomer",
-      "badge": "/badges/trace/level-0.png",
-      "accent": "#9aa5b1",
-      "minXp": 0
+      "level": 20,
+      "name": "Immortal",
+      "badge": "/badges/trace/level-20.png",
+      "accent": "#ff6b3d",
+      "minXp": 950000
      },
-     "earned": 540
+     "earned": 14130
     },
     {
-     "id": "d74c5172-7f05-467d-b7c5-41f9d703f0d0",
-     "username": "e2e_carol_4435",
+     "id": "285f9869-e8a9-44b0-ad7c-8bb609f547a6",
+     "username": "e2e_box_host_9601",
      "avatarUrl": null,
      "userType": "USER",
      "isVerified": false,
      "rank": {
-      "level": 0,
-      "name": "Newcomer",
-      "badge": "/badges/trace/level-0.png",
-      "accent": "#9aa5b1",
-      "minXp": 0
+      "level": 2,
+      "name": "Bronze II",
+      "badge": "/badges/trace/level-2.png",
+      "accent": "#b07a52",
+      "minXp": 800
      },
-     "earned": 540
+     "earned": 2466
     },
     {
-     "id": "fb1b9de9-49b3-4e2d-8e2b-7189168631bb",
-     "username": "e2e_carol_1096",
+     "id": "2e7c11fc-fc66-48d7-a7dc-4644b76ddd4c",
+     "username": "e2e_box_host_7466",
      "avatarUrl": null,
      "userType": "USER",
      "isVerified": false,
      "rank": {
-      "level": 0,
-      "name": "Newcomer",
-      "badge": "/badges/trace/level-0.png",
-      "accent": "#9aa5b1",
-      "minXp": 0
+      "level": 2,
+      "name": "Bronze II",
+      "badge": "/badges/trace/level-2.png",
+      "accent": "#b07a52",
+      "minXp": 800
      },
-     "earned": 540
+     "earned": 2340
     }
    ]
   }
@@ -1241,79 +1503,79 @@
    "unit": "diamond",
    "leaders": [
     {
-     "id": "c2c89475-3691-40f5-9e82-4623d940ec31",
-     "username": "e2e_alice_6858",
+     "id": "03a612e7-1338-4bc1-a924-42ba24bff263",
+     "username": "Ayaan",
      "avatarUrl": null,
      "userType": "HOST",
      "isVerified": false,
      "rank": {
-      "level": 0,
-      "name": "Newcomer",
-      "badge": "/badges/trace/level-0.png",
-      "accent": "#9aa5b1",
-      "minXp": 0
+      "level": 20,
+      "name": "Immortal",
+      "badge": "/badges/trace/level-20.png",
+      "accent": "#ff6b3d",
+      "minXp": 950000
      },
-     "earned": 600
+     "earned": 3830010
     },
     {
-     "id": "df1179f7-b730-43b2-8829-36aa629019ce",
-     "username": "e2e_alice_3536",
+     "id": "907df350-d891-4a58-88bb-afdffd6b5311",
+     "username": "Chauhan",
      "avatarUrl": null,
      "userType": "HOST",
      "isVerified": false,
      "rank": {
-      "level": 1,
-      "name": "Bronze I",
-      "badge": "/badges/trace/level-1.png",
-      "accent": "#a9714b",
-      "minXp": 300
+      "level": 20,
+      "name": "Immortal",
+      "badge": "/badges/trace/level-20.png",
+      "accent": "#ff6b3d",
+      "minXp": 950000
      },
-     "earned": 600
+     "earned": 15814
     },
     {
-     "id": "4761b988-2bb1-45ac-bbe3-3c8c2410a8f2",
-     "username": "e2e_alice_8199",
+     "id": "f1f9e10d-2b12-4094-a114-6204acfeb03b",
+     "username": "e2e_box_sender_7466",
      "avatarUrl": null,
      "userType": "HOST",
      "isVerified": false,
      "rank": {
-      "level": 1,
-      "name": "Bronze I",
-      "badge": "/badges/trace/level-1.png",
-      "accent": "#a9714b",
-      "minXp": 300
+      "level": 4,
+      "name": "Silver I",
+      "badge": "/badges/trace/level-4.png",
+      "accent": "#a8b0ba",
+      "minXp": 3000
      },
-     "earned": 600
+     "earned": 4900
     },
     {
-     "id": "ccaa5983-f9d5-4b69-ae43-917239ae1ae9",
-     "username": "e2e_alice_7806",
+     "id": "0e577f34-6441-44e1-918d-42bf0ee3b633",
+     "username": "e2e_box_sender_9601",
      "avatarUrl": null,
      "userType": "HOST",
      "isVerified": false,
      "rank": {
-      "level": 0,
-      "name": "Newcomer",
-      "badge": "/badges/trace/level-0.png",
-      "accent": "#9aa5b1",
-      "minXp": 0
+      "level": 4,
+      "name": "Silver I",
+      "badge": "/badges/trace/level-4.png",
+      "accent": "#a8b0ba",
+      "minXp": 3000
      },
-     "earned": 600
+     "earned": 4900
     },
     {
-     "id": "96ac505a-94ee-4736-a200-eb538316b8cb",
-     "username": "e2e_alice_2820",
+     "id": "1925ca1c-35e4-497b-a66d-7da34d769189",
+     "username": "e2e_box_sender_8156",
      "avatarUrl": null,
      "userType": "HOST",
      "isVerified": false,
      "rank": {
-      "level": 0,
-      "name": "Newcomer",
-      "badge": "/badges/trace/level-0.png",
-      "accent": "#9aa5b1",
-      "minXp": 0
+      "level": 4,
+      "name": "Silver I",
+      "badge": "/badges/trace/level-4.png",
+      "accent": "#a8b0ba",
+      "minXp": 3000
      },
-     "earned": 600
+     "earned": 4900
     }
    ]
   }
@@ -1330,8 +1592,26 @@
      "accent": "#c98a6b",
      "priceDiamonds": 300,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
      "owned": true,
-     "expiresAt": "2026-11-29T09:40:28.960Z",
+     "expiresAt": "2026-12-06T11:02:47.837Z",
+     "equipped": true
+    },
+    {
+     "kind": "RIDE",
+     "key": "ride-confetti",
+     "name": "Confetti Arrival",
+     "art": "/effects/room-confetti.json",
+     "accent": null,
+     "priceDiamonds": 2500,
+     "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
+     "animationFormat": "LOTTIE",
+     "durationMs": 4000,
+     "owned": true,
+     "expiresAt": "2026-12-06T11:02:47.852Z",
      "equipped": true
     },
     {
@@ -1342,6 +1622,8 @@
      "accent": "#b3bbc4",
      "priceDiamonds": 600,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
      "owned": false,
      "expiresAt": null,
      "equipped": false
@@ -1354,8 +1636,10 @@
      "accent": "#f472b6",
      "priceDiamonds": 1500,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
      "owned": true,
-     "expiresAt": "2026-11-29T09:40:28.942Z",
+     "expiresAt": "2026-12-06T11:02:47.814Z",
      "equipped": false
     },
     {
@@ -1366,6 +1650,24 @@
      "accent": null,
      "priceDiamonds": 800,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
+     "owned": false,
+     "expiresAt": null,
+     "equipped": false
+    },
+    {
+     "kind": "RIDE",
+     "key": "ride-hearts",
+     "name": "Heart Rain Arrival",
+     "art": "/effects/room-hearts.json",
+     "accent": null,
+     "priceDiamonds": 4000,
+     "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
+     "animationFormat": "LOTTIE",
+     "durationMs": 4500,
      "owned": false,
      "expiresAt": null,
      "equipped": false
@@ -1378,6 +1680,8 @@
      "accent": "#3ddc97",
      "priceDiamonds": 1200,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
      "owned": false,
      "expiresAt": null,
      "equipped": false
@@ -1390,6 +1694,8 @@
      "accent": "#fbbf24",
      "priceDiamonds": 1500,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
      "owned": false,
      "expiresAt": null,
      "equipped": false
@@ -1402,6 +1708,24 @@
      "accent": null,
      "priceDiamonds": 1200,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
+     "owned": false,
+     "expiresAt": null,
+     "equipped": false
+    },
+    {
+     "kind": "RIDE",
+     "key": "ride-spectrum",
+     "name": "Spectrum Entrance",
+     "art": "/effects/room-spectrum.json",
+     "accent": null,
+     "priceDiamonds": 6000,
+     "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
+     "animationFormat": "LOTTIE",
+     "durationMs": 3500,
      "owned": false,
      "expiresAt": null,
      "equipped": false
@@ -1414,6 +1738,8 @@
      "accent": "#38bdf8",
      "priceDiamonds": 2000,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
      "owned": false,
      "expiresAt": null,
      "equipped": false
@@ -1426,6 +1752,8 @@
      "accent": "#38bdf8",
      "priceDiamonds": 2000,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
      "owned": false,
      "expiresAt": null,
      "equipped": false
@@ -1438,8 +1766,10 @@
      "accent": null,
      "priceDiamonds": 2000,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
      "owned": true,
-     "expiresAt": "2026-11-29T09:40:28.951Z",
+     "expiresAt": "2026-12-06T11:02:47.825Z",
      "equipped": true
     },
     {
@@ -1450,6 +1780,8 @@
      "accent": "#fbbf24",
      "priceDiamonds": 3000,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
      "owned": false,
      "expiresAt": null,
      "equipped": false
@@ -1462,6 +1794,8 @@
      "accent": "#f472b6",
      "priceDiamonds": 4500,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
      "owned": false,
      "expiresAt": null,
      "equipped": false
@@ -1474,6 +1808,8 @@
      "accent": "#8bb2ff",
      "priceDiamonds": 6000,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
      "owned": false,
      "expiresAt": null,
      "equipped": false
@@ -1486,6 +1822,8 @@
      "accent": "#c98cff",
      "priceDiamonds": 8000,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
      "owned": false,
      "expiresAt": null,
      "equipped": false
@@ -1498,6 +1836,8 @@
      "accent": "#dfabff",
      "priceDiamonds": 12000,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
      "owned": false,
      "expiresAt": null,
      "equipped": false
@@ -1510,6 +1850,8 @@
      "accent": "#ff6b3d",
      "priceDiamonds": 20000,
      "periodDays": 30,
+     "minVipLevel": 0,
+     "recommended": false,
      "owned": false,
      "expiresAt": null,
      "equipped": false
@@ -1517,12 +1859,21 @@
    ],
    "owned": [
     {
+     "kind": "RIDE",
+     "key": "ride-confetti",
+     "name": "Confetti Arrival",
+     "art": "/effects/room-confetti.json",
+     "onSale": true,
+     "expiresAt": "2026-12-06T11:02:47.852Z",
+     "acquiredVia": "PURCHASE"
+    },
+    {
      "kind": "FRAME",
      "key": "ring-bronze",
      "name": "Bronze Ring",
      "art": "/frames/trace/frame-1.png",
      "onSale": true,
-     "expiresAt": "2026-11-29T09:40:28.960Z",
+     "expiresAt": "2026-12-06T11:02:47.837Z",
      "acquiredVia": "PURCHASE"
     },
     {
@@ -1531,7 +1882,7 @@
      "name": "Spectrum Flash",
      "art": "/effects/room-spectrum.json",
      "onSale": true,
-     "expiresAt": "2026-11-29T09:40:28.951Z",
+     "expiresAt": "2026-12-06T11:02:47.825Z",
      "acquiredVia": "PURCHASE"
     },
     {
@@ -1540,7 +1891,7 @@
      "name": "Nebula",
      "art": "/themes/nebula/wallpaper.png",
      "onSale": true,
-     "expiresAt": "2026-11-29T09:40:28.942Z",
+     "expiresAt": "2026-12-06T11:02:47.814Z",
      "acquiredVia": "PURCHASE"
     }
    ]
@@ -1557,12 +1908,14 @@
     "accent": null,
     "priceDiamonds": 2000,
     "periodDays": 30,
+    "minVipLevel": 0,
+    "recommended": false,
     "owned": true,
-    "expiresAt": "2026-11-29T09:40:28.951Z",
+    "expiresAt": "2026-12-06T11:02:47.825Z",
     "equipped": false
    },
    "transaction": {
-    "id": "923f09cf-c44e-454a-8b3b-ef79611686ea",
+    "id": "2ea15ef4-5970-4cba-84ff-12423b90ad5f",
     "type": "ITEM_PURCHASE",
     "status": "COMPLETED",
     "quantity": 1,
@@ -1570,23 +1923,23 @@
     "amountRCoins": 0,
     "giftName": null,
     "sender": {
-     "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-     "username": "wire_host_8490",
+     "id": "76535a80-3cfd-480e-b609-490f51de1385",
+     "username": "wire_host_7233",
      "avatarUrl": null
     },
     "receiver": null,
     "note": "Store: Spectrum Flash",
-    "createdAt": "2026-10-30T09:40:28.951Z"
+    "createdAt": "2026-11-06T11:02:47.825Z"
    },
    "wallet": {
-    "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-    "phone": "+15557322849001",
-    "username": "wire_host_8490",
+    "id": "76535a80-3cfd-480e-b609-490f51de1385",
+    "phone": "+15557296723301",
+    "username": "wire_host_7233",
     "avatarUrl": null,
     "bio": null,
     "gender": null,
     "countryCode": null,
-    "diamondBalance": 1500,
+    "diamondBalance": 6500,
     "rCoinBalance": 0,
     "totalGiftsSent": 0,
     "totalGiftsReceived": 0,
@@ -1612,8 +1965,9 @@
     },
     "profileFrame": null,
     "entryEffect": null,
+    "entryRide": null,
     "lastSeenAt": null,
-    "createdAt": "2026-10-30T09:40:28.655Z"
+    "createdAt": "2026-11-06T11:02:47.391Z"
    }
   }
  },
@@ -1621,14 +1975,14 @@
   "status": 200,
   "body": {
    "user": {
-    "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-    "phone": "+15557322849001",
-    "username": "wire_host_8490",
+    "id": "76535a80-3cfd-480e-b609-490f51de1385",
+    "phone": "+15557296723301",
+    "username": "wire_host_7233",
     "avatarUrl": null,
     "bio": null,
     "gender": null,
     "countryCode": null,
-    "diamondBalance": 1200,
+    "diamondBalance": 3700,
     "rCoinBalance": 0,
     "totalGiftsSent": 0,
     "totalGiftsReceived": 0,
@@ -1636,21 +1990,21 @@
     "status": "ACTIVE",
     "isVerified": false,
     "vipLevel": 0,
-    "xp": 3800,
+    "xp": 6300,
     "rank": {
-     "level": 4,
-     "name": "Silver I",
-     "badge": "/badges/trace/level-4.png",
-     "accent": "#a8b0ba",
-     "minXp": 3000
-    },
-    "nextRank": {
      "level": 5,
      "name": "Silver II",
      "badge": "/badges/trace/level-5.png",
      "accent": "#b3bbc4",
-     "minXp": 5000,
-     "remainingXp": 1200
+     "minXp": 5000
+    },
+    "nextRank": {
+     "level": 6,
+     "name": "Silver III",
+     "badge": "/badges/trace/level-6.png",
+     "accent": "#c0c7cf",
+     "minXp": 8000,
+     "remainingXp": 1700
     },
     "profileFrame": {
      "key": "ring-bronze",
@@ -1659,8 +2013,15 @@
      "accent": "#c98a6b"
     },
     "entryEffect": null,
+    "entryRide": {
+     "key": "ride-confetti",
+     "name": "Confetti Arrival",
+     "url": "/effects/room-confetti.json",
+     "format": "LOTTIE",
+     "durationMs": 4000
+    },
     "lastSeenAt": null,
-    "createdAt": "2026-10-30T09:40:28.655Z"
+    "createdAt": "2026-11-06T11:02:47.391Z"
    }
   }
  },
@@ -1668,14 +2029,14 @@
   "status": 200,
   "body": {
    "user": {
-    "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-    "phone": "+15557322849001",
-    "username": "wire_host_8490",
+    "id": "76535a80-3cfd-480e-b609-490f51de1385",
+    "phone": "+15557296723301",
+    "username": "wire_host_7233",
     "avatarUrl": null,
     "bio": null,
     "gender": null,
     "countryCode": null,
-    "diamondBalance": 1200,
+    "diamondBalance": 3700,
     "rCoinBalance": 0,
     "totalGiftsSent": 0,
     "totalGiftsReceived": 0,
@@ -1683,21 +2044,21 @@
     "status": "ACTIVE",
     "isVerified": false,
     "vipLevel": 0,
-    "xp": 3800,
+    "xp": 6300,
     "rank": {
-     "level": 4,
-     "name": "Silver I",
-     "badge": "/badges/trace/level-4.png",
-     "accent": "#a8b0ba",
-     "minXp": 3000
-    },
-    "nextRank": {
      "level": 5,
      "name": "Silver II",
      "badge": "/badges/trace/level-5.png",
      "accent": "#b3bbc4",
-     "minXp": 5000,
-     "remainingXp": 1200
+     "minXp": 5000
+    },
+    "nextRank": {
+     "level": 6,
+     "name": "Silver III",
+     "badge": "/badges/trace/level-6.png",
+     "accent": "#c0c7cf",
+     "minXp": 8000,
+     "remainingXp": 1700
     },
     "profileFrame": {
      "key": "ring-bronze",
@@ -1706,15 +2067,22 @@
      "accent": "#c98a6b"
     },
     "entryEffect": "/effects/room-spectrum.json",
+    "entryRide": {
+     "key": "ride-confetti",
+     "name": "Confetti Arrival",
+     "url": "/effects/room-confetti.json",
+     "format": "LOTTIE",
+     "durationMs": 4000
+    },
     "lastSeenAt": null,
-    "createdAt": "2026-10-30T09:40:28.655Z"
+    "createdAt": "2026-11-06T11:02:47.391Z"
    }
   }
  },
  "questsBefore": {
   "status": 200,
   "body": {
-   "date": "2026-10-30",
+   "date": "2026-11-06",
    "resetTimezone": "UTC",
    "quests": [
     {
@@ -1726,7 +2094,7 @@
      "progress": 1,
      "xpReward": 20,
      "completed": true,
-     "completedAt": "2026-10-30T09:40:33.610Z",
+     "completedAt": "2026-11-06T11:02:52.591Z",
      "xpAwarded": 20
     },
     {
@@ -1735,11 +2103,11 @@
      "description": "Spend 50 diamonds on gifts today.",
      "metric": "DIAMONDS_SPENT",
      "target": 50,
-     "progress": 2,
+     "progress": 50,
      "xpReward": 30,
-     "completed": false,
-     "completedAt": null,
-     "xpAwarded": 0
+     "completed": true,
+     "completedAt": "2026-11-06T11:02:52.654Z",
+     "xpAwarded": 30
     },
     {
      "key": "chat-3",
@@ -1754,8 +2122,8 @@
      "xpAwarded": 0
     }
    ],
-   "completedCount": 1,
-   "xpEarnedToday": 20,
+   "completedCount": 2,
+   "xpEarnedToday": 50,
    "checkIn": {
     "available": true,
     "done": false,
@@ -1774,36 +2142,36 @@
   "body": {
    "xpAwarded": 10,
    "user": {
-    "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-    "phone": "+15557322849001",
-    "username": "wire_host_8490",
+    "id": "76535a80-3cfd-480e-b609-490f51de1385",
+    "phone": "+15557296723301",
+    "username": "wire_host_7233",
     "avatarUrl": null,
     "bio": null,
     "gender": null,
     "countryCode": null,
-    "diamondBalance": 1198,
+    "diamondBalance": 3398,
     "rCoinBalance": 0,
-    "totalGiftsSent": 2,
+    "totalGiftsSent": 5,
     "totalGiftsReceived": 0,
     "userType": "HOST",
     "status": "ACTIVE",
     "isVerified": false,
     "vipLevel": 0,
-    "xp": 3832,
+    "xp": 6662,
     "rank": {
-     "level": 4,
-     "name": "Silver I",
-     "badge": "/badges/trace/level-4.png",
-     "accent": "#a8b0ba",
-     "minXp": 3000
-    },
-    "nextRank": {
      "level": 5,
      "name": "Silver II",
      "badge": "/badges/trace/level-5.png",
      "accent": "#b3bbc4",
-     "minXp": 5000,
-     "remainingXp": 1168
+     "minXp": 5000
+    },
+    "nextRank": {
+     "level": 6,
+     "name": "Silver III",
+     "badge": "/badges/trace/level-6.png",
+     "accent": "#c0c7cf",
+     "minXp": 8000,
+     "remainingXp": 1338
     },
     "profileFrame": {
      "key": "ring-bronze",
@@ -1812,11 +2180,18 @@
      "accent": "#c98a6b"
     },
     "entryEffect": "/effects/room-spectrum.json",
+    "entryRide": {
+     "key": "ride-confetti",
+     "name": "Confetti Arrival",
+     "url": "/effects/room-confetti.json",
+     "format": "LOTTIE",
+     "durationMs": 4000
+    },
     "lastSeenAt": null,
-    "createdAt": "2026-10-30T09:40:28.655Z"
+    "createdAt": "2026-11-06T11:02:47.391Z"
    },
    "status": {
-    "date": "2026-10-30",
+    "date": "2026-11-06",
     "resetTimezone": "UTC",
     "quests": [
      {
@@ -1828,7 +2203,7 @@
       "progress": 1,
       "xpReward": 20,
       "completed": true,
-      "completedAt": "2026-10-30T09:40:33.610Z",
+      "completedAt": "2026-11-06T11:02:52.591Z",
       "xpAwarded": 20
      },
      {
@@ -1837,11 +2212,11 @@
       "description": "Spend 50 diamonds on gifts today.",
       "metric": "DIAMONDS_SPENT",
       "target": 50,
-      "progress": 2,
+      "progress": 50,
       "xpReward": 30,
-      "completed": false,
-      "completedAt": null,
-      "xpAwarded": 0
+      "completed": true,
+      "completedAt": "2026-11-06T11:02:52.654Z",
+      "xpAwarded": 30
      },
      {
       "key": "chat-3",
@@ -1856,8 +2231,8 @@
       "xpAwarded": 0
      }
     ],
-    "completedCount": 1,
-    "xpEarnedToday": 30,
+    "completedCount": 2,
+    "xpEarnedToday": 60,
     "checkIn": {
      "available": false,
      "done": true,
@@ -1876,9 +2251,9 @@
   "status": 200,
   "body": {
    "room": {
-    "id": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
-    "roomNumber": 618924,
-    "title": "Wire Room 3228490",
+    "id": "d41e936a-a885-452d-816b-87f3701571bc",
+    "roomNumber": 756697,
+    "title": "Wire Room 2967233",
     "description": null,
     "coverUrl": null,
     "theme": "nebula",
@@ -1887,19 +2262,22 @@
     "language": null,
     "region": null,
     "rules": null,
+    "announcement": null,
+    "announcementUpdatedAt": null,
+    "speakerApprovalRequired": false,
     "ambientEffect": "/effects/room-glow.json",
     "type": "PUBLIC",
     "seatCapacity": 4,
     "status": "ACTIVE",
     "listenerCount": 3,
     "likeCount": 15,
-    "totalGiftValue": 2,
-    "livekitRoomName": "voiza-room-618924",
-    "createdAt": "2026-10-30T09:40:28.985Z",
+    "totalGiftValue": 488,
+    "livekitRoomName": "voiza-room-756697",
+    "createdAt": "2026-11-06T11:02:47.878Z",
     "closedAt": null,
     "host": {
-     "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-     "username": "wire_host_8490",
+     "id": "76535a80-3cfd-480e-b609-490f51de1385",
+     "username": "wire_host_7233",
      "avatarUrl": null,
      "profileFrame": {
       "key": "ring-bronze",
@@ -2336,9 +2714,9 @@
   "status": 200,
   "body": {
    "room": {
-    "id": "e6a3ad1c-dc97-4e7c-9f9a-232bf2ff0fd8",
-    "roomNumber": 618924,
-    "title": "Wire Room Edited 3228490",
+    "id": "d41e936a-a885-452d-816b-87f3701571bc",
+    "roomNumber": 756697,
+    "title": "Wire Room Edited 2967233",
     "description": "captured profile",
     "coverUrl": null,
     "theme": "nebula",
@@ -2347,19 +2725,22 @@
     "language": "en",
     "region": "BD",
     "rules": "mic off when not on the seat",
+    "announcement": null,
+    "announcementUpdatedAt": null,
+    "speakerApprovalRequired": false,
     "ambientEffect": "/effects/room-glow.json",
     "type": "PUBLIC",
     "seatCapacity": 4,
     "status": "ACTIVE",
     "listenerCount": 3,
     "likeCount": 15,
-    "totalGiftValue": 2,
-    "livekitRoomName": "voiza-room-618924",
-    "createdAt": "2026-10-30T09:40:28.985Z",
+    "totalGiftValue": 488,
+    "livekitRoomName": "voiza-room-756697",
+    "createdAt": "2026-11-06T11:02:47.878Z",
     "closedAt": null,
     "host": {
-     "id": "f8285f64-89f7-4a11-b922-d8252997dd68",
-     "username": "wire_host_8490",
+     "id": "76535a80-3cfd-480e-b609-490f51de1385",
+     "username": "wire_host_7233",
      "avatarUrl": null,
      "profileFrame": {
       "key": "ring-bronze",

@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.voiza.app.domain.model.BannerPlacement
 import com.voiza.app.domain.model.RoomCategory
 import com.voiza.app.domain.model.RoomSort
 import com.voiza.app.domain.model.RoomSummary
@@ -79,6 +80,7 @@ import com.voiza.app.ui.components.FlameBadge
 import com.voiza.app.ui.components.ListenerBadge
 import com.voiza.app.ui.components.LoadingProgress
 import com.voiza.app.ui.components.VoizaTextButton
+import com.voiza.app.ui.components.banner.PromoBannerStrip
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.DangerRed
 import com.voiza.app.ui.theme.Fuchsia
@@ -202,6 +204,14 @@ fun HomeScreen(
                 onSelectSort = viewModel::selectSort,
                 onToggleMyRooms = viewModel::toggleMyRooms,
                 onQuickJoin = viewModel::quickJoin,
+            )
+
+            // What the operator is running on the wall right now, above the grid rather than inside
+            // it: a campaign that scrolled away with the rooms would be one a member could never
+            // happen to see twice, and it draws nothing at all while no HOME banner is live.
+            PromoBannerStrip(
+                placement = BannerPlacement.HOME,
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp),
             )
 
             Box(modifier = Modifier.fillMaxSize()) {

@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
 // Media library: the files behind gift icons, gift animations, gift sounds,
-// room effects, room wallpapers and rank badges. Upload puts art on the
-// server, a catalogue row points at it, and this is where a retired file gets
-// deleted.
+// room effects, entrance rides, room wallpapers and rank badges. Upload puts
+// art on the server, a catalogue row points at it, and this is where a retired
+// file gets deleted.
 // ---------------------------------------------------------------------------
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, type BadgeTone } from '../components/ui/Badge';
@@ -29,6 +29,8 @@ const KIND_TONES: Record<MediaKind, BadgeTone> = {
   GIFT_ANIMATION: 'fuchsia',
   GIFT_SOUND: 'sky',
   EFFECT: 'violet',
+  RIDE: 'red',
+  BANNER: 'fuchsia',
   BADGE: 'amber',
   WALLPAPER: 'green',
   EMOJI: 'slate',
@@ -232,6 +234,38 @@ function AssetPreview({ asset }: { asset: MediaAsset }) {
     return (
       <span className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl border border-edge/60 bg-elevated">
         <img src={resolved} alt="" loading="lazy" className="h-full w-full object-contain" />
+      </span>
+    );
+  }
+  if (asset.kind === 'RIDE') {
+    // A ride ships in three containers and only two of them play in a browser, so the preview says
+    // which one the bytes actually were rather than showing a Lottie box stuck on "load failed".
+    if (asset.contentType.startsWith('video/')) {
+      return (
+        <video
+          controls
+          muted
+          playsInline
+          preload="metadata"
+          src={resolved}
+          className="h-14 w-[92px] shrink-0 rounded-xl border border-edge/60 bg-elevated object-cover"
+        />
+      );
+    }
+    if (asset.contentType.includes('json')) {
+      return (
+        <LottiePreview
+          src={asset.url}
+          size={56}
+          loop={false}
+          className="shrink-0 rounded-xl border border-edge/60 bg-elevated"
+          fallback="still"
+        />
+      );
+    }
+    return (
+      <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl border border-edge/60 bg-elevated text-[10px] uppercase text-faint">
+        svga
       </span>
     );
   }

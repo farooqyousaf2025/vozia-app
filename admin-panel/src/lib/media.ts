@@ -12,6 +12,8 @@ export const MEDIA_KINDS: readonly MediaKind[] = [
   'GIFT_ANIMATION',
   'GIFT_SOUND',
   'EFFECT',
+  'RIDE',
+  'BANNER',
   'BADGE',
   'WALLPAPER',
   'EMOJI',
@@ -35,9 +37,11 @@ export const MEDIA_KIND_META: Record<MediaKind, MediaKindMeta> = {
   },
   GIFT_ANIMATION: {
     label: 'Gift animation',
-    accept: '.json,application/json',
-    maxBytes: 2 * 1024 * 1024,
-    hint: 'Lottie JSON · up to 2 MB',
+    accept: '.json,.svga,.mp4,application/json,video/mp4,application/octet-stream',
+    // Three containers, three budgets: the server caps a Lottie scene at 2 MB and an SVGA or MP4
+    // at 8 MB, so the picker only refuses what is oversized for the format it can identify.
+    maxBytes: 8 * 1024 * 1024,
+    hint: 'Lottie JSON up to 2 MB · SVGA or MP4 up to 8 MB · the renderer is chosen by the gift’s animation format',
   },
   GIFT_SOUND: {
     label: 'Gift sound',
@@ -50,6 +54,25 @@ export const MEDIA_KIND_META: Record<MediaKind, MediaKindMeta> = {
     accept: '.json,application/json',
     maxBytes: 3 * 1024 * 1024,
     hint: 'Lottie JSON · up to 3 MB',
+  },
+  RIDE: {
+    label: 'Entrance ride',
+    accept: '.json,.svga,.mp4,application/json,video/mp4,application/octet-stream',
+    // Three containers, three budgets, exactly as with a gift animation: the server caps a Lottie
+    // scene at 3 MB and an SVGA or MP4 at 8 MB, so the picker only refuses what is oversized for the
+    // format it can identify. The ride row's `format` is what tells the phone which renderer opens it.
+    maxBytes: 8 * 1024 * 1024,
+    hint: 'Lottie JSON up to 3 MB · SVGA or MP4 up to 8 MB · set the ride’s format to match the file',
+  },
+  // The server's BANNER budgets sit under the gift slots' on purpose: a splash image arrives on a
+  // cold start, on whatever network a member happens to have, whether or not they asked for it.
+  // The picker takes the loosest of those (6 MB, the SVGA/MP4 ceiling) so a static cut is never
+  // refused here for a size the server would accept.
+  BANNER: {
+    label: 'Promotional banner',
+    accept: '.png,.webp,.gif,.jpg,.jpeg,.json,.svga,.mp4,application/json,video/mp4,application/octet-stream',
+    maxBytes: 6 * 1024 * 1024,
+    hint: 'Image up to 3 MB · Lottie up to 2 MB · SVGA or MP4 up to 6 MB · set the banner’s format to match the file',
   },
   BADGE: {
     label: 'Rank badge',

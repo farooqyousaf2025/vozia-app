@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import adminRoutes from './admin.routes';
 import authRoutes from './auth.routes';
+import bannerRoutes from './banner.routes';
 import businessRoutes from './business.routes';
 import emojiRoutes from './emoji.routes';
 import gameRoutes from './game.routes';
@@ -38,6 +39,9 @@ router.use('/users', userRoutes);
 // The cosmetic store. Its own prefix rather than a branch of /users, because buying is a money
 // path like /gifts and /wallet — the catalogue and the ownership rows live behind it.
 router.use('/store', storeRoutes);
+// Promotional art. Public like /emoji: a splash banner has to render before the app knows who is
+// signed in, so the endpoint carries placement art only — never member data.
+router.use('/banners', bannerRoutes);
 router.use('/admin', adminRoutes);
 // Partner panel: BD representatives and coin sellers. Its own prefix, because a partner
 // credential must never be able to reach an operator route.

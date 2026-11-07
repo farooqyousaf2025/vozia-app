@@ -7,12 +7,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.compose.rememberNavController
 import com.voiza.app.di.ServiceLocator
+import com.voiza.app.ui.components.banner.BannerNavigator
+import com.voiza.app.ui.components.banner.LocalBannerNavigator
+import com.voiza.app.ui.components.banner.LocalBannerStore
+import com.voiza.app.ui.components.banner.SplashBannerOverlay
 import com.voiza.app.ui.navigation.VoizaNavHost
 import com.voiza.app.ui.theme.VoizaTheme
 import kotlinx.coroutines.launch
@@ -58,14 +66,34 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             VoizaTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.background,
+                val navController = rememberNavController()
+                // The banner list belongs to the process rather than to a route, so it is handed to
+                // every surface from here: four screens, one request, and a tap that navigates through
+                // the graph this activity already owns instead of a navController passed down by hand.
+                val bannerNavigator = remember(navController) {
+                    BannerNavigator(this) { route ->
+                        navController.navigate(route) { launchSingleTop = true }
+                    }
+                }
+                CompositionLocalProvider(
+                    LocalBannerStore provides ServiceLocator.bannersStore,
+                    LocalBannerNavigator provides bannerNavigator,
                 ) {
-                    VoizaNavHost(
-                        startOnHome = startOnHome,
-                        onLogout = { /* nav graph already reset to auth */ },
-                    )
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.background,
+                        ) {
+                            VoizaNavHost(
+                                startOnHome = startOnHome,
+                                onLogout = { /* nav graph already reset to auth */ },
+                                navController = navController,
+                            )
+                        }
+                        // Above the graph, and only while a SPLASH campaign is live: with nothing to
+                        // show the app opens exactly as it did before this overlay existed.
+                        SplashBannerOverlay()
+                    }
                 }
             }
         }
@@ -76,7 +104,11 @@ class MainActivity : ComponentActivity() {
         // Do NOT disconnect LiveKit here on config changes; only when the
         // activity is truly finishing.
         if (isFinishing) {
-            ServiceLocator.liveKitRoomManager.destroy()
+            // Leave the room, but do not cancel the manager's scope: it is a process singleton that
+            // ServiceLocator never rebuilds, so cancelling it here would leave the next
+            // MainActivity — a process death is not required, rotation plus finish is enough —
+            // holding a manager whose event collector and connect coroutine are already dead.
+            ServiceLocator.liveKitRoomManager.disconnect()
             ServiceLocator.socketClient.disconnect()
         }
     }

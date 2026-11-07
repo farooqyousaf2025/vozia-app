@@ -1,17 +1,17 @@
 import { many, one, query, withTransaction } from '../config/db';
-import { ProfileFrameRow, RoomCategoryEffectRow, RoomThemeRow, VisualEffectRow } from '../types/db';
+import { ProfileFrameRow, ProfileRideRow, RoomCategoryEffectRow, RoomThemeRow, VisualEffectRow } from '../types/db';
 import { ApiError, requireBoolean, requireInt, requireString } from '../utils/http';
 
 /**
  * The decoration catalogue: wallpapers a host can pick, the Lottie loops a room breathes, the
- * flourish a member enters with, and the ring around an avatar.
+ * flourish a member enters with, the cinematic a member arrives in, and the ring around an avatar.
  *
  * This used to be `backend/public/themes/manifest.json`, read once at boot. That made the
  * platform's look a build artefact: an operator could not add a theme, retire one, or decide that
  * a PARTY room should sparkle instead of confetti without shipping a new backend. The rows in
- * `room_themes`, `visual_effects` and `room_category_effects` (migration 0015), and the
- * `profile_frames` added by 0019, are now the registry, and the panel edits them through the
- * `config:manage` routes in `admin.controller.ts`.
+ * `room_themes`, `visual_effects` and `room_category_effects` (migration 0015), the
+ * `profile_frames` added by 0019, and the `profile_rides` added by 0026 are now the registry, and
+ * the panel edits them through the `config:manage` routes in `admin.controller.ts`.
  *
  * Two consequences drive the shape of this file:
  *
@@ -21,7 +21,7 @@ import { ApiError, requireBoolean, requireInt, requireString } from '../utils/ht
  *    No request path awaits a catalogue query. That is also why the art lives *here* rather than in
  *    `store.service`: `serialize` may import this file, and a `store` → `serialize` → `store`
  *    cycle would decide the shape of every wallet DTO by which module happened to load first.
- * 2. Clients receive URLs only (`wallpaper`, `ambientEffect`, `welcome`, `art`). A client must
+ * 2. Clients receive URLs only (`wallpaper`, `ambientEffect`, `welcome`, `art`, `url`). A client must
  *    never derive a path from a slug, because an operator's theme lives at `/uploads/<uuid>.png`,
  *    not at `/themes/<slug>/wallpaper.png`; a client that guessed would 404 on art that exists.
  *
@@ -31,6 +31,15 @@ import { ApiError, requireBoolean, requireInt, requireString } from '../utils/ht
 
 export const EFFECT_KINDS = ['AMBIENT', 'WELCOME'] as const;
 export type EffectKind = (typeof EFFECT_KINDS)[number];
+
+/**
+ * The containers a ride's art can be stored in, and the reason the client can pick a renderer
+ * without looking at a file name. The same three the gift engine routes on (migration 0023), and
+ * deliberately not a shared constant: a ride is uploaded under the `RIDE` media policy, whose
+ * budgets are its own.
+ */
+export const RIDE_FORMATS = ['LOTTIE', 'SVGA', 'MP4'] as const;
+export type RideFormat = (typeof RIDE_FORMATS)[number];
 
 /** Exactly what `GET /api/rooms/themes` publishes; the shape an installed app parses. */
 export type RoomTheme = {
@@ -60,6 +69,10 @@ export type VisualEffectDto = {
   forSale: boolean;
   /** Days a purchase lasts; null is permanent. */
   periodDays: number | null;
+  /** Lowest `vipLevel` allowed to buy this flourish; 0 = anybody. */
+  minVipLevel: number;
+  /** The operator wants this row surfaced ahead of the grid. */
+  recommended: boolean;
 };
 
 export type RoomThemeDto = RoomTheme & {
@@ -70,6 +83,8 @@ export type RoomThemeDto = RoomTheme & {
   priceDiamonds: number;
   forSale: boolean;
   periodDays: number | null;
+  minVipLevel: number;
+  recommended: boolean;
 };
 
 export type CategoryEffectDto = {
@@ -96,6 +111,8 @@ type Snapshot = {
   welcomeByKey: Map<string, string>;
   accentByTheme: Map<string, string>;
   frames: Map<string, FrameArt>;
+  /** Every ride row by key, including delisted ones — a receipt outlives the shelf it came from. */
+  rides: Map<string, RideArt>;
   categoryEffects: Map<string, string>;
   loadedAt: number;
 };
@@ -103,15 +120,23 @@ type Snapshot = {
 /** The ring a member wears: art to draw over the avatar, and a colour to fall back on. */
 export type FrameArt = { key: string; name: string; art: string; accent: string };
 
+/**
+ * The cinematic a member arrives with. `format` tells the device which renderer opens `url` and
+ * `durationMs` is the operator's ceiling on how long the room hands the screen to it — 0 means the
+ * row declared nothing, so the client's own fallback applies.
+ */
+export type RideArt = { key: string; name: string; url: string; format: RideFormat; durationMs: number };
+
 let snapshot: Snapshot | null = null;
 let loading: Promise<void> | null = null;
 
 async function fetchSnapshot(): Promise<Snapshot> {
-  const [themeRows, effectRows, categoryRows, frameRows] = await Promise.all([
+  const [themeRows, effectRows, categoryRows, frameRows, rideRows] = await Promise.all([
     many<RoomThemeRow>('SELECT * FROM room_themes ORDER BY sort_order ASC, slug ASC'),
     many<VisualEffectRow>('SELECT * FROM visual_effects ORDER BY sort_order ASC, key ASC'),
     many<RoomCategoryEffectRow>('SELECT * FROM room_category_effects'),
     many<ProfileFrameRow>('SELECT * FROM profile_frames ORDER BY sort_order ASC, key ASC'),
+    many<ProfileRideRow>('SELECT * FROM profile_rides ORDER BY sort_order ASC, key ASC'),
   ]);
 
   if (themeRows.length === 0) {
@@ -139,6 +164,12 @@ async function fetchSnapshot(): Promise<Snapshot> {
     accentByTheme: new Map(themeRows.map((row) => [row.slug, row.accent.trim()])),
     frames: new Map(
       frameRows.map((row) => [row.key, { key: row.key, name: row.name, art: row.art_url, accent: row.accent.trim() }]),
+    ),
+    rides: new Map(
+      rideRows.map((row) => [
+        row.key,
+        { key: row.key, name: row.name, url: row.url, format: row.format, durationMs: row.duration_ms },
+      ]),
     ),
     categoryEffects: new Map(categoryRows.map((row) => [row.category, row.effect_key])),
     loadedAt: Date.now(),
@@ -268,15 +299,31 @@ export function wornWelcome(row: {
   return welcomeEffectUrlFor(row.welcome_effect_key);
 }
 
+/**
+ * The cinematic other members see when this one enters a room, or null for "just walk in".
+ *
+ * Unlike the entry flourish, a missing ride is a real state rather than a fallback: the free default
+ * is no animation at all, so nothing here resolves to somebody else's art. A ride whose row an
+ * operator retired also disappears — the receipt survives, the cinematic does not.
+ */
+export function wornRide(row: {
+  profile_ride_key?: string | null;
+  profile_ride_expires_at?: Date | null;
+}): RideArt | null {
+  if (!row.profile_ride_key) return null;
+  if (row.profile_ride_expires_at && row.profile_ride_expires_at.getTime() <= Date.now()) return null;
+  return current().rides.get(row.profile_ride_key) ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Admin reads
 // ---------------------------------------------------------------------------
-
 export async function listAdminCatalogue(): Promise<{
   themes: RoomThemeDto[];
   effects: VisualEffectDto[];
   categoryEffects: CategoryEffectDto[];
   frames: ProfileFrameDto[];
+  rides: ProfileRideDto[];
 }> {
   const [themeRows, effectRows, categoryRows, usage] = await Promise.all([
     many<RoomThemeRow>('SELECT * FROM room_themes ORDER BY sort_order ASC, slug ASC'),
@@ -304,6 +351,7 @@ export async function listAdminCatalogue(): Promise<{
     })),
     // One call for the whole decoration screen, priced rows and rings included.
     frames: await listFrames(),
+    rides: await listRides(),
   };
 }
 
@@ -316,6 +364,8 @@ function themeDto(row: RoomThemeRow, roomsUsing: number): RoomThemeDto {
     priceDiamonds: row.price_diamonds,
     forSale: row.for_sale,
     periodDays: row.period_days,
+    minVipLevel: row.min_vip_level,
+    recommended: row.recommended,
   };
 }
 
@@ -330,6 +380,8 @@ function effectDto(row: VisualEffectRow, usedByCategories: string[]): VisualEffe
     priceDiamonds: row.price_diamonds,
     forSale: row.for_sale,
     periodDays: row.period_days,
+    minVipLevel: row.min_vip_level,
+    recommended: row.recommended,
   };
 }
 
@@ -455,8 +507,8 @@ async function insertTheme(input: Required<ThemeChanges>, pricing: Pricing): Pro
     }
     await client.query(
       `INSERT INTO room_themes (slug, name, accent, wallpaper_url, is_default, sort_order,
-                                price_diamonds, for_sale, period_days)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+                                price_diamonds, for_sale, period_days, min_vip_level, recommended)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [
         input.slug,
         input.name,
@@ -467,6 +519,8 @@ async function insertTheme(input: Required<ThemeChanges>, pricing: Pricing): Pro
         pricing.priceDiamonds,
         pricing.forSale,
         pricing.periodDays,
+        pricing.minVipLevel,
+        pricing.recommended,
       ],
     );
   });
@@ -513,7 +567,8 @@ export async function updateTheme(slug: string, body: Record<string, unknown>): 
     await client.query(
       `UPDATE room_themes
           SET name = $2, accent = $3, wallpaper_url = $4, is_default = $5, sort_order = $6,
-              price_diamonds = $7, for_sale = $8, period_days = $9
+              price_diamonds = $7, for_sale = $8, period_days = $9,
+              min_vip_level = $10, recommended = $11
         WHERE slug = $1`,
       [
         slug,
@@ -527,6 +582,8 @@ export async function updateTheme(slug: string, body: Record<string, unknown>): 
         pricing.priceDiamonds,
         pricing.forSale,
         pricing.periodDays,
+        pricing.minVipLevel,
+        pricing.recommended,
       ],
     );
   });
@@ -582,10 +639,11 @@ export async function createEffect(body: Record<string, unknown>): Promise<Visua
     throw ApiError.conflict(`An effect already uses the key ${complete.key}`, 'effect_exists');
   }
   await query(
-    `INSERT INTO visual_effects (key, kind, name, url, sort_order, price_diamonds, for_sale, period_days)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    `INSERT INTO visual_effects (key, kind, name, url, sort_order, price_diamonds, for_sale, period_days,
+                                min_vip_level, recommended)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
     [complete.key, complete.kind, complete.name, complete.url, complete.sortOrder,
-     pricing.priceDiamonds, pricing.forSale, pricing.periodDays],
+     pricing.priceDiamonds, pricing.forSale, pricing.periodDays, pricing.minVipLevel, pricing.recommended],
   );
   await loadThemeRegistry();
   return effectAfterWrite(complete.key);
@@ -617,7 +675,8 @@ export async function updateEffect(key: string, body: Record<string, unknown>): 
   }
   await query(
     `UPDATE visual_effects
-        SET name = $2, url = $3, sort_order = $4, price_diamonds = $5, for_sale = $6, period_days = $7
+        SET name = $2, url = $3, sort_order = $4, price_diamonds = $5, for_sale = $6, period_days = $7,
+            min_vip_level = $8, recommended = $9
       WHERE key = $1`,
     [
       key,
@@ -627,6 +686,8 @@ export async function updateEffect(key: string, body: Record<string, unknown>): 
       pricing.priceDiamonds,
       pricing.forSale,
       pricing.periodDays,
+      pricing.minVipLevel,
+      pricing.recommended,
     ],
   );
   await loadThemeRegistry();
@@ -704,6 +765,10 @@ export type ProfileFrameDto = {
   forSale: boolean;
   /** Days a purchase lasts; null is permanent. */
   periodDays: number | null;
+  /** Lowest `vipLevel` allowed to buy this ring; 0 = anybody. */
+  minVipLevel: number;
+  /** The operator wants this row surfaced ahead of the grid. */
+  recommended: boolean;
   /** Members holding this ring right now, sale or grant included. */
   holders: number;
 };
@@ -713,7 +778,11 @@ export type ProfileFrameDto = {
  * rather than a constraint name: a row is either not for sale and free, or for sale and priced.
  * There is no "on sale for zero", because that is a giveaway, and a giveaway is a different feature.
  */
-function assertPricing(subject: 'frame' | 'theme' | 'effect', forSale: boolean, priceDiamonds: number): void {
+function assertPricing(
+  subject: 'frame' | 'theme' | 'effect' | 'ride',
+  forSale: boolean,
+  priceDiamonds: number,
+): void {
   if (forSale && priceDiamonds <= 0) {
     throw ApiError.badRequest(
       'An item on sale needs a price above zero — take it off sale instead of selling it for free',
@@ -725,11 +794,33 @@ function assertPricing(subject: 'frame' | 'theme' | 'effect', forSale: boolean, 
   }
 }
 
-/** The three price columns every sellable catalogue row carries (migration 0019). */
-type Pricing = { priceDiamonds: number; forSale: boolean; periodDays: number | null };
+/**
+ * The price, gate and shelf-position columns every sellable catalogue row carries
+ * (migrations 0019, 0024 and 0026). Grouped because the four catalogues must not drift apart: a
+ * theme that gained a VIP gate while a frame did not would mean two `purchaseItem` paths.
+ */
+type Pricing = {
+  priceDiamonds: number;
+  forSale: boolean;
+  periodDays: number | null;
+  minVipLevel: number;
+  recommended: boolean;
+};
 
-function rowPricing(row: { price_diamonds: number; for_sale: boolean; period_days: number | null }): Pricing {
-  return { priceDiamonds: row.price_diamonds, forSale: row.for_sale, periodDays: row.period_days };
+function rowPricing(row: {
+  price_diamonds: number;
+  for_sale: boolean;
+  period_days: number | null;
+  min_vip_level: number;
+  recommended: boolean;
+}): Pricing {
+  return {
+    priceDiamonds: row.price_diamonds,
+    forSale: row.for_sale,
+    periodDays: row.period_days,
+    minVipLevel: row.min_vip_level,
+    recommended: row.recommended,
+  };
 }
 
 function readPricing(body: Record<string, unknown>, existing?: Pricing): Pricing {
@@ -737,6 +828,8 @@ function readPricing(body: Record<string, unknown>, existing?: Pricing): Pricing
     priceDiamonds: existing?.priceDiamonds ?? 0,
     forSale: existing?.forSale ?? false,
     periodDays: existing?.periodDays ?? null,
+    minVipLevel: existing?.minVipLevel ?? 0,
+    recommended: existing?.recommended ?? false,
   };
   if (body.priceDiamonds !== undefined) {
     out.priceDiamonds = requireInt(body.priceDiamonds, 'priceDiamonds', { min: 0, max: 100_000_000 });
@@ -749,6 +842,12 @@ function readPricing(body: Record<string, unknown>, existing?: Pricing): Pricing
         ? null
         : requireInt(body.periodDays, 'periodDays', { min: 1, max: 3650 });
   }
+  // Bounded by `users.vip_level`'s own ceiling: a row asking for 21 could never be bought, and the
+  // CHECK on the column would be the only place that noticed.
+  if (body.minVipLevel !== undefined) {
+    out.minVipLevel = requireInt(body.minVipLevel, 'minVipLevel', { min: 0, max: 20 });
+  }
+  if (body.recommended !== undefined) out.recommended = requireBoolean(body.recommended, 'recommended');
   return out;
 }
 
@@ -780,6 +879,8 @@ function frameDto(row: ProfileFrameRow, holders: number): ProfileFrameDto {
     priceDiamonds: row.price_diamonds,
     forSale: row.for_sale,
     periodDays: row.period_days,
+    minVipLevel: row.min_vip_level,
+    recommended: row.recommended,
     holders,
   };
 }
@@ -815,9 +916,11 @@ export async function createFrame(body: Record<string, unknown>): Promise<Profil
     throw ApiError.conflict(`A frame already uses the key ${input.key}`, 'frame_exists');
   }
   await query(
-    `INSERT INTO profile_frames (key, name, art_url, accent, sort_order, price_diamonds, for_sale, period_days)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-    [input.key, input.name, input.artUrl, input.accent, input.sortOrder ?? 0, pricing.priceDiamonds, pricing.forSale, pricing.periodDays],
+    `INSERT INTO profile_frames (key, name, art_url, accent, sort_order, price_diamonds, for_sale, period_days,
+                                min_vip_level, recommended)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [input.key, input.name, input.artUrl, input.accent, input.sortOrder ?? 0, pricing.priceDiamonds, pricing.forSale, pricing.periodDays,
+     pricing.minVipLevel, pricing.recommended],
   );
   await loadThemeRegistry();
   return frameAfterWrite(input.key!);
@@ -844,9 +947,11 @@ export async function updateFrame(key: string, body: Record<string, unknown>): P
   await query(
     `UPDATE profile_frames
         SET name = $2, art_url = $3, accent = $4, sort_order = $5,
-            price_diamonds = $6, for_sale = $7, period_days = $8
+            price_diamonds = $6, for_sale = $7, period_days = $8,
+            min_vip_level = $9, recommended = $10
       WHERE key = $1`,
-    [key, next.name, next.artUrl, next.accent, next.sortOrder, pricing.priceDiamonds, pricing.forSale, pricing.periodDays],
+    [key, next.name, next.artUrl, next.accent, next.sortOrder, pricing.priceDiamonds, pricing.forSale, pricing.periodDays,
+     pricing.minVipLevel, pricing.recommended],
   );
   await loadThemeRegistry();
   return frameAfterWrite(key);
@@ -867,6 +972,207 @@ export async function deleteFrame(key: string): Promise<{ ok: true; key: string;
     ['FRAME', key],
   );
   await query('DELETE FROM profile_frames WHERE key = $1', [key]);
+  await loadThemeRegistry();
+  return { ok: true, key, membersStillHolding: Number(holders?.n ?? 0) };
+}
+
+// ---------------------------------------------------------------------------
+// Entrance rides (migration 0026)
+// ---------------------------------------------------------------------------
+
+/** One `profile_rides` row plus the fields the shop and the seat DTO resolve server-side instead. */
+export type ProfileRideDto = {
+  key: string;
+  name: string;
+  url: string;
+  /**
+   * Which renderer a device opens `url` with. The store row for the same item publishes this as
+   * `animationFormat`, because that is the key the gift engine already put on every phone.
+   */
+  format: RideFormat;
+  /** How long the room hands the screen over. 0 = the client's own fallback. */
+  durationMs: number;
+  sortOrder: number;
+  priceDiamonds: number;
+  forSale: boolean;
+  /** Days a purchase lasts; null is permanent. */
+  periodDays: number | null;
+  /** Lowest `vipLevel` allowed to buy this ride; 0 = anybody. */
+  minVipLevel: number;
+  /** The operator wants this row surfaced ahead of the grid. */
+  recommended: boolean;
+  /** Members holding this ride right now, sale or grant included. */
+  holders: number;
+};
+
+type RideChanges = {
+  key?: string;
+  name?: string;
+  url?: string;
+  format?: RideFormat;
+  durationMs?: number;
+  sortOrder?: number;
+};
+
+function readRideFormat(value: unknown): RideFormat {
+  const text = requireString(value, 'format', { max: 8 }).toUpperCase();
+  if (!(RIDE_FORMATS as readonly string[]).includes(text)) {
+    throw ApiError.badRequest(`format must be one of: ${RIDE_FORMATS.join(', ')}`, 'ride_format_invalid');
+  }
+  return text as RideFormat;
+}
+
+/**
+ * 0 is a value, not an omission — it is how an operator says "play the file for its own length" —
+ * so the gap between 1 and 250 is refused here rather than by the CHECK, which would answer with a
+ * constraint name instead of the sentence a panel can show.
+ */
+function readRideDuration(value: unknown): number {
+  const ms = requireInt(value, 'durationMs', { min: 0, max: 30_000 });
+  if (ms > 0 && ms < 250) {
+    throw ApiError.badRequest('durationMs is either 0 (the asset length) or at least 250', 'ride_duration_invalid');
+  }
+  return ms;
+}
+
+function readRideBody(body: Record<string, unknown>): RideChanges {
+  const out: RideChanges = {};
+  if (body.key !== undefined) out.key = readIdentity(body.key, 'key');
+  if (body.name !== undefined) out.name = requireString(body.name, 'name', { max: 60 });
+  if (body.url !== undefined) out.url = readUrl(body.url, 'url');
+  if (body.format !== undefined) out.format = readRideFormat(body.format);
+  if (body.durationMs !== undefined) out.durationMs = readRideDuration(body.durationMs);
+  if (body.sortOrder !== undefined) out.sortOrder = requireInt(body.sortOrder, 'sortOrder', { min: -9999, max: 9999 });
+  return out;
+}
+
+function rideDto(row: ProfileRideRow, holders: number): ProfileRideDto {
+  return {
+    key: row.key,
+    name: row.name,
+    url: row.url,
+    format: row.format,
+    durationMs: row.duration_ms,
+    sortOrder: row.sort_order,
+    priceDiamonds: row.price_diamonds,
+    forSale: row.for_sale,
+    periodDays: row.period_days,
+    minVipLevel: row.min_vip_level,
+    recommended: row.recommended,
+    holders,
+  };
+}
+
+async function rideAfterWrite(key: string): Promise<ProfileRideDto> {
+  const row = await one<ProfileRideRow>('SELECT * FROM profile_rides WHERE key = $1', [key]);
+  if (!row) throw new Error(`ride ${key} vanished after being written`);
+  const holders = await one<{ n: string }>(
+    'SELECT count(*)::text n FROM user_items WHERE kind = $1 AND item_key = $2',
+    ['RIDE', key],
+  );
+  return rideDto(row, Number(holders?.n ?? 0));
+}
+
+export async function listRides(): Promise<ProfileRideDto[]> {
+  const [rows, usage] = await Promise.all([
+    many<ProfileRideRow>('SELECT * FROM profile_rides ORDER BY sort_order ASC, key ASC'),
+    many<{ item_key: string; n: string }>(
+      `SELECT item_key, count(*)::text n FROM user_items WHERE kind = 'RIDE' GROUP BY item_key`,
+    ),
+  ]);
+  const holdersByKey = new Map(usage.map((row) => [row.item_key, Number(row.n)]));
+  return rows.map((row) => rideDto(row, holdersByKey.get(row.key) ?? 0));
+}
+
+export async function createRide(body: Record<string, unknown>): Promise<ProfileRideDto> {
+  const input = readRideBody(body ?? {});
+  const missing = (['key', 'name', 'url'] as const).filter((field) => !input[field]);
+  if (missing.length > 0) throw ApiError.badRequest(`${missing.join(', ')} required`, 'ride_fields_missing');
+  const pricing = readPricing(body ?? {});
+  assertPricing('ride', pricing.forSale, pricing.priceDiamonds);
+  if (await one<ProfileRideRow>('SELECT key FROM profile_rides WHERE key = $1', [input.key!])) {
+    throw ApiError.conflict(`A ride already uses the key ${input.key}`, 'ride_exists');
+  }
+  await query(
+    `INSERT INTO profile_rides (key, name, url, format, duration_ms, sort_order, price_diamonds, for_sale, period_days,
+                               min_vip_level, recommended)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [
+      input.key,
+      input.name,
+      input.url,
+      input.format ?? 'LOTTIE',
+      input.durationMs ?? 0,
+      input.sortOrder ?? 0,
+      pricing.priceDiamonds,
+      pricing.forSale,
+      pricing.periodDays,
+      pricing.minVipLevel,
+      pricing.recommended,
+    ],
+  );
+  await loadThemeRegistry();
+  return rideAfterWrite(input.key!);
+}
+
+export async function updateRide(key: string, body: Record<string, unknown>): Promise<ProfileRideDto> {
+  const changes = readRideBody(body ?? {});
+  const existing = await one<ProfileRideRow>('SELECT * FROM profile_rides WHERE key = $1', [key]);
+  if (!existing) throw ApiError.notFound('Ride not found');
+  if (changes.key && changes.key !== key) {
+    throw ApiError.badRequest(
+      'key is an identity — receipts and worn rides name it. Add the new key and delete this one instead',
+      'ride_key_immutable',
+    );
+  }
+  const pricing = readPricing(body ?? {}, rowPricing(existing));
+  assertPricing('ride', pricing.forSale, pricing.priceDiamonds);
+  const next = {
+    name: changes.name ?? existing.name,
+    url: changes.url ?? existing.url,
+    format: changes.format ?? existing.format,
+    durationMs: changes.durationMs ?? existing.duration_ms,
+    sortOrder: changes.sortOrder ?? existing.sort_order,
+  };
+  await query(
+    `UPDATE profile_rides
+        SET name = $2, url = $3, format = $4, duration_ms = $5, sort_order = $6,
+            price_diamonds = $7, for_sale = $8, period_days = $9,
+            min_vip_level = $10, recommended = $11
+      WHERE key = $1`,
+    [
+      key,
+      next.name,
+      next.url,
+      next.format,
+      next.durationMs,
+      next.sortOrder,
+      pricing.priceDiamonds,
+      pricing.forSale,
+      pricing.periodDays,
+      pricing.minVipLevel,
+      pricing.recommended,
+    ],
+  );
+  await loadThemeRegistry();
+  return rideAfterWrite(key);
+}
+
+/**
+ * Retire a ride.
+ *
+ * There is no "last ride" rule unlike `deleteEffect`: the free state of a ride is *no* ride, so an
+ * empty catalogue simply means nobody gets an entrance cinematic. Members keep their receipts and
+ * their worn key, and `wornRide()` finds nothing to play for a key that is gone.
+ */
+export async function deleteRide(key: string): Promise<{ ok: true; key: string; membersStillHolding: number }> {
+  const existing = await one<ProfileRideRow>('SELECT key FROM profile_rides WHERE key = $1', [key]);
+  if (!existing) throw ApiError.notFound('Ride not found');
+  const holders = await one<{ n: string }>(
+    'SELECT count(*)::text n FROM user_items WHERE kind = $1 AND item_key = $2',
+    ['RIDE', key],
+  );
+  await query('DELETE FROM profile_rides WHERE key = $1', [key]);
   await loadThemeRegistry();
   return { ok: true, key, membersStillHolding: Number(holders?.n ?? 0) };
 }

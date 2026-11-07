@@ -22,10 +22,13 @@
     "test:games": "node scripts/games-e2e.cjs",
     "test:sms": "tsx scripts/sms-provider-contract.ts twilio && tsx scripts/sms-provider-contract.ts vonage && tsx scripts/sms-provider-contract.ts mock",
     "test:payments": "tsx scripts/payments-provider-contract.ts stripe && tsx scripts/payments-provider-contract.ts simulated",
+    "test:social": "tsx scripts/social-contract.ts",
     "test:wire-fixtures": "node scripts/capture-wire-fixtures.cjs",
     "test:game-wire-fixtures": "node scripts/capture-game-wire.cjs > ../android/scripts/fixtures/wire-games.json",
     "demo:gifts": "node scripts/demo-gift-chat.cjs",
-    "webhook:sink": "node scripts/livekit-webhook-sink.cjs"
+    "webhook:sink": "node scripts/livekit-webhook-sink.cjs",
+    "test:social:e2e": "node scripts/social-e2e.cjs",
+    "test:gift:e2e": "node scripts/gift-e2e.cjs"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -19,6 +19,7 @@ import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import com.voiza.app.domain.model.DEFAULT_AMBIENT_EFFECT
 import com.voiza.app.ui.components.asAssetUrl
+import kotlinx.coroutines.delay
 
 // ---------------------------------------------------------------------------
 // Room look. Every URL here is the server's: themes and Lottie loops are rows an
@@ -65,6 +66,19 @@ fun WelcomeEffect(welcomeUrl: String?, onFinished: () -> Unit, modifier: Modifie
 }
 
 /**
+ * An entry animation the room has to give back, whatever the file does.
+ *
+ * [WelcomeEffect] waits for the composition, and a Lottie that never arrives never finishes: a ride
+ * would hold the screen until the member navigated away. This is the same overlay with the ceiling
+ * the operator declared on the row, so the artwork ends the scene when it can and the clock ends it
+ * when it cannot.
+ */
+@Composable
+fun TimedEntryEffect(url: String, slotMs: Long, onFinished: () -> Unit, modifier: Modifier = Modifier) {
+    LottieOverlay(url, iterations = 1, onFinished = onFinished, alpha = 1f, slotMs = slotMs, modifier = modifier)
+}
+
+/**
  * Quiet, endless loop behind the room. The URL is the server's choice for this
  * room's category, so a party and a music room do not wear the same effect.
  */
@@ -85,6 +99,7 @@ private fun LottieOverlay(
     iterations: Int,
     onFinished: (() -> Unit)?,
     alpha: Float,
+    slotMs: Long? = null,
     modifier: Modifier = Modifier,
 ) {
     val url = path.asAssetUrl() ?: return
@@ -106,6 +121,14 @@ private fun LottieOverlay(
     if (onFinished != null) {
         LaunchedEffect(composition, progress) {
             if (composition != null && progress >= 1f) onFinished()
+        }
+        // Only the timed callers need it: a composition that renders late, or not at all, would
+        // otherwise leave this overlay covering the room for as long as the member stays.
+        if (slotMs != null) {
+            LaunchedEffect(url, slotMs) {
+                delay(slotMs)
+                onFinished()
+            }
         }
     }
 }

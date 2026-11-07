@@ -13,7 +13,6 @@ export type RoomCategory = 'POPULAR' | 'PARTY' | 'MUSIC' | 'GAME' | 'CHAT';
 export type SeatStatus = 'EMPTY' | 'OCCUPIED' | 'LOCKED';
 export type ParticipantRole = 'HOST' | 'SPEAKER' | 'AUDIENCE';
 export type WithdrawalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID';
-export type GiftCategory = 'ROSE' | 'SPECIAL' | 'LUXURY' | 'EVENT';
 
 /**
  * How loud a gift plays in the room: `TICKER` scrolls it down the side column,
@@ -21,6 +20,14 @@ export type GiftCategory = 'ROSE' | 'SPECIAL' | 'LUXURY' | 'EVENT';
  * they do not recognise, so an unset tier is the quiet one.
  */
 export type GiftEffectKind = 'TICKER' | 'FULLSCREEN';
+
+/**
+ * Which renderer the phone hands the file to: `LOTTIE` for the vector scenes the app already
+ * plays, `SVGA` and `MP4` for the two file types an operator uploads as richer animations. The
+ * format is what the upload guard matched against the bytes, so picking one here commits to
+ * having uploaded a file of that container into the animation slot.
+ */
+export type GiftAnimationFormat = 'LOTTIE' | 'SVGA' | 'MP4';
 
 // ---- Auth ------------------------------------------------------------------
 /**
@@ -242,6 +249,10 @@ export interface ConsoleRoom {
   livekitRoomName: string;
   createdAt: string;
   closedAt?: string | null;
+  /** Pinned notice the host set (migration 0022); null when none is pinned. */
+  announcement?: string | null;
+  announcementUpdatedAt?: string | null;
+  speakerApprovalRequired?: boolean;
   host: { id: string; username: string; avatarUrl?: string | null };
 }
 
@@ -283,6 +294,10 @@ export interface AdminRoomTheme extends RoomTheme {
   forSale: boolean;
   /** Rental length in days; null means a purchase never expires. */
   periodDays: number | null;
+  /** Lowest `users.vip_level` allowed to buy this theme; 0 leaves it open to everyone. */
+  minVipLevel: number;
+  /** Editorial flag: the member's store lists recommended rows first and badges them. */
+  recommended: boolean;
 }
 
 export type VisualEffectKind = 'AMBIENT' | 'WELCOME';
@@ -299,6 +314,10 @@ export interface VisualEffect {
   priceDiamonds: number;
   forSale: boolean;
   periodDays: number | null;
+  /** Lowest `users.vip_level` allowed to buy this flourish; 0 leaves it open to everyone. */
+  minVipLevel: number;
+  /** Editorial flag: the member's store lists recommended rows first and badges them. */
+  recommended: boolean;
 }
 
 /**
@@ -314,6 +333,10 @@ export interface ProfileFrame {
   priceDiamonds: number;
   forSale: boolean;
   periodDays: number | null;
+  /** Lowest `users.vip_level` allowed to buy this ring; 0 leaves it open to everyone. */
+  minVipLevel: number;
+  /** Editorial flag: the member's store lists recommended rows first and badges them. */
+  recommended: boolean;
   holders: number;
 }
 
@@ -324,11 +347,70 @@ export interface CategoryEffect {
   url: string | null;
 }
 
+/**
+ * Which renderer a device hands an entrance ride to — the same three the gift engine routes on, and
+ * the only values the `RIDE` upload policy accepts.
+ */
+export type ProfileRideFormat = 'LOTTIE' | 'SVGA' | 'MP4';
+
+/**
+ * An entrance ride (migration 0026): the full-screen cinematic the whole room watches while a member
+ * joins. Sold and worn exactly like a frame, but its row also says how the file opens and for how long
+ * the room hands it the screen.
+ */
+export interface ProfileRide {
+  key: string;
+  name: string;
+  /** Root-relative or `https://` URL of the Lottie, SVGA or MP4 asset. */
+  url: string;
+  format: ProfileRideFormat;
+  /** `0` plays the asset for its own length; anything else is 250–30000 ms of screen time. */
+  durationMs: number;
+  sortOrder: number;
+  priceDiamonds: number;
+  forSale: boolean;
+  /** Rental length in days; null means a purchase never expires. */
+  periodDays: number | null;
+  /** Lowest `users.vip_level` allowed to buy this ride; 0 leaves it open to everyone. */
+  minVipLevel: number;
+  /** Editorial flag: the member's store lists recommended rows first and badges them. */
+  recommended: boolean;
+  /** Receipts naming this key — the number an operator sees before retiring it. */
+  holders: number;
+}
+
+/**
+ * Body of POST/PUT /api/admin/rides. A create needs `key`, `name` and `url`; server-side a missing
+ * `format` is LOTTIE and a missing `durationMs` is 0. `holders` is read-only. On an update a `key`
+ * that differs from the path is refused (`ride_key_immutable`), so the panel only sends it on create.
+ */
+export interface RideInput {
+  key?: string;
+  name?: string;
+  url?: string;
+  format?: ProfileRideFormat;
+  durationMs?: number;
+  sortOrder?: number;
+  priceDiamonds?: number;
+  forSale?: boolean;
+  /** `null` makes a purchase permanent; omitting it on an update keeps the current period. */
+  periodDays?: number | null;
+  /** 0–20; omitting it on an update keeps the current gate. */
+  minVipLevel?: number;
+  /** Omitting it on an update keeps the current flag. */
+  recommended?: boolean;
+}
+
+/** "Who owns this ride": the fourth catalogue reports the same receipt shape as frames. */
+export type RideHolder = FrameHolder;
+
 export interface DecorCatalogue {
   themes: AdminRoomTheme[];
   effects: VisualEffect[];
   categoryEffects: CategoryEffect[];
   frames: ProfileFrame[];
+  /** Entrance rides (migration 0026), sorted the way the server publishes them. */
+  rides: ProfileRide[];
 }
 
 /** Body of POST/PUT /api/admin/themes — `wallpaperUrl`, not `wallpaper`: the row's column name. */
@@ -343,6 +425,10 @@ export interface ThemeInput {
   forSale?: boolean;
   /** `null` makes a purchase permanent; omitting it on an update keeps the current period. */
   periodDays?: number | null;
+  /** 0–20; omitting it on an update keeps the current gate. */
+  minVipLevel?: number;
+  /** Omitting it on an update keeps the current flag. */
+  recommended?: boolean;
 }
 
 export interface EffectInput {
@@ -354,6 +440,10 @@ export interface EffectInput {
   priceDiamonds?: number;
   forSale?: boolean;
   periodDays?: number | null;
+  /** 0–20; omitting it on an update keeps the current gate. */
+  minVipLevel?: number;
+  /** Omitting it on an update keeps the current flag. */
+  recommended?: boolean;
 }
 
 export interface FrameInput {
@@ -365,6 +455,10 @@ export interface FrameInput {
   priceDiamonds?: number;
   forSale?: boolean;
   periodDays?: number | null;
+  /** 0–20; omitting it on an update keeps the current gate. */
+  minVipLevel?: number;
+  /** Omitting it on an update keeps the current flag. */
+  recommended?: boolean;
 }
 
 /** The three catalogues a member can buy from, as `/api/admin/users/:id/grant` names them. */
@@ -526,6 +620,28 @@ export interface OkResult {
 }
 
 // ---- Gifts (virtual store) --------------------------------------------------
+/**
+ * One prize of a lucky gift box (migration 0027), as the operator's catalogue serves it.
+ *
+ * `chanceBps` is this row's weight against the box's total, in ten-thousandths — the number a phone
+ * prints. `weight` is the raw figure behind it and arrives only on the admin route: the member-facing
+ * `GET /api/gifts` omits it, because a device that could edit the weights could edit the payout.
+ */
+export interface BoxOutcomeDto {
+  label: string;
+  /** What the prize pays, as ten-thousandths of the gift's R-coin value: 25000 is ×2.5. */
+  multiplierBps: number;
+  chanceBps: number;
+  weight?: number;
+}
+
+/** One prize in a write body — the same row with the odds left out, since the weights are the input. */
+export interface BoxOutcomeInput {
+  label: string;
+  multiplierBps: number;
+  weight: number;
+}
+
 export interface Gift {
   id: string;
   name: string;
@@ -534,14 +650,42 @@ export interface Gift {
   soundUrl: string | null;
   diamondPrice: number;
   rCoinValue: number;
-  category: GiftCategory | string;
+  /** A `gift_categories.key`. The set is rows an operator owns, so nothing here enumerates it. */
+  category: string;
   effectKind: GiftEffectKind | string;
+  /** Which renderer plays `animationUrl`, and how long the room hands the screen to it. */
+  animationFormat: GiftAnimationFormat | string;
+  durationMs: number;
+  displayPriority: number;
+  comboEnabled: boolean;
+  comboWindowMs: number;
   minVipLevel: number;
   sortOrder: number;
   isActive: boolean;
+  /** True when sending this gift rolls `boxOutcomes` instead of paying `rCoinValue` flat. */
+  isLuckyBox: boolean;
+  /**
+   * The receiver's share of the rolled pool, in ten-thousandths. Present only on a box — a flat gift
+   * carries neither this nor `boxOutcomes` at all, which is how a reader tells "no odds" from
+   * "a box whose odds were never configured".
+   */
+  receiverShareBps?: number;
+  /** The box's prize table, weights included; the draw walks it in this order. */
+  boxOutcomes?: BoxOutcomeDto[];
 }
 
-/** Body for POST /api/admin/gifts — every field is required. */
+/**
+ * Body for POST /api/admin/gifts.
+ *
+ * The playback fields are optional because the backend defaults them: a gift created without them
+ * is a Lottie ticker, 0 ms, priority 0, no combo. Omitting them is only safe for the shipped
+ * vector art — an uploaded `.svga` or `.mp4` needs `animationFormat` set, or the phone is told to
+ * open a video with the Lottie player.
+ *
+ * The box keys are optional for the same reason, and absent means something different for each:
+ * no `isLuckyBox` is a flat gift, no `boxOutcomes` on an update means "leave the prize table I
+ * already saved exactly as it is", while `boxOutcomes: []` is an explicit answer the server refuses.
+ */
 export interface GiftInput {
   name: string;
   iconUrl: string;
@@ -551,12 +695,26 @@ export interface GiftInput {
   rCoinValue: number;
   category: string;
   effectKind: string;
+  animationFormat?: string;
+  durationMs?: number;
+  displayPriority?: number;
+  comboEnabled?: boolean;
+  comboWindowMs?: number;
   minVipLevel: number;
   sortOrder: number;
   isActive: boolean;
+  isLuckyBox?: boolean;
+  /** 0..10000 ten-thousandths of the rolled pool the receiver banks; the box keeps the rest. */
+  receiverShareBps?: number;
+  /** The whole table, never a patch: sending it replaces every prize the box had. */
+  boxOutcomes?: BoxOutcomeInput[];
 }
 
-/** Body for PUT /api/admin/gifts/:id — partial update. */
+/**
+ * Body for PUT /api/admin/gifts/:id — partial update; keys left out are left alone. There is no
+ * PATCH on this resource (it 404s), and `boxOutcomes` is deliberately absent-or-whole: omitting it
+ * keeps the stored draw, sending `[]` is a refusal rather than an empty table.
+ */
 export type GiftPatch = Partial<GiftInput>;
 
 export interface GiftListResult {
@@ -565,6 +723,91 @@ export interface GiftListResult {
 
 export interface GiftMutationResult {
   gift: Gift;
+}
+
+// ---- Gift categories (migration 0025) ---------------------------------------
+/**
+ * One shelf of the gift panel. `key` is what a gift row stores and what the phone files gifts
+ * under, so it never changes — a rename is an edit to `name`, the tab label. `sortOrder` is the tab
+ * order the phone follows. `gifts` counts rows filed here: a zero-gift shelf is a tab that opens on
+ * nothing, and a shelf holding gifts cannot be deleted.
+ */
+export interface GiftCategoryRow {
+  key: string;
+  name: string;
+  sortOrder: number;
+  gifts: number;
+}
+
+/** Body of POST /api/admin/gift-categories. The server upper-cases `key`; legal shape is `^[A-Z0-9][A-Z0-9_]{1,23}$`. */
+export interface GiftCategoryInput {
+  key: string;
+  name: string;
+  sortOrder: number;
+}
+
+/** Body of PUT /api/admin/gift-categories/:key. A different `key` in here is refused, not applied. */
+export interface GiftCategoryPatch {
+  name?: string;
+  sortOrder?: number;
+}
+
+export interface GiftCategoryListResult {
+  /** Already sorted by `sortOrder` ascending. */
+  categories: GiftCategoryRow[];
+}
+
+export interface GiftCategoryMutationResult {
+  category: GiftCategoryRow;
+}
+
+// ---- Gift analytics ----------------------------------------------------------
+/**
+ * One gift's earnings over the window, read from the ledger rather than from the catalogue row:
+ * the row says what a gift costs, this says what it earned.
+ */
+export interface GiftAnalyticsRow {
+  giftId: string;
+  name: string;
+  iconUrl: string;
+  category: string;
+  /** Taps of the send button, i.e. ledger rows — a combo of ten Roses is one send. */
+  sends: number;
+  /** Individual gifts, which is `quantity` summed. */
+  gifts: number;
+  /** Diamonds the senders spent. */
+  diamonds: number;
+  /** R-coins the receivers earned. */
+  rCoins: number;
+  senders: number;
+  averageDiamonds: number;
+  /**
+   * Whether this gift is a lucky box. It is on the row because a box's `rCoins` are what a draw paid
+   * out, not its price list: `rCoins / diamonds` is the realised payout rate, and on a flat gift that
+   * ratio is the catalogue's own margin while on a box it is the outcome the odds actually produced.
+   */
+  isLuckyBox: boolean;
+}
+
+export interface GiftAnalyticsTotals {
+  sends: number;
+  gifts: number;
+  diamonds: number;
+  rCoins: number;
+  averageDiamondPerGift: number;
+  /**
+   * Window spend on gifts since retired from the catalogue (`transactions.gift_id` is
+   * `ON DELETE SET NULL`), so it is in `totals` but on no visible row — the rows will not sum to
+   * the totals, and this is the difference.
+   */
+  unattributedDiamonds: number;
+}
+
+export interface GiftAnalyticsResult {
+  days: number;
+  totals: GiftAnalyticsTotals;
+  /** Diamonds descending, capped at 100 rows. */
+  gifts: GiftAnalyticsRow[];
 }
 
 // ---- Withdrawals -------------------------------------------------------------
@@ -996,8 +1239,17 @@ export interface AuditEntry {
 }
 
 // ---- Uploaded media --------------------------------------------------------
-/** The five slots an operator can fill from the panel. Mirrors `MEDIA_KINDS` server-side. */
-export type MediaKind = 'GIFT_ICON' | 'GIFT_ANIMATION' | 'GIFT_SOUND' | 'EFFECT' | 'BADGE' | 'WALLPAPER' | 'EMOJI';
+/** The nine slots an operator can fill from the panel. Mirrors `MEDIA_KINDS` server-side. */
+export type MediaKind =
+  | 'GIFT_ICON'
+  | 'GIFT_ANIMATION'
+  | 'GIFT_SOUND'
+  | 'EFFECT'
+  | 'RIDE'
+  | 'BANNER'
+  | 'BADGE'
+  | 'WALLPAPER'
+  | 'EMOJI';
 
 export interface MediaAsset {
   id: string;
@@ -1012,4 +1264,140 @@ export interface MediaAsset {
   height: number | null;
   uploadedBy: string | null;
   createdAt: string;
+}
+
+// ---- Promotional banners (migration 0028) ----------------------------------
+/** The four surfaces that hold art. Mirrors the CHECK on `banners.placement`. */
+export type BannerPlacement = 'SPLASH' | 'HOME' | 'GIFT' | 'GAME';
+
+/** Which renderer on the phone opens the file. Mirrors the CHECK on `banners.format`. */
+export type BannerFormat = 'PNG' | 'GIF' | 'WEBP' | 'JPEG' | 'LOTTIE' | 'SVGA' | 'MP4';
+
+/** What happens on a tap. Mirrors the CHECK on `banners.cta_type`. */
+export type BannerCtaType = 'NONE' | 'INTERNAL' | 'ROOM' | 'URL';
+
+/** The four screens reachable without naming a resource. Mirrors `BANNER_INTERNAL_TARGETS`. */
+export type BannerInternalTarget = 'HOME' | 'STORE' | 'WALLET' | 'PROFILE';
+
+/** One row as `GET /api/admin/banners` serves it. */
+export interface Banner {
+  id: string;
+  key: string;
+  placement: BannerPlacement;
+  title: string;
+  subtitle: string | null;
+  url: string;
+  format: BannerFormat;
+  /** How long the surface holds this banner. `0` is the surface's own default. */
+  durationMs: number;
+  ctaType: BannerCtaType;
+  ctaValue: string | null;
+  /** Where the surface puts this row relative to its siblings; phones only ever get them ordered. */
+  sortOrder: number;
+  startsAt: string | null;
+  endsAt: string | null;
+  isActive: boolean;
+  impressions: number;
+  taps: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Body of POST/PUT /api/admin/banners. `key` is immutable once created. */
+export interface BannerInput {
+  key?: string;
+  placement?: BannerPlacement;
+  title?: string;
+  subtitle?: string | null;
+  url?: string;
+  format?: BannerFormat;
+  durationMs?: number;
+  ctaType?: BannerCtaType;
+  ctaValue?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+/** What `GET /api/banners` hands to phones: no window, no switch, no counts. */
+export interface PublishedBanner {
+  id: string;
+  key: string;
+  placement: BannerPlacement;
+  title: string;
+  subtitle: string | null;
+  url: string;
+  format: BannerFormat;
+  durationMs: number;
+  ctaType: BannerCtaType;
+  ctaValue: string | null;
+}
+
+// ---- Social moderation (migration 0022) ------------------------------------
+/** Mirrors the CHECK constraint on `user_reports.reason`. */
+export type ReportReason = 'HARASSMENT' | 'SPAM' | 'FRAUD' | 'UNDERAGE' | 'VIOLENCE' | 'OTHER';
+
+/** `PENDING` reports are the queue; the other three are terminal decisions. */
+export type ReportStatus = 'PENDING' | 'REVIEWED' | 'DISMISSED' | 'ACTIONED';
+
+/** What an operator may decide. Dismissing cannot also ban its target. */
+export type ReportDecision = 'REVIEWED' | 'DISMISSED' | 'ACTIONED';
+
+/** The lean party shape embedded in a report — enough to name an account. */
+export interface ReportParty {
+  id: string;
+  username: string;
+  avatarUrl: string | null;
+}
+
+export interface AdminReport {
+  id: string;
+  reason: ReportReason;
+  details: string | null;
+  status: ReportStatus;
+  resolution: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  reporter: ReportParty;
+  target: ReportParty;
+  /** The room the report was filed from, when the reporter supplied one. */
+  room: { id: string; roomNumber: number; title: string } | null;
+}
+
+export interface ReportListResult {
+  reports: AdminReport[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface ReportReviewResult {
+  report: AdminReport;
+  banned: boolean;
+}
+
+export interface SocialCounts {
+  followers: number;
+  following: number;
+  /** Accounts this member has blocked. */
+  blocked: number;
+  /** Accounts that blocked this member — a count only, never an identity list. */
+  blockedBy: number;
+}
+
+export interface SocialGraphEntry extends ReportParty {
+  followedAt: string;
+  /** Present on the blocked list; null when the blocker left no reason. */
+  blockReason?: string | null;
+}
+
+/** `GET /api/admin/users/:id/social` — the drawer behind "Social" on the users page. */
+export interface UserSocialSummary {
+  counts: SocialCounts;
+  followers: SocialGraphEntry[];
+  following: SocialGraphEntry[];
+  blocked: SocialGraphEntry[];
+  reportsAgainst: AdminReport[];
+  reportsFiled: AdminReport[];
 }

@@ -154,11 +154,6 @@ class LiveKitRoomManager(context: Context) {
         _connectedIdentities.value = emptyList()
     }
 
-    fun destroy() {
-        disconnect()
-        scope.cancel()
-    }
-
     // ---- internals -----------------------------------------------------------
 
     /**

@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material.icons.Icons
@@ -66,6 +67,9 @@ import com.voiza.app.ui.theme.VoizaSurfaceHigh
  * The emoji strip is the picker for the codes an operator maintains in the admin panel: tapping a
  * tile inserts its `[code]` into the draft, because that token, not the picture, is what the
  * message will store and what everyone else's client will draw art for.
+ *
+ * [onOpenMember] is reached by tapping an author's face or name — never the bubble. A row that
+ * swallowed any touch would hide the feed's only scrollable area behind a sheet.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +79,7 @@ fun ChatOverlay(
     modifier: Modifier = Modifier,
     emojis: List<EmojiOption> = emptyList(),
     codePattern: String = FALLBACK_EMOJI_CODE_PATTERN,
+    onOpenMember: (String) -> Unit,
 ) {
     val listState = rememberLazyListState()
     var input by remember { mutableStateOf("") }
@@ -105,7 +110,7 @@ fun ChatOverlay(
                 .background(Color(0x400B0A1F)),
         ) {
             items(messages, key = { it.id }) { msg ->
-                ChatRow(msg, emojis, codePattern)
+                ChatRow(msg, emojis, codePattern, onOpenMember)
             }
         }
 
@@ -199,12 +204,16 @@ private fun ChatRow(
     msg: ChatMessage,
     emojis: List<EmojiOption>,
     codePattern: String,
+    onOpenMember: (String) -> Unit,
 ) {
     val isGift = msg.type == MessageType.GIFT
     val isSystem = msg.type == MessageType.SYSTEM
     val bubbleShape = RoundedCornerShape(12.dp)
     // Only a member's own words carry codes; gift and system lines are written by the server.
     val line = rememberEmojiMessage(msg.content, if (isGift || isSystem) emptyList() else emojis, codePattern)
+    // The one account behind this line, when there is one. Its face and its name are the handles that
+    // mean "this person", so either opens that person's card; a line the server wrote has nobody.
+    val author = msg.user?.takeIf { !isSystem }
 
     Box(
         modifier = Modifier
@@ -222,14 +231,22 @@ private fun ChatRow(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            if (!isSystem && msg.user != null) {
-                Avatar(url = msg.user.avatarUrl, name = msg.user.username, size = 22.dp)
+            if (author != null) {
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { onOpenMember(author.id) }
+                        .padding(3.dp),
+                ) {
+                    Avatar(url = author.avatarUrl, name = author.username, size = 22.dp)
+                }
                 Box(modifier = Modifier.width(8.dp), content = {})
             }
             Column(modifier = Modifier.weight(1f, fill = false)) {
-                if (!isSystem && msg.user != null) {
+                if (author != null) {
                     Text(
-                        text = msg.user.username,
+                        text = author.username,
+                        modifier = Modifier.clickable { onOpenMember(author.id) },
                         color = if (isGift) GiftPink else Cyan,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,

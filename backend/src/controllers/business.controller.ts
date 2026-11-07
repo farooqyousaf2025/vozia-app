@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { rateLimit } from '../config/redis';
 import { ApiError, asyncHandler, optionalString, requireInt, requireString } from '../utils/http';
 import { BusinessAccountDto, toBusinessAccount, toRechargePackage } from '../utils/serialize';
 import { BUSINESS_KIND_PERMISSIONS } from '../services/rbac.service';
@@ -51,6 +52,10 @@ function scope(req: Request): { sellerId?: string; bdTerritoryId?: string } {
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const code = requireString(req.body?.code, 'code', { max: 24 });
   const password = requireString(req.body?.password, 'password', { max: 200 });
+  // Same reasoning as the operator console: a seller/BD code is a stable identifier and the password
+  // behind it does not rotate, so the guess ceiling has to live here.
+  const allowed = await rateLimit(`business-login:${req.ip}:${code}`, 10, 60);
+  if (allowed === -1) throw ApiError.tooManyRequests('Too many sign-in attempts. Try again in a minute.');
   const { token, account: signedIn } = await loginBusinessAccount(code, password);
   res.json({ token, account: signedIn });
 });

@@ -12,6 +12,7 @@ import com.voiza.app.domain.model.SeatPolicy
 import com.voiza.app.domain.model.User
 import com.voiza.app.domain.repository.AuthRepository
 import com.voiza.app.domain.repository.RoomRepository
+import com.voiza.app.domain.usecase.BannersStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,6 +26,8 @@ import kotlinx.coroutines.launch
 class HomeViewModel(
     private val roomRepository: RoomRepository = ServiceLocator.roomRepository,
     private val authRepository: AuthRepository = ServiceLocator.authRepository,
+    /** The campaigns this screen draws a strip for. Pulling to refresh re-reads both lists. */
+    private val banners: BannersStore = ServiceLocator.bannersStore,
 ) : ViewModel() {
 
     data class HomeUiState(
@@ -103,6 +106,10 @@ class HomeViewModel(
     fun refresh() {
         viewModelScope.launch {
             _state.update { it.copy(refreshing = true) }
+            // The strip above the grid is the platform's campaign list rather than this member's
+            // content, so a pull that re-reads the rooms re-reads it as well: a campaign an operator
+            // switched on while the member was scrolling arrives on the same gesture the rooms do.
+            banners.refresh()
             fetch()
             _state.update { it.copy(refreshing = false) }
         }
@@ -251,6 +258,7 @@ class HomeViewModel(
         language: String,
         region: String,
         rules: String,
+        speakerApprovalRequired: Boolean,
     ) {
         if (title.isBlank()) {
             _state.update { it.copy(editError = "A room needs a title") }
@@ -266,6 +274,7 @@ class HomeViewModel(
                 language = language.trim(),
                 region = region.trim(),
                 rules = rules.trim(),
+                speakerApprovalRequired = speakerApprovalRequired,
             )
             when (result) {
                 is ApiResult.Success -> _state.update {

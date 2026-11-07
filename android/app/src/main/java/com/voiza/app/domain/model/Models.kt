@@ -37,6 +37,12 @@ data class MiniUser(
     val profileFrame: ProfileFrame? = null,
     /** The paid entry flourish URL the server resolved for this join, or null for the free one. */
     val entryEffect: String? = null,
+    /**
+     * The cinematic this member arrives with on `room:user_joined`, or null for "walks in quietly".
+     * Absent on the lean payloads that never read the ride column — which is the server choosing
+     * not to ship it, never a hint that the app should show some default ride.
+     */
+    val entryRide: EntryRide? = null,
 )
 
 /**
@@ -51,6 +57,28 @@ data class ProfileFrame(
     val name: String,
     val art: String,
     val accent: String?,
+)
+
+/**
+ * The entrance cinematic a member arrives with (migration 0026), resolved server-side from the
+ * worn key plus its expiry — the same shape the account DTO and the `room:user_joined` payload ship.
+ *
+ * [url] is handed to every device in the room and [format] is the string that names which renderer
+ * opens it, because an SVGA container loaded into the Lottie player shows a still frame, not an
+ * error. [durationMs] is the operator's ceiling on how long the room hands the screen to the clip
+ * and **0 is a real answer** — "play it for its own length" — so a caller must fall back to its
+ * own timeout rather than reading 0 as "no duration declared" and cutting the ride short.
+ *
+ * Note the key names differ from the shop row's: a store item spells the same two facts `art` and
+ * `animationFormat`, so nothing here may be read from those.
+ */
+data class EntryRide(
+    val key: String,
+    val name: String,
+    val url: String,
+    /** The container the upload sniffer found, so the device routes instead of guessing. */
+    val format: GiftAnimationFormat,
+    val durationMs: Int = 0,
 )
 
 /** Full `users` row as returned by /api/auth/me and auth responses. */
@@ -80,6 +108,11 @@ data class User(
     /** What this account is wearing right now, as the server resolved it from the worn columns. */
     val profileFrame: ProfileFrame? = null,
     val entryEffect: String? = null,
+    /**
+     * The ride this member arrives with, or null when they own nothing, their copy lapsed or the
+     * operator retired the row. There is no free ride to fall back on: null means walk in quietly.
+     */
+    val entryRide: EntryRide? = null,
 )
 
 enum class SeatStatus { EMPTY, OCCUPIED, LOCKED }
@@ -207,6 +240,11 @@ data class Room(
     val language: String? = null,
     val region: String? = null,
     val rules: String? = null,
+    /** Host-pinned notice above the seats. Null or blank means the host pinned nothing. */
+    val announcement: String? = null,
+    val announcementUpdatedAt: String? = null,
+    /** When true, a member's seat tap files a request the host answers instead of seating them. */
+    val speakerApprovalRequired: Boolean = false,
     /** Root-relative Lottie URL the server picked for this room's category. */
     val ambientEffect: String = DEFAULT_AMBIENT_EFFECT,
     /**
@@ -278,6 +316,13 @@ data class ChatMessage(
 /** How loudly a gift plays: one row in the ticker column, or the whole screen. */
 enum class GiftEffectKind { TICKER, FULLSCREEN }
 
+/**
+ * Which player opens the gift's animation file. The backend chooses this from the uploaded bytes,
+ * not from a file name, so a gift's format is a promise about the file at `animationUrl`:
+ * [LOTTIE] is a Bodymovin scene, [SVGA] a sprite scene, [MP4] a short video.
+ */
+enum class GiftAnimationFormat { LOTTIE, SVGA, MP4 }
+
 /** Gift catalogue row (gifts table / GET /api/gifts). */
 data class Gift(
     val id: String,
@@ -296,9 +341,97 @@ data class Gift(
     val sortOrder: Int = 0,
     /** Set by the operator per gift — not inferred from whether art exists. */
     val effectKind: GiftEffectKind = GiftEffectKind.TICKER,
+    /** Which renderer opens [animationUrl]; a gift with no animation never reaches one. */
+    val animationFormat: GiftAnimationFormat = GiftAnimationFormat.LOTTIE,
+    /**
+     * How long the room hands the screen to this gift. 0 means the catalogue row predates the
+     * playback fields, in which case the renderer's own lifetime (the Lottie composition, the
+     * video's duration) is the only clock there is.
+     */
+    val durationMs: Int = 0,
+    /** Tie-break when two takeovers arrive together; higher plays first, 0 is unset. */
+    val displayPriority: Int = 0,
+    /** Whether repeats from one sender to one receiver add up on screen. Computed by the server. */
+    val comboEnabled: Boolean = false,
+    /** The clock window a combo is counted inside, in ms; the server owns both ends of it. */
+    val comboWindowMs: Int = 5_000,
+    /**
+     * True when the credit is drawn from a prize table instead of being `rCoinValue` × quantity.
+     * The price the sender pays never changes with it — only what the receiver banks does.
+     */
+    val isLuckyBox: Boolean = false,
+    /** The odds a box publishes, in the operator's own order. Empty on a gift that rolls nothing. */
+    val boxOutcomes: List<GiftBoxOutcome> = emptyList(),
+    /**
+     * What the receiver keeps of a roll, in ten-thousandths; null on a gift that is not a box.
+     * The platform's take is the remainder — there is no second dial to read.
+     */
+    val receiverShareBps: Int? = null,
 ) {
     val isTakeover: Boolean get() = effectKind == GiftEffectKind.FULLSCREEN
 }
+
+/**
+ * One prize of a lucky box as the catalogue discloses it.
+ *
+ * [chanceBps] is this row's weight against the box's total, divided by the server: a device prints
+ * the odds it was given and cannot disagree with the draw that produced them. The weights
+ * themselves never leave the backend.
+ */
+data class GiftBoxOutcome(
+    val label: String,
+    /** Times the per-unit reward pool this prize is worth, in ten-thousandths (10,000 = the pool). */
+    val multiplierBps: Int,
+    val chanceBps: Int,
+)
+
+/**
+ * One gift-panel tab. [key] is the shelf key an operator manages — the string a gift's `category`
+ * is compared against when the tab filters — and [name] is the label the operator chose to show.
+ * A server that ships no shelf list gets tabs derived from the catalogue's own category strings,
+ * where the key is that raw string.
+ */
+data class GiftCategoryOption(
+    val key: String,
+    val name: String,
+    /** Display order the operator set; the response arrives sorted by it, and derived tabs carry 0. */
+    val sortOrder: Int = 0,
+)
+
+/** `GET /api/gifts` as the app consumes it: the catalogue rows plus the shelves filing them. */
+data class GiftCatalogue(
+    val gifts: List<Gift> = emptyList(),
+    val categories: List<GiftCategoryOption> = emptyList(),
+)
+
+/**
+ * The gift-panel tab strip, computed from whatever the catalogue response carried.
+ *
+ * When the server shipped a shelf list ([categories] non-empty) the tabs are those shelves in the
+ * server's own order, keeping only the ones [catalog] actually has a gift under — an empty shelf
+ * would otherwise render a tab with nothing behind it. A gift whose category matches no shipped
+ * shelf is never dropped here: it stays in [catalog] and is visible under "All".
+ *
+ * With no shelf list — an older server or a partial payload, which the mapper reads as an empty
+ * [categories] — this reproduces the pre-shelf behaviour: one tab per distinct category string in
+ * catalogue order, labelled the way the panel always labelled it. That fallback is why the change
+ * is safe to ship before the backend is guaranteed present.
+ */
+fun giftCategoryTabs(
+    categories: List<GiftCategoryOption>,
+    catalog: List<Gift>,
+): List<GiftCategoryOption> {
+    if (categories.isEmpty()) {
+        return catalog.map { it.category }.distinct().map {
+            GiftCategoryOption(key = it, name = giftCategoryFallbackLabel(it))
+        }
+    }
+    return categories.filter { shelf -> catalog.any { it.category == shelf.key } }
+}
+
+/** The cosmetic label a raw category string got before shelves existed: underscores to spaces, Title Case. */
+fun giftCategoryFallbackLabel(key: String): String =
+    key.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
 
 /** Which side of a gift transaction a ranking board counts. */
 enum class RankBoard { SENDERS, RECEIVERS }
@@ -342,11 +475,17 @@ data class Withdrawal(
 )
 
 // ---------------------------------------------------------------------------
-// Cosmetic store (GET /api/store, migration 0019)
+// Cosmetic store (GET /api/store; frames/themes/effects from migration 0019,
+// the entrance rides of 0026). All four kinds share one row shape and one
+// purchase/equip contract, so they stay in one model.
 // ---------------------------------------------------------------------------
 
-/** The three catalogues one shop lists: rings a member wears, themes a room wears, entry flourishes. */
-enum class StoreItemKind { FRAME, THEME, EFFECT }
+/**
+ * The four catalogues one shop lists: rings a member wears, themes a room wears, entry flourishes
+ * and the full-screen ride a member arrives with. FRAME, EFFECT and RIDE are worn by an account and
+ * can be equipped; THEME decorates a room, so a host picks it in room settings instead.
+ */
+enum class StoreItemKind { FRAME, THEME, EFFECT, RIDE }
 
 /**
  * One purchasable row, already annotated by the server with what *this* caller holds.
@@ -367,6 +506,28 @@ data class StoreItem(
     val owned: Boolean,
     val expiresAt: String?,
     val equipped: Boolean,
+    /** Lowest VIP level allowed to BUY this row; 0 means anybody. Grants and equips ignore it. */
+    val minVipLevel: Int,
+    /** Editorial flag; the server already lists recommended rows first, so the app only badges. */
+    val recommended: Boolean,
+    /**
+     * RIDE rows only: which renderer opens [art]. The catalogue stores what the upload sniffer said
+     * about the bytes, so a device that guessed from the file extension would open an SVGA
+     * container in the Lottie player. The field is absent on every other catalogue, and Gson's
+     * Unsafe allocator leaves an absent key null instead of the Kotlin default, so the mapper
+     * resolves it to [GiftAnimationFormat.LOTTIE] — the renderer that has always existed, and the
+     * same fallback a ride row from a backend predating 0026 gets.
+     */
+    val animationFormat: GiftAnimationFormat = GiftAnimationFormat.LOTTIE,
+    /**
+     * RIDE rows only: how long the room hands the screen to this cinematic, in ms.
+     *
+     * 0 is the operator's answer "play the asset for its own length", **not** a missing number: a
+     * caller that treats it as absent and drops its own short default would cut a 20-second arrival
+     * in half. A ride that never reports an end still needs the app's ceiling, which is why the
+     * value stays exactly what the server sent.
+     */
+    val durationMs: Int = 0,
 ) {
     val id: String get() = "${kind.name}:$key"
 
@@ -443,6 +604,14 @@ data class RoomProfileEvent(
     val language: String?,
     val region: String?,
     val rules: String?,
+    /**
+     * Null on a backend that predates these three keys, which is why they cannot simply overwrite:
+     * a profile edit broadcast that says nothing about the pinned notice must leave the notice the
+     * room already showed on screen.
+     */
+    val announcement: String? = null,
+    val announcementUpdatedAt: String? = null,
+    val speakerApprovalRequired: Boolean? = null,
 )
 
 /** Private `room:warning`: an operator nudged the host about conduct in this room. */
@@ -450,6 +619,71 @@ data class HostWarningEvent(val roomId: String, val message: String)
 
 /** `room:hand_raise`: drives the host's request-to-speak queue. */
 data class HandRaiseEvent(val roomId: String, val raised: Boolean, val user: MiniUser)
+
+/**
+ * `room:announcement`: the pinned notice as the host (or an operator) just set it. A null text is
+ * the notice being cleared, not an edit that left it out, so the banner disappears.
+ */
+data class RoomAnnouncementEvent(
+    val roomId: String,
+    val announcement: String?,
+    val updatedAt: String?,
+)
+
+/**
+ * Private `room:seat_invited`. The server has already seated us and granted the microphone before
+ * this lands, so the event carries the publisher token rather than a choice: the app applies the
+ * rights the room's next `room:seat_update` confirms.
+ */
+data class SeatInviteEvent(
+    val roomId: String,
+    val seatIndex: Int,
+    val livekit: LiveKitCredentials?,
+)
+
+/**
+ * Private `room:speaker_decision`: the host answered our request. An approval brings the publisher
+ * token with it; a rejection brings nothing, because there is no seat to speak from.
+ */
+data class SpeakerDecisionEvent(
+    val roomId: String,
+    val status: SpeakerRequestStatus,
+    val seatIndex: Int?,
+    val livekit: LiveKitCredentials?,
+) {
+    val approved: Boolean get() = status == SpeakerRequestStatus.APPROVED
+}
+
+/** One line of the host's speaker queue (`GET /api/rooms/:id/speaker-requests`). */
+data class SpeakerRequest(
+    val id: String,
+    val roomId: String,
+    val seatIndex: Int,
+    val status: SpeakerRequestStatus,
+    val createdAt: String?,
+    val user: MiniUser?,
+)
+
+enum class SpeakerRequestStatus { PENDING, APPROVED, REJECTED, CANCELLED, EXPIRED }
+
+/**
+ * What `POST /api/rooms/:id/seat` answered. A room with approval switched answers 202 and a queued
+ * request instead of a seat, so the caller cannot treat the two as one shape: nothing was seated,
+ * no token was minted and the seat list did not change.
+ */
+sealed interface SeatTakeResult {
+    /**
+     * We are seated. [livekit] is the publisher token the server minted for the new speaker, and
+     * null only against a backend that predates it — the seat list still says who may speak.
+     */
+    data class Seated(val seats: List<Seat>, val livekit: LiveKitCredentials?) : SeatTakeResult
+
+    /**
+     * A request was filed and nobody was seated. [request] carries its id when the server sent one;
+     * cancelling does not need it, because the cancel route clears the caller's own request.
+     */
+    data class Queued(val request: SpeakerRequest?) : SeatTakeResult
+}
 
 /** `room:gift_animated` payload driving the full-screen effect overlay. */
 data class GiftAnimatedEvent(
@@ -462,6 +696,70 @@ data class GiftAnimatedEvent(
     val totalDiamonds: Long,
     val totalRCoins: Long,
     val seatIndex: Int?,
+    /**
+     * The ledger transaction id, which the server also broadcasts as the event's identity. It is
+     * the only key that survives both paths a gift can reach a device by — live socket, and the
+     * room's recent-gift list after a reconnect — so it is what the queue deduplicates on.
+     * Null only for an event from a backend that predates the gift engine.
+     */
+    val eventId: String? = null,
+    /** Server-owned combo identity: same sender, receiver, gift and clock window, same id. */
+    val comboId: String? = null,
+    /** How many gifts this event's window holds, as counted by the server. */
+    val comboCount: Int = 1,
+    /**
+     * The draw that produced this gift's credit, or null for every gift that rolls nothing.
+     *
+     * It is the same object the ledger row carries in `meta.lucky`, so the number on the screen and
+     * the number in the sender's receipt were written by one draw. Nothing here is recomputed: a
+     * device that re-derived the payout from the prize table would be reporting its own guess about
+     * money the server already moved.
+     */
+    val lucky: LuckyRoll? = null,
+)
+
+/** One prize that came up in a send, with how many of the units rolled it. */
+data class LuckyPrize(
+    val label: String,
+    val multiplierBps: Int,
+    /** The disclosed odds of this prize, in ten-thousandths — what the box published, not a guess. */
+    val chanceBps: Int,
+    val count: Int,
+)
+
+/**
+ * What one lucky-box send rolled, as the ledger recorded it.
+ *
+ * [receiverRCoins] is the figure that was credited — the same number `totalRCoins` on the event
+ * carries — and [platformTaxRCoins] is the remainder of [grossRCoins]. Both come from the server for
+ * the same reason the price does: they are facts about money, and a client that computes them is a
+ * client that can be wrong in a way that looks like the platform's bookkeeping.
+ */
+data class LuckyRoll(
+    /** Only the prizes that actually came up, best first as the server ordered them. */
+    val prizes: List<LuckyPrize>,
+    /** The prize worth taking the screen for: the best one this send rolled. */
+    val headline: LuckyPrize?,
+    val grossRCoins: Long,
+    val receiverRCoins: Long,
+    val platformTaxRCoins: Long,
+    val receiverShareBps: Int,
+)
+
+/**
+ * What `POST /api/gifts/send` answered for one Send tap.
+ *
+ * [replayed] is TRUE when the server recognised the idempotency key and returned the gift it had
+ * already bought instead of buying a second one — the tap is then already paid for, and the room
+ * already saw the animation, so the caller must not add a second effect or adjust a balance.
+ * [comboId] and [comboCount] are the server's tally for this send's window; a gift the operator
+ * left out of combos reports count 1.
+ */
+data class SendGiftOutcome(
+    val transaction: Transaction,
+    val replayed: Boolean,
+    val comboId: String?,
+    val comboCount: Int,
 )
 
 /**
@@ -477,3 +775,118 @@ data class RoomLikeEvent(val roomId: String, val count: Int, val total: Long, va
  * is how many to release (own tap = 1, an inbound batch = a small puff).
  */
 data class HeartSignal(val hearts: Int, val token: Long)
+
+/**
+ * `room:reaction` payload: who fired which of the operator's emoji. Nothing is stored behind it —
+ * the server's own comment is that a reaction is decoration and not a ledger line — so this event
+ * exists only for as long as the art is in the air.
+ */
+data class RoomReactionEvent(val roomId: String, val userId: String, val emoji: EmojiOption)
+
+/**
+ * One request for the reaction layer to fly. Shaped like [HeartSignal] for the same reason: `token`
+ * only ever increases, so a recomposition that leaves it alone does not restart a burst, and the
+ * emoji travels with the signal because each tap or inbound event can name a different one.
+ */
+data class ReactionSignal(val emoji: EmojiOption?, val token: Long)
+
+// ---------------------------------------------------------------------------
+// Promotional banners (GET /api/banners, migration 0028)
+// ---------------------------------------------------------------------------
+
+/**
+ * Which surface draws a banner.
+ *
+ * The server answers a row only for the surface it was filed under, so a device asks for one
+ * placement and never has to decide whether an art card belongs on the screen it is standing on.
+ */
+enum class BannerPlacement { SPLASH, HOME, GIFT, GAME }
+
+/**
+ * Which renderer opens a banner's file.
+ *
+ * Wider than [GiftAnimationFormat] because a banner is usually a poster: the four stills and the two
+ * moving containers Coil animates are what an operator uploads most often, and the three scene
+ * formats are the ones the gift engine already plays.
+ */
+enum class BannerFormat { PNG, GIF, WEBP, JPEG, LOTTIE, SVGA, MP4 }
+
+/** The four screens the app can reach without naming a resource — the server's own short list. */
+enum class BannerScreen { HOME, STORE, WALLET, PROFILE }
+
+/**
+ * What tapping a banner means, as the server named it.
+ *
+ * A row carries a verb and a value, never a route; joining the two is this type's job and the app's
+ * only place where it happens. Anything the app cannot name becomes [BannerTarget.None]: a banner
+ * that visibly does nothing is honest, a route guessed from a stray string is not.
+ */
+sealed interface BannerTarget {
+    data object None : BannerTarget
+    data class Internal(val screen: BannerScreen) : BannerTarget
+    data class Room(val roomId: String) : BannerTarget
+
+    /** A full `https://` link, opened outside the app. Never a URL the client assembled itself. */
+    data class Link(val url: String) : BannerTarget
+}
+
+/**
+ * One live campaign. Art, a headline and a verb — no member data, no price, nothing a client could
+ * be tempted to edit.
+ */
+data class PromoBanner(
+    val id: String,
+    /** The operator's handle for the row, shown nowhere and useful in every support conversation. */
+    val key: String,
+    val placement: BannerPlacement,
+    val title: String,
+    val subtitle: String?,
+    /** Root-relative or absolute, exactly as stored; the surface normalises it with `asAssetUrl`. */
+    val url: String,
+    val format: BannerFormat,
+    /** How long the surface holds it. 0 defers to the surface's own dwell, as elsewhere. */
+    val durationMs: Int,
+    val target: BannerTarget,
+)
+
+// ---------------------------------------------------------------------------
+// Social moderation: follows, blocks and reports between two members.
+// ---------------------------------------------------------------------------
+
+/**
+ * How the signed-in member relates to one other account, exactly as the server answered.
+ *
+ * [interactionBlocked] is read from the wire rather than recomputed here: it is the backend's
+ * conclusion that either side blocked the other, and which interactions that closes is its rule,
+ * not this app's. A block is not a mute and not a ban — it stops gifts and follows between the
+ * pair, and it is the one thing that does not stop a report.
+ */
+data class Relationship(
+    val following: Boolean = false,
+    val blockedByMe: Boolean = false,
+    val blockedByThem: Boolean = false,
+    val interactionBlocked: Boolean = false,
+)
+
+/**
+ * The six reasons `POST /api/users/:id/report` accepts, with the words a member can read.
+ *
+ * The wire value is the server's constant and the label is ours; a seventh reason added in the
+ * backend arrives as an unknown string and is dropped by [fromWire] rather than guessed at, so the
+ * picker can only ever submit something the queue understands.
+ */
+enum class ReportReason(val wire: String, val label: String) {
+    HARASSMENT("HARASSMENT", "Harassment"),
+    SPAM("SPAM", "Spam"),
+    FRAUD("FRAUD", "Scam or fraud"),
+    UNDERAGE("UNDERAGE", "Underage account"),
+    VIOLENCE("VIOLENCE", "Violence"),
+    OTHER("OTHER", "Something else"),
+    ;
+
+    companion object {
+        /** Case-insensitive, because the server's own enum parsing is. */
+        fun fromWire(value: String?): ReportReason? =
+            entries.firstOrNull { it.wire.equals(value?.trim(), ignoreCase = true) }
+    }
+}

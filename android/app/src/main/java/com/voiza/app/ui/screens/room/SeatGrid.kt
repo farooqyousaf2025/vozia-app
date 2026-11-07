@@ -144,6 +144,12 @@ private fun SeatCell(
             }
         }
 
+        // The permanent gradient ring alone is hard to read at nine seats per screen, so the host
+        // seat also carries a label.
+        if (isHostSeat && seat.status == SeatStatus.OCCUPIED) {
+            HostBadgeLabel(modifier = Modifier.align(Alignment.TopCenter))
+        }
+
         // Seat index + name beneath
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -195,7 +201,7 @@ private fun OverlayIcon(
     }
 }
 
-/** Crown pill for the host seat label row (used above the grid). */
+/** Crown pill on the occupied host seat. */
 @Composable
 fun HostBadgeLabel(modifier: Modifier = Modifier) {
     Row(

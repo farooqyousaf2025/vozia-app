@@ -6,6 +6,7 @@ import { Card } from './components/ui/Card';
 import { IconShieldCheck } from './components/ui/Icons';
 import { useAuth } from './context/AuthContext';
 import AuditPage from './pages/AuditPage';
+import BannersPage from './pages/BannersPage';
 import CommissionsPage from './pages/CommissionsPage';
 import DecorPage from './pages/DecorPage';
 import EmojiPage from './pages/EmojiPage';
@@ -14,6 +15,7 @@ import GamesPage from './pages/GamesPage';
 import GiftsPage from './pages/GiftsPage';
 import LoginPage from './pages/LoginPage';
 import MediaPage from './pages/MediaPage';
+import ModerationPage from './pages/ModerationPage';
 import OverviewPage from './pages/OverviewPage';
 import PartnersPage from './pages/PartnersPage';
 import QuestsPage from './pages/QuestsPage';
@@ -66,10 +68,12 @@ export default function App() {
       >
         <Route index element={<RequirePermission permission="dashboard:read"><OverviewPage /></RequirePermission>} />
         <Route path="users" element={<RequirePermission permission="user:read"><UsersPage /></RequirePermission>} />
+        <Route path="moderation" element={<RequirePermission permission="user:read"><ModerationPage /></RequirePermission>} />
         <Route path="rooms" element={<RequirePermission permission="room:read"><RoomsPage /></RequirePermission>} />
         <Route path="rooms/:id" element={<RequirePermission permission="room:read"><RoomConsolePage /></RequirePermission>} />
         <Route path="gifts" element={<RequirePermission permission="dashboard:read"><GiftsPage /></RequirePermission>} />
         <Route path="media" element={<RequirePermission permission="media:manage"><MediaPage /></RequirePermission>} />
+        <Route path="banners" element={<RequirePermission permission="dashboard:read"><BannersPage /></RequirePermission>} />
         <Route path="decor" element={<RequirePermission permission="room:read"><DecorPage /></RequirePermission>} />
         <Route path="emoji" element={<RequirePermission permission="room:read"><EmojiPage /></RequirePermission>} />
         <Route path="ranks" element={<RequirePermission permission="user:read"><RanksPage /></RequirePermission>} />

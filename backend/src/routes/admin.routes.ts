@@ -35,6 +35,13 @@ router.post('/users/:id/vip', requirePermission('user:vip'), admin.setVipLevel);
 // Experience is the same "levels and VIP" concern as the spend tier, under the same permission,
 // and it exists only to correct what the ladder scored — a client can never reach it.
 router.post('/users/:id/xp', requirePermission('user:vip'), admin.adjustUserXpEndpoint);
+// The social graph around one account (migration 0022): counts, recent follows, blocks, reports.
+router.get('/users/:id/social', requirePermission('user:read'), admin.userSocial);
+
+// The report queue. Reading is an account concern; deciding one — optionally banning its
+// target — is moderation, and every decision is audited.
+router.get('/reports', requirePermission('user:read'), admin.reports);
+router.post('/reports/:id/review', requirePermission('user:moderate'), admin.reviewReportEndpoint);
 
 router.get('/rooms', requirePermission('room:read'), admin.rooms);
 // Before '/rooms/:id', which would otherwise read 'seat-policy' as a room id.
@@ -45,6 +52,9 @@ router.post('/rooms/:id/close', requirePermission('room:moderate'), admin.closeM
 router.post('/rooms/:id/disconnect-user', requirePermission('room:moderate'), admin.disconnectUser);
 router.post('/rooms/:id/chat', requirePermission('room:moderate'), admin.sendRoomChat);
 router.post('/rooms/:id/warn', requirePermission('room:moderate'), admin.warnHost);
+// A pinned notice is visible to everyone in the room, so an operator can pin or clear one
+// without waiting for the host. The host's own route is `POST /api/rooms/:id/announcement`.
+router.post('/rooms/:id/announcement', requirePermission('room:moderate'), admin.setRoomAnnouncement);
 router.post('/rooms/:id/mute-all', requirePermission('room:moderate'), admin.muteAll);
 router.post('/rooms/:id/seat/:index/mute', requirePermission('room:moderate'), admin.muteSeat);
 router.post('/rooms/:id/seat/:index/lock', requirePermission('room:moderate'), admin.lockSeat);
@@ -56,6 +66,17 @@ router.get('/gifts', requirePermission('dashboard:read'), admin.gifts);
 router.post('/gifts', requirePermission('gift:manage'), admin.createGiftEndpoint);
 router.put('/gifts/:id', requirePermission('gift:manage'), admin.updateGiftEndpoint);
 router.delete('/gifts/:id', requirePermission('gift:manage'), admin.removeGiftEndpoint);
+
+// Which gifts earned, per gift, over a window. Registered before `/gifts/:id` would matter, but the
+// read path has no id route — the two coexist because `/gifts/analytics` is a static segment.
+router.get('/gifts/analytics', requirePermission('dashboard:read'), admin.giftAnalyticsEndpoint);
+
+// The shelves the gift panel tabs come from (migration 0025). A gift can only be filed under a key
+// that exists here, so this list is edited from the same screen as the gifts that use it.
+router.get('/gift-categories', requirePermission('dashboard:read'), admin.giftCategoriesEndpoint);
+router.post('/gift-categories', requirePermission('gift:manage'), admin.createGiftCategoryEndpoint);
+router.put('/gift-categories/:key', requirePermission('gift:manage'), admin.updateGiftCategoryEndpoint);
+router.delete('/gift-categories/:key', requirePermission('gift:manage'), admin.deleteGiftCategoryEndpoint);
 
 // Operator-uploaded gift art, effect scenes and badges. `media:manage` rather than
 // `gift:manage`: the same store backs effects and ranks, and maintaining those must not
@@ -86,12 +107,29 @@ router.delete('/frames/:key', requirePermission('config:manage'), admin.deleteFr
 router.get('/frames/:key/holders', requirePermission('user:read'), admin.frameHoldersEndpoint);
 router.post('/users/:id/grant', requirePermission('user:wallet'), admin.grantItemEndpoint);
 
+// Entrance rides (migration 0026): sold and worn like a frame, so the same two powers — pricing and
+// retiring a row changes what every room plays when somebody joins, which is `config:manage`.
+router.post('/rides', requirePermission('config:manage'), admin.createRideEndpoint);
+router.put('/rides/:key', requirePermission('config:manage'), admin.updateRideEndpoint);
+router.delete('/rides/:key', requirePermission('config:manage'), admin.deleteRideEndpoint);
+router.get('/rides/:key/holders', requirePermission('user:read'), admin.rideHoldersEndpoint);
+
 // Chat emoji. Reading the catalogue is public (`GET /api/emoji`); this is the operator's view of
 // the same rows, and the only way to change what codes members may type.
 router.get('/emoji', requirePermission('room:read'), admin.emojiCatalogueEndpoint);
 router.post('/emoji', requirePermission('config:manage'), admin.createEmojiEndpoint);
 router.put('/emoji/:key', requirePermission('config:manage'), admin.updateEmojiEndpoint);
 router.delete('/emoji/:key', requirePermission('config:manage'), admin.deleteEmojiEndpoint);
+
+// Promotional banners (migration 0028). `GET /api/banners` already serves the app; this is the
+// operator's view of the same rows — schedule window, switch and counts. Reading belongs to the
+// dashboard; putting art on every phone's splash screen is `config:manage`, like the rest of the
+// catalogues. The routes are id-addressed, matching /gifts: a banner key is a marketing label an
+// operator may want to reuse, while the row they are editing is a specific one.
+router.get('/banners', requirePermission('dashboard:read'), admin.bannersEndpoint);
+router.post('/banners', requirePermission('config:manage'), admin.createBannerEndpoint);
+router.put('/banners/:id', requirePermission('config:manage'), admin.updateBannerEndpoint);
+router.delete('/banners/:id', requirePermission('config:manage'), admin.deleteBannerEndpoint);
 
 // The earned-level ladder (migration 0017). Reading it is a `user:read` concern — an operator who
 // can see accounts has to know what a badge on one means — while moving a threshold or retiring a

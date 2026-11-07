@@ -1,18 +1,19 @@
 import { PoolClient } from 'pg';
 import { many, one, withTransaction } from '../config/db';
 import { rateLimit } from '../config/redis';
-import { ProfileFrameRow, RoomThemeRow, UserItemRow, UserRow, VisualEffectRow } from '../types/db';
+import { ProfileFrameRow, ProfileRideRow, RoomThemeRow, UserItemRow, UserRow, VisualEffectRow } from '../types/db';
 import { ApiError, requireEnum, requireInt, requireString } from '../utils/http';
 import { toTransaction, toUser, TransactionDto, UserDto } from '../utils/serialize';
 import { postedTransaction, postLedgerMoves } from './ledger.service';
 import { awardXp, ensureRankRegistry, xpForSpend } from './rank.service';
+import type { RideFormat } from './theme.service';
 
 /**
  * The cosmetic store (migration 0019): who owns what, and the money that says so.
  *
  * The art itself is `theme.service`'s business — it already keeps the decoration catalogue and the
  * synchronous snapshot every seat DTO reads. This file is the commerce half, and it is deliberately
- * small: three catalogues, one ownership table, and one rule about how a balance may move.
+ * small: four catalogues, one ownership table, and one rule about how a balance may move.
  *
  *   * A price is read from the database inside the purchase transaction. No caller passes one and no
  *     request body can carry one, so an operator re-pricing a ring between two clicks gets the price
@@ -30,7 +31,7 @@ import { awardXp, ensureRankRegistry, xpForSpend } from './rank.service';
  * account.
  */
 
-export const ITEM_KINDS = ['FRAME', 'THEME', 'EFFECT'] as const;
+export const ITEM_KINDS = ['FRAME', 'THEME', 'EFFECT', 'RIDE'] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
 
 /** A purchase is a deliberate act, so this is an abuse brake, not a product limit. */
@@ -46,6 +47,17 @@ export type StoreItemDto = {
   priceDiamonds: number;
   /** Rental length in days; null means the purchase never expires. */
   periodDays: number | null;
+  /** Lowest `vipLevel` allowed to buy this; 0 means anybody. Checked server-side at purchase. */
+  minVipLevel: number;
+  /** The operator wants this row shown first, and badged. */
+  recommended: boolean;
+  /**
+   * RIDE only: which renderer opens `art`. The catalogue stores what the upload sniffer said, so a
+   * client that guessed from the file extension would open an SVGA container in the Lottie player.
+   */
+  animationFormat?: RideFormat;
+  /** RIDE only: the operator's ceiling on how long the ride holds the screen; 0 = the client's fallback. */
+  durationMs?: number;
   owned: boolean;
   /** When the caller's copy runs out, or null when it cannot. */
   expiresAt: string | null;
@@ -74,7 +86,7 @@ export type PurchaseResult = {
 // Catalogue reads
 // ---------------------------------------------------------------------------
 
-/** One row of any of the three catalogues, in the shape the rest of this file works with. */
+/** One row of any of the four catalogues, in the shape the rest of this file works with. */
 type CatalogueRow = {
   kind: ItemKind;
   key: string;
@@ -85,20 +97,26 @@ type CatalogueRow = {
   periodDays: number | null;
   forSale: boolean;
   sortOrder: number;
+  minVipLevel: number;
+  recommended: boolean;
+  /** Set only by the one catalogue that hands devices an animation file rather than an image. */
+  animationFormat?: RideFormat;
+  durationMs?: number;
 };
 
 /**
- * Every row in all three catalogues, on sale or not.
+ * Every row in all four catalogues, on sale or not.
  *
  * A member's receipt can outlive the thing they bought — an operator retires a ring, the ten people
  * wearing it do not stop existing — so the code that names an owned item has to be able to find a
  * row the shop no longer lists.
  */
 async function allRows(): Promise<CatalogueRow[]> {
-  const [frames, themes, effects] = await Promise.all([
+  const [frames, themes, effects, rides] = await Promise.all([
     many<ProfileFrameRow>('SELECT * FROM profile_frames ORDER BY sort_order ASC, key ASC'),
     many<RoomThemeRow>('SELECT * FROM room_themes ORDER BY sort_order ASC, slug ASC'),
     many<VisualEffectRow>("SELECT * FROM visual_effects WHERE kind = 'WELCOME' ORDER BY sort_order ASC, key ASC"),
+    many<ProfileRideRow>('SELECT * FROM profile_rides ORDER BY sort_order ASC, key ASC'),
   ]);
   return [
     ...frames.map((row) => ({
@@ -111,6 +129,8 @@ async function allRows(): Promise<CatalogueRow[]> {
       periodDays: row.period_days,
       forSale: row.for_sale,
       sortOrder: row.sort_order,
+      minVipLevel: row.min_vip_level,
+      recommended: row.recommended,
     })),
     ...themes.map((row) => ({
       kind: 'THEME' as const,
@@ -122,6 +142,8 @@ async function allRows(): Promise<CatalogueRow[]> {
       periodDays: row.period_days,
       forSale: row.for_sale,
       sortOrder: row.sort_order,
+      minVipLevel: row.min_vip_level,
+      recommended: row.recommended,
     })),
     ...effects.map((row) => ({
       kind: 'EFFECT' as const,
@@ -134,8 +156,27 @@ async function allRows(): Promise<CatalogueRow[]> {
       periodDays: row.period_days,
       forSale: row.for_sale,
       sortOrder: row.sort_order,
+      minVipLevel: row.min_vip_level,
+      recommended: row.recommended,
     })),
-  ].sort((a, b) => a.sortOrder - b.sortOrder);
+    ...rides.map((row) => ({
+      kind: 'RIDE' as const,
+      key: row.key,
+      name: row.name,
+      art: row.url,
+      accent: null,
+      priceDiamonds: row.price_diamonds,
+      periodDays: row.period_days,
+      forSale: row.for_sale,
+      sortOrder: row.sort_order,
+      minVipLevel: row.min_vip_level,
+      recommended: row.recommended,
+      animationFormat: row.format,
+      durationMs: row.duration_ms,
+    })),
+  // Recommended rows lead, then the operator's own order. A member should not have to hunt for the
+  // thing the shop is pointing at, and `sort_order` stays the tie-break so nothing is un-sortable.
+  ].sort((a, b) => Number(b.recommended) - Number(a.recommended) || a.sortOrder - b.sortOrder);
 }
 
 /** The same rows read inside a purchase, where a second query per item is the point: it is the
@@ -153,6 +194,8 @@ async function catalogueRow(client: PoolClient, kind: ItemKind, key: string): Pr
       periodDays: row.period_days,
       forSale: row.for_sale,
       sortOrder: row.sort_order,
+      minVipLevel: row.min_vip_level,
+      recommended: row.recommended,
     };
   }
   if (kind === 'THEME') {
@@ -167,11 +210,29 @@ async function catalogueRow(client: PoolClient, kind: ItemKind, key: string): Pr
       periodDays: row.period_days,
       forSale: row.for_sale,
       sortOrder: row.sort_order,
+      minVipLevel: row.min_vip_level,
+      recommended: row.recommended,
     };
   }
-  const row = (
-    await client.query<VisualEffectRow>("SELECT * FROM visual_effects WHERE key = $1 AND kind = 'WELCOME'", [key])
-  ).rows[0];
+  if (kind === 'EFFECT') {
+    const row = (
+      await client.query<VisualEffectRow>("SELECT * FROM visual_effects WHERE key = $1 AND kind = 'WELCOME'", [key])
+    ).rows[0];
+    return row && {
+      kind,
+      key: row.key,
+      name: row.name,
+      art: row.url,
+      accent: null,
+      priceDiamonds: row.price_diamonds,
+      periodDays: row.period_days,
+      forSale: row.for_sale,
+      sortOrder: row.sort_order,
+      minVipLevel: row.min_vip_level,
+      recommended: row.recommended,
+    };
+  }
+  const row = (await client.query<ProfileRideRow>('SELECT * FROM profile_rides WHERE key = $1', [key])).rows[0];
   return row && {
     kind,
     key: row.key,
@@ -182,6 +243,10 @@ async function catalogueRow(client: PoolClient, kind: ItemKind, key: string): Pr
     periodDays: row.period_days,
     forSale: row.for_sale,
     sortOrder: row.sort_order,
+    minVipLevel: row.min_vip_level,
+    recommended: row.recommended,
+    animationFormat: row.format,
+    durationMs: row.duration_ms,
   };
 }
 
@@ -191,13 +256,14 @@ function stamp(kind: ItemKind, key: string): string {
 
 /** What a member is wearing, so the shop can mark the one row they have equipped. */
 async function wornBy(userId: string): Promise<Map<string, boolean>> {
-  const row = await one<Pick<UserRow, 'profile_frame_key' | 'welcome_effect_key'>>(
-    'SELECT profile_frame_key, welcome_effect_key FROM users WHERE id = $1',
+  const row = await one<Pick<UserRow, 'profile_frame_key' | 'welcome_effect_key' | 'profile_ride_key'>>(
+    'SELECT profile_frame_key, welcome_effect_key, profile_ride_key FROM users WHERE id = $1',
     [userId],
   );
   const worn = new Map<string, boolean>();
   if (row?.profile_frame_key) worn.set(stamp('FRAME', row.profile_frame_key), true);
   if (row?.welcome_effect_key) worn.set(stamp('EFFECT', row.welcome_effect_key), true);
+  if (row?.profile_ride_key) worn.set(stamp('RIDE', row.profile_ride_key), true);
   return worn;
 }
 
@@ -215,6 +281,10 @@ function toItem(row: CatalogueRow, held: UserItemRow | undefined, worn: Map<stri
     accent: row.accent,
     priceDiamonds: row.priceDiamonds,
     periodDays: row.periodDays,
+    minVipLevel: row.minVipLevel,
+    recommended: row.recommended,
+    animationFormat: row.animationFormat,
+    durationMs: row.durationMs,
     owned: live,
     expiresAt: live ? held!.expires_at?.toISOString() ?? null : null,
     equipped: live && worn.get(stamp(row.kind, row.key)) === true,
@@ -325,16 +395,34 @@ async function refreshWorn(
   key: string,
   expiresAt: Date | null,
 ): Promise<void> {
-  if (kind === 'FRAME') {
-    await client.query(
-      'UPDATE users SET profile_frame_expires_at = $3 WHERE id = $1 AND profile_frame_key = $2',
-      [userId, key, expiresAt],
-    );
-  } else if (kind === 'EFFECT') {
-    await client.query(
-      'UPDATE users SET welcome_effect_expires_at = $3 WHERE id = $1 AND welcome_effect_key = $2',
-      [userId, key, expiresAt],
-    );
+  if (kind === 'THEME') return;
+  const columns = wornColumns(kind);
+  await client.query(
+    `UPDATE users SET ${columns.expiry} = $3 WHERE id = $1 AND ${columns.key} = $2`,
+    [userId, key, expiresAt],
+  );
+}
+
+/**
+ * The two `users` columns that say what this kind is worn, for the three kinds a person wears.
+ *
+ * The names come from this table and never from a request: they are interpolated into SQL, so a
+ * kind that could be spelled by a caller would be an injection point. `THEME` has no columns — a
+ * room wears it — and it is refused with the same error the equip and unequip endpoints use.
+ */
+function wornColumns(kind: ItemKind): { key: string; expiry: string } {
+  switch (kind) {
+    case 'FRAME':
+      return { key: 'profile_frame_key', expiry: 'profile_frame_expires_at' };
+    case 'EFFECT':
+      return { key: 'welcome_effect_key', expiry: 'welcome_effect_expires_at' };
+    case 'RIDE':
+      return { key: 'profile_ride_key', expiry: 'profile_ride_expires_at' };
+    case 'THEME':
+      throw ApiError.badRequest(
+        'A room theme decorates a room, not an account — set it with POST /api/rooms/<id>/theme',
+        'theme_is_per_room',
+      );
   }
 }
 
@@ -409,6 +497,25 @@ export async function purchaseItem(input: { userId: string; kind: ItemKind; key:
       );
     }
 
+    // The rank gate, before the debit and before the balance — same reason as in `sendGift`: a member
+    // who cannot spend here should be told which rank unlocks it, not sent to top up first. The lock
+    // is the one `postLedgerMoves` takes anyway (balances live on `users`), in the same single-id
+    // order, so it cannot invert a gift in flight.
+    if (item.minVipLevel > 0) {
+      const buyer = await client.query<Pick<UserRow, 'vip_level'>>(
+        'SELECT vip_level FROM users WHERE id = $1 FOR UPDATE',
+        [input.userId],
+      );
+      const rank = buyer.rows[0]?.vip_level ?? 0;
+      if (rank < item.minVipLevel) {
+        throw ApiError.forbidden(`${item.name} requires VIP level ${item.minVipLevel}`, 'vip_required', {
+          required: item.minVipLevel,
+          current: rank,
+          itemName: item.name,
+        });
+      }
+    }
+
     const [move] = await postLedgerMoves(client, [
       {
         type: 'ITEM_PURCHASE',
@@ -458,6 +565,9 @@ export async function purchaseItem(input: { userId: string; kind: ItemKind; key:
  * have expired, been reversed by an operator, or never have existed while the list was on screen.
  */
 export async function equipItem(input: { userId: string; kind: ItemKind; key: string }): Promise<UserDto> {
+  // Deliberately not rank-gated, unlike the purchase: `min_vip_level` is a price to pay, not a
+  // licence to hold. Support can hand a VIP ring to a level-0 member for an event, and refusing the
+  // equip would silently void a grant they can neither wear nor refund.
   await ensureRankRegistry();
   if (input.kind === 'THEME') {
     throw ApiError.badRequest(
@@ -482,10 +592,7 @@ export async function equipItem(input: { userId: string; kind: ItemKind; key: st
     throw ApiError.notFound('The operator has removed this item from the catalogue', 'item_retired');
   }
 
-  const columns =
-    input.kind === 'FRAME'
-      ? { key: 'profile_frame_key', expiry: 'profile_frame_expires_at' }
-      : { key: 'welcome_effect_key', expiry: 'welcome_effect_expires_at' };
+  const columns = wornColumns(input.kind);
   const updated = await one<UserRow>(
     `UPDATE users SET ${columns.key} = $2, ${columns.expiry} = $3 WHERE id = $1 RETURNING *`,
     [input.userId, input.key, held.expires_at],
@@ -499,10 +606,7 @@ export async function unequipItem(input: { userId: string; kind: ItemKind }): Pr
   if (input.kind === 'THEME') {
     throw ApiError.badRequest('A room wears a theme — set the room back to a free one instead', 'theme_is_per_room');
   }
-  const columns =
-    input.kind === 'FRAME'
-      ? { key: 'profile_frame_key', expiry: 'profile_frame_expires_at' }
-      : { key: 'welcome_effect_key', expiry: 'welcome_effect_expires_at' };
+  const columns = wornColumns(input.kind);
   const updated = await one<UserRow>(
     `UPDATE users SET ${columns.key} = NULL, ${columns.expiry} = NULL WHERE id = $1 RETURNING *`,
     [input.userId],
@@ -513,9 +617,12 @@ export async function unequipItem(input: { userId: string; kind: ItemKind }): Pr
 async function catalogueRowExists(kind: ItemKind, key: string): Promise<boolean> {
   if (kind === 'FRAME') return Boolean(await one<ProfileFrameRow>('SELECT key FROM profile_frames WHERE key = $1', [key]));
   if (kind === 'THEME') return Boolean(await one<RoomThemeRow>('SELECT slug FROM room_themes WHERE slug = $1', [key]));
-  return Boolean(
-    await one<VisualEffectRow>("SELECT key FROM visual_effects WHERE key = $1 AND kind = 'WELCOME'", [key]),
-  );
+  if (kind === 'EFFECT') {
+    return Boolean(
+      await one<VisualEffectRow>("SELECT key FROM visual_effects WHERE key = $1 AND kind = 'WELCOME'", [key]),
+    );
+  }
+  return Boolean(await one<ProfileRideRow>('SELECT key FROM profile_rides WHERE key = $1', [key]));
 }
 
 // ---------------------------------------------------------------------------

@@ -78,6 +78,7 @@ import com.voiza.app.ui.theme.VoizaHeroGradient
 import com.voiza.app.ui.theme.WarningAmber
 import com.voiza.app.viewmodel.PartyRoomViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
+import kotlinx.coroutines.delay
 
 /**
  * The core experience. Owns: join -> LiveKit connect (publish only when
@@ -99,6 +100,7 @@ fun PartyRoomScreen(
     ),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val socketConnected by viewModel.socketConnected.collectAsStateWithLifecycle()
 
     // Runtime mic permission: request once we may publish without the grant.
     var permissionAsked by remember { mutableStateOf(false) }
@@ -155,7 +157,7 @@ fun PartyRoomScreen(
                     totalGiftValue = state.room?.totalGiftValue ?: 0,
                     diamondBalance = state.user?.diamondBalance,
                     isHost = state.isHost,
-                    socketConnected = true,
+                    socketConnected = socketConnected,
                     livekitConnected = state.livekitState == com.voiza.app.data.livekit.LkConnectionState.CONNECTED,
                     onCloseRoom = viewModel::hostCloseRoom,
                     onOpenGames = onOpenGames,
@@ -164,6 +166,27 @@ fun PartyRoomScreen(
                         viewModel.leaveRoom()
                         onLeaveRoom()
                     },
+                )
+
+                // A short-lived line about something that just happened to *this* member: a seat
+                // invite, an approved request. The server decided it; this only reports it back.
+                state.roomNotice?.let { notice ->
+                    LaunchedEffect(notice) {
+                        delay(5_000)
+                        viewModel.dismissRoomNotice()
+                    }
+                    RoomNoticePill(
+                        text = notice,
+                        onClick = viewModel::dismissRoomNotice,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                    )
+                }
+
+                // The notice the host pinned for everyone, and the host's way to write it.
+                AnnouncementBanner(
+                    text = state.room?.announcement,
+                    isHost = state.isHost,
+                    onPin = viewModel::openAnnouncementEditor,
                 )
 
                 // Host-written house rules, for everyone in the room to read.
@@ -268,7 +291,14 @@ fun PartyRoomScreen(
                     onSend = viewModel::sendChat,
                     emojis = state.emojis,
                     codePattern = state.emojiCodePattern,
+                    onOpenMember = viewModel::openMemberSheet,
                     modifier = Modifier.padding(bottom = 4.dp),
+                )
+
+                // ---- Quick reactions (the operator's emoji, flown on a tap) ----
+                ReactionStrip(
+                    emojis = state.emojis,
+                    onReaction = viewModel::sendReaction,
                 )
 
                 // ---- Action bar ----
@@ -322,6 +352,16 @@ fun PartyRoomScreen(
                 .size(width = 92.dp, height = 200.dp),
         )
 
+        // Reactions fly from the strip, so this box starts at its left edge and climbs over the
+        // seats. No clickable child, so the chat underneath still scrolls through it.
+        ReactionLayer(
+            signal = state.reactions,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 20.dp, bottom = 118.dp)
+                .size(width = 150.dp, height = 220.dp),
+        )
+
         // Null until the catalogue answers, and null forever if the operator has no
         // welcome animation — then the room simply opens without a flourish.
         if (welcomeVisible && state.welcomeEffect != null) {
@@ -337,6 +377,19 @@ fun PartyRoomScreen(
             WelcomeEffect(
                 welcomeUrl = state.entryFlourish,
                 onFinished = viewModel::clearEntryFlourish,
+            )
+        }
+
+        // ...and the ride they paid to arrive in, routed by the container the store row says the
+        // file is in. A member with no `entryRide` on their join never reaches this line.
+        val arrival = state.entryRide
+        val wornRide = arrival?.user?.entryRide
+        if (arrival != null && wornRide != null) {
+            EntryRideOverlay(
+                ride = wornRide,
+                username = arrival.user.username,
+                avatarUrl = arrival.user.avatarUrl,
+                onFinished = viewModel::clearEntryRide,
             )
         }
     }
@@ -377,6 +430,40 @@ fun PartyRoomScreen(
         )
     }
 
+    // The host pins the notice every member sees above the seats.
+    if (state.announcementEditorVisible) {
+        AnnouncementEditorDialog(
+            current = state.room?.announcement,
+            onDismiss = viewModel::closeAnnouncementEditor,
+            onSave = viewModel::setAnnouncement,
+        )
+    }
+
+    // The host's seat invitation: the seat already exists, so this is the member's call about their
+    // own microphone. There is no way out of it except an answer.
+    state.invitedToSeat?.let { seatIndex ->
+        AlertDialog(
+            onDismissRequest = { },
+            containerColor = Color(0xFF151233),
+            title = { Text("The host invited you up", color = OnDarkHigh) },
+            text = {
+                Text(
+                    text = "Seat $seatIndex is yours. Your microphone stays off until you accept.",
+                    color = OnDarkMedium,
+                    fontSize = 13.sp,
+                )
+            },
+            confirmButton = {
+                VoizaActionButton(text = "Speak", enabled = true) { viewModel.acceptSeatInvite() }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::declineSeatInvite) {
+                    Text("Not now", color = OnDarkMedium)
+                }
+            },
+        )
+    }
+
     // Host per-seat controls.
     HostControlsSheet(
         seat = state.hostControlsSeat,
@@ -393,9 +480,39 @@ fun PartyRoomScreen(
         seats = state.seats,
         audience = state.audience,
         handRaises = state.handRaises,
+        speakerQueue = state.speakerQueue,
         hostId = state.room?.host?.id,
+        isHost = state.isHost,
+        invitableSeatIndex = state.invitableSeatIndex,
         onDismiss = viewModel::closeAudienceList,
+        onApprove = viewModel::approveSpeakerRequest,
+        onReject = viewModel::rejectSpeakerRequest,
+        onInvite = viewModel::inviteListener,
+        onOpenMember = viewModel::openMemberSheet,
     )
+
+    // Somebody else's card: follow, report, block. Opened from a roster row or a held chat line.
+    state.memberSheet?.let { card ->
+        MemberSheet(
+            member = card.member,
+            relationship = card.relationship,
+            busy = card.busy,
+            error = card.error,
+            onDismiss = viewModel::closeMemberSheet,
+            onToggleFollow = viewModel::toggleFollow,
+            onOpenReport = viewModel::openReportForm,
+            onToggleBlock = viewModel::toggleBlock,
+        )
+        if (card.reportOpen) {
+            ReportDialog(
+                member = card.member,
+                busy = card.busy,
+                error = card.error,
+                onDismiss = viewModel::closeReportForm,
+                onSubmit = viewModel::submitReport,
+            )
+        }
+    }
 
     // Gift catalogue dialog.
     GiftDialog(
@@ -560,6 +677,123 @@ private fun RulesBanner(rules: String) {
             maxLines = if (expanded) 12 else 2,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/**
+ * The notice pinned above the seats. Members read it and nothing else; the host taps it to write
+ * it, and keeps the affordance while it is empty so there is a way to pin the first line.
+ */
+@Composable
+private fun AnnouncementBanner(
+    text: String?,
+    isHost: Boolean,
+    onPin: () -> Unit,
+) {
+    val pinned = text?.takeIf { it.isNotBlank() }
+    if (pinned == null && !isHost) return
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (pinned != null) Color(0x40F472B1) else Color(0x26FFFFFF))
+            .clickable(enabled = isHost, onClick = onPin)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Default.VoiceChat,
+            contentDescription = null,
+            tint = if (pinned != null) GiftPink else OnDarkMedium,
+            modifier = Modifier.size(15.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = if (pinned != null) "Pinned by the host" else "Pin a notice",
+                color = if (pinned != null) GiftPink else OnDarkMedium,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.height(1.dp))
+            Text(
+                text = pinned ?: "Tap to write what everyone should know",
+                color = if (pinned == null) OnDarkMedium else OnDarkHigh,
+                fontSize = 12.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (isHost) {
+            Icon(
+                imageVector = Icons.Default.Edit,
+                contentDescription = "Edit pinned notice",
+                tint = OnDarkMedium,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+    }
+}
+
+/** Composer for the pinned notice. Saving blank is the host's way to clear it, same as the API. */
+@Composable
+private fun AnnouncementEditorDialog(
+    current: String?,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf(current.orEmpty()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF151233),
+        title = { Text("Pinned notice", color = OnDarkHigh) },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it.take(300) },
+                label = { Text("Notice for the room", fontSize = 13.sp) },
+                minLines = 3,
+                maxLines = 6,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Fuchsia,
+                    unfocusedBorderColor = Color(0xFF3D3670),
+                    focusedTextColor = OnDarkHigh,
+                    unfocusedTextColor = OnDarkHigh,
+                ),
+            )
+        },
+        confirmButton = {
+            VoizaActionButton(text = "Pin", enabled = text.isNotBlank()) { onSave(text.trim()) }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = { onSave("") }) {
+                    Text("Clear", color = OnDarkMedium)
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = OnDarkMedium)
+                }
+            }
+        },
+    )
+}
+
+/**
+ * One line about something the server just did to this member. Tapping dismisses it; otherwise the
+ * room stops showing it a few seconds later.
+ */
+@Composable
+private fun RoomNoticePill(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color(0x334DE0A0))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Text(text = text, color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
 

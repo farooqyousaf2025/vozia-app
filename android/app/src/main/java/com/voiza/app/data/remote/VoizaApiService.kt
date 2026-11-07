@@ -1,10 +1,17 @@
 package com.voiza.app.data.remote
 
 import com.voiza.app.data.remote.dto.AuthResponse
+import com.voiza.app.data.remote.dto.AnnouncementBody
+import com.voiza.app.data.remote.dto.ApproveSpeakerRequestResponse
+import com.voiza.app.data.remote.dto.BannerTrackBody
+import com.voiza.app.data.remote.dto.BannersResponse
+import com.voiza.app.data.remote.dto.BlockBody
+import com.voiza.app.data.remote.dto.BlockResponse
 import com.voiza.app.data.remote.dto.CheckInResponseDto
 import com.voiza.app.data.remote.dto.CreateGameBody
 import com.voiza.app.data.remote.dto.CreateRoomBody
 import com.voiza.app.data.remote.dto.EmojiCatalogueDto
+import com.voiza.app.data.remote.dto.FollowResponse
 import com.voiza.app.data.remote.dto.GameActionBody
 import com.voiza.app.data.remote.dto.GameCatalogResponse
 import com.voiza.app.data.remote.dto.GameDisputeEnvelope
@@ -31,16 +38,24 @@ import com.voiza.app.data.remote.dto.RechargeResponse
 import com.voiza.app.data.remote.dto.RoomDetailResponse
 import com.voiza.app.data.remote.dto.RoomEnvelope
 import com.voiza.app.data.remote.dto.RoomsResponse
+import com.voiza.app.data.remote.dto.RejectSpeakerRequestResponse
+import com.voiza.app.data.remote.dto.RelationshipDto
+import com.voiza.app.data.remote.dto.ReportBody
+import com.voiza.app.data.remote.dto.ReportResponse
+import com.voiza.app.data.remote.dto.SeatInviteBody
 import com.voiza.app.data.remote.dto.SeatMuteBody
 import com.voiza.app.data.remote.dto.SeatPolicyResponse
 import com.voiza.app.data.remote.dto.SeatStatusBody
 import com.voiza.app.data.remote.dto.SeatsResponse
+import com.voiza.app.data.remote.dto.SpeakerCancelResponse
+import com.voiza.app.data.remote.dto.SpeakerRequestsResponse
 import com.voiza.app.data.remote.dto.SetRoomThemeBody
 import com.voiza.app.data.remote.dto.SendGiftBody
 import com.voiza.app.data.remote.dto.SendGiftResponse
 import com.voiza.app.data.remote.dto.StoreItemBody
 import com.voiza.app.data.remote.dto.StorePurchaseResponse
 import com.voiza.app.data.remote.dto.StoreResponse
+import com.voiza.app.data.remote.dto.TakeSeatResponse
 import com.voiza.app.data.remote.dto.ThemeCatalogueDto
 import com.voiza.app.data.remote.dto.UpdateProfileBody
 import com.voiza.app.data.remote.dto.UpdateRoomBody
@@ -153,7 +168,7 @@ interface VoizaApiService {
     suspend fun leaveRoom(@Path("id") roomId: String): OkResponse
 
     @POST("api/rooms/{id}/seat")
-    suspend fun takeSeat(@Path("id") roomId: String, @Body seatIndexBody: Map<String, Int>): SeatsResponse
+    suspend fun takeSeat(@Path("id") roomId: String, @Body seatIndexBody: Map<String, Int>): TakeSeatResponse
 
     @POST("api/rooms/{id}/seat/{index}/leave")
     suspend fun leaveSeat(@Path("id") roomId: String, @Path("index") seatIndex: Int): SeatsResponse
@@ -175,6 +190,48 @@ interface VoizaApiService {
     @HTTP(method = "POST", path = "api/rooms/{id}/seat/{index}/kick", hasBody = false)
     suspend fun kickFromSeat(@Path("id") roomId: String, @Path("index") seatIndex: Int): SeatsResponse
 
+    /**
+     * A host seats a member who is already in the audience. The server does the seating and grants
+     * the microphone before answering, so the member learns about it on the private
+     * `room:seat_invited` channel rather than from this response.
+     */
+    @POST("api/rooms/{id}/seat/{index}/invite")
+    suspend fun inviteToSeat(
+        @Path("id") roomId: String,
+        @Path("index") seatIndex: Int,
+        @Body body: SeatInviteBody,
+    ): SeatsResponse
+
+    // ---- Speaker approval queue ---------------------------------------------
+
+    /** Host-only; a member who calls it gets 403, which is why the queue is read by the host. */
+    @GET("api/rooms/{id}/speaker-requests")
+    suspend fun speakerRequests(@Path("id") roomId: String): SpeakerRequestsResponse
+
+    /** Clears the caller's own pending request — the way out of a queue nobody answers. */
+    @HTTP(method = "POST", path = "api/rooms/{id}/speaker-requests/cancel", hasBody = false)
+    suspend fun cancelSpeakerRequest(@Path("id") roomId: String): SpeakerCancelResponse
+
+    /** Approval also mints the publisher token; it travels on the private event, not this body. */
+    @POST("api/rooms/{id}/speaker-requests/{requestId}/approve")
+    suspend fun approveSpeakerRequest(
+        @Path("id") roomId: String,
+        @Path("requestId") requestId: String,
+    ): ApproveSpeakerRequestResponse
+
+    @POST("api/rooms/{id}/speaker-requests/{requestId}/reject")
+    suspend fun rejectSpeakerRequest(
+        @Path("id") roomId: String,
+        @Path("requestId") requestId: String,
+    ): RejectSpeakerRequestResponse
+
+    /** One-line notice pinned above the seats. An empty [AnnouncementBody] clears it. */
+    @POST("api/rooms/{id}/announcement")
+    suspend fun setAnnouncement(
+        @Path("id") roomId: String,
+        @Body body: AnnouncementBody,
+    ): RoomEnvelope
+
     @POST("api/rooms/{id}/hand-raise")
     suspend fun handRaise(@Path("id") roomId: String, @Body body: HandRaiseBody): HandRaiseResponse
 
@@ -189,6 +246,25 @@ interface VoizaApiService {
     @GET("api/gifts")
     suspend fun gifts(): GiftsResponse
 
+    // ---- Promotional banners ------------------------------------------------
+
+    /**
+     * What the operator is running on the wall right now. Public like `api/emoji`: a splash banner is
+     * drawn before a signed-out member has anything to authenticate with, and the answer carries no
+     * member data. A null `placement` asks for all four surfaces in one call, which is why a phone
+     * that is about to show a splash, a home strip and a gift-panel card does not make three requests.
+     */
+    @GET("api/banners")
+    suspend fun banners(@Query("placement") placement: String?): BannersResponse
+
+    /**
+     * One counted look at, or one tap on, one banner. Authenticated on purpose: these two counters are
+     * the operator's only answer to "did that campaign work", so a call an anonymous script can make
+     * would be a number nobody can believe.
+     */
+    @POST("api/banners/track")
+    suspend fun trackBanner(@Body body: BannerTrackBody): OkResponse
+
     @POST("api/gifts/send")
     suspend fun sendGift(@Body body: SendGiftBody): SendGiftResponse
 
@@ -201,6 +277,38 @@ interface VoizaApiService {
         @Query("role") role: String,
         @Query("limit") limit: Int,
     ): LeaderboardResponse
+
+    // ---- Social moderation ---------------------------------------------------
+
+    /**
+     * How this member relates to one other account. Read before the card is drawn so the sheet
+     * offers the follow button the server would honour rather than the one it would refuse.
+     */
+    @GET("api/users/{id}/relationship")
+    suspend fun relationship(@Path("id") userId: String): RelationshipDto
+
+    @POST("api/users/{id}/follow")
+    suspend fun follow(@Path("id") userId: String): FollowResponse
+
+    @DELETE("api/users/{id}/follow")
+    suspend fun unfollow(@Path("id") userId: String): FollowResponse
+
+    /**
+     * A block closes the interaction both ways, so the server refuses gifts and follows between the
+     * pair whichever side tapped first. It does not refuse a report.
+     */
+    @POST("api/users/{id}/block")
+    suspend fun block(@Path("id") userId: String, @Body body: BlockBody): BlockResponse
+
+    @DELETE("api/users/{id}/block")
+    suspend fun unblock(@Path("id") userId: String): BlockResponse
+
+    /**
+     * File a complaint for an operator to review. Answers 201 with the queue row; a second open
+     * report against the same member is refused, so this is not a button to press twice.
+     */
+    @POST("api/users/{id}/report")
+    suspend fun reportUser(@Path("id") userId: String, @Body body: ReportBody): ReportResponse
 
     // ---- Store -------------------------------------------------------------
 

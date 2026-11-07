@@ -157,6 +157,13 @@ Two layers, neither of which needs a third-party account to work:
    losing it means losing the Play listing, not just the build. The client ships TLS
    only: the release variant's network security config forbids cleartext, so
    `VOIZA_API_BASE_URL` must be `https://` and `VOIZA_LIVEKIT_URL` must be `wss://`.
+   A release build now fails at Gradle configuration time if either is missing, rather
+   than quietly shipping the `10.0.2.2` emulator default that reaches nothing from a
+   phone (`-PVOIZA_API_BASE_URL=… -PVOIZA_LIVEKIT_URL=…`).
+8. The admin panel's `nginx.conf` serves 443 and redirects 80, so it needs a real
+   certificate mounted at `/etc/nginx/tls/` and will not start without one. It also
+   proxies `/socket.io/` with the `Upgrade` headers the ops console needs — keep that
+   block if the file is rewritten. See `admin-panel/README.md`.
 
 ## API surface
 
@@ -165,29 +172,125 @@ Two layers, neither of which needs a third-party account to work:
 · rooms `GET|POST /api/rooms` (list accepts `search`, `category`, `language`, `region`, `sort=default|popular|trending|recent`, `limit`/`offset`),
 `GET /api/rooms/{id,capacity,mine,quick-join}`, `PATCH|DELETE /api/rooms/{id}`, `POST /api/rooms/:id/{join,leave,close,hand-raise,livekit-token}`,
 `POST /api/rooms/:id/seat[/:index/{leave,lock,mute,kick}]`
-· gifts `GET /api/gifts`, `POST /api/gifts/send`
+· gifts `GET /api/gifts`, `POST /api/gifts/send` (optional `idempotencyKey`),
+`GET /api/gifts/history`, `GET /api/rooms/:id/gifts`
 · wallet `GET /api/wallet`, `POST /api/wallet/{recharge,recharge/checkout,withdraw}`, `GET /api/wallet/withdrawals`
+· banners `GET /api/banners?placement=SPLASH|HOME|GIFT|GAME` (public; omit `placement` for all four at once),
+`POST /api/banners/track` (a signed-in member counting one impression or tap)
 · payments `POST /api/payments/stripe/webhook` (Stripe calls this, not the app)
-· users `GET /api/users/:id`, `GET /api/users/top?window=day|week|month&role=receivers|senders&limit=`
-· admin `POST /api/admin/login`, `GET /api/admin/stats|users|rooms|gifts|withdrawals`,
+· users `GET /api/users/:id`, `GET /api/users/top?window=day|week|month&role=receivers|senders&limit=`,
+`GET /api/users/:id/{followers,following,relationship}`, `POST|DELETE /api/users/:id/{follow,block}`,
+`POST /api/users/:id/report`, `GET /api/users/blocked`
+· room community `GET|POST|DELETE /api/rooms/:id/favorite`, `GET /api/rooms/favorites`,
+`POST /api/rooms/:id/announcement`,
+`POST /api/rooms/:id/{transfer,seat/:index/invite}`,
+`GET /api/rooms/:id/speaker-requests`, `POST /api/rooms/:id/speaker-requests/{cancel,:requestId/approve,:requestId/reject}`
+· admin `POST /api/admin/login`, `GET /api/admin/stats|users|rooms|gifts|withdrawals|reports`,
+`GET /api/admin/users/:id/social`, `POST /api/admin/reports/:id/review`,
 `POST /api/admin/users/:id/vip` and the matching mutation routes.
 
 Socket.IO events: client sends `room:join`, `room:leave`, `room:chat`, `room:like`,
-`room:raise_hand`; server sends `room:chat_message`, `room:gift_animated`,
-`room:seat_update`, `room:listener_count`, `room:user_joined`, `room:user_left`,
-`room:mic_toggle`, `room:hand_raise`, `room:liked`, `room:theme_changed`,
+`room:reaction`, `room:raise_hand`; server sends `room:chat_message`, `room:gift_animated`,
+`room:gift_history` (the last gifts this room paid for while the socket was down, addressed to the
+socket that just joined), `room:seat_update`, `room:listener_count`, `room:user_joined`, `room:user_left`,
+`room:mic_toggle`, `room:hand_raise`, `room:liked`, `room:reaction`, `room:theme_changed`,
 `room:profile_updated`, `room:closed`, `room:kicked` and `room:warning` (private channel), `wallet:update`,
-`withdrawal:update`, `account:status`, `room:error`. There is no third-party chat or
+`withdrawal:update`, `account:status`, `room:error`, plus the community events
+`room:announcement`, `room:speaker_request`, `room:speaker_request_updated`,
+`room:speaker_decision`, `room:seat_invited`, `room:ownership_transferred`,
+`user:followed` and `user:blocked`. There is no third-party chat or
 live-room service behind any of it — the Android client's ticker, takeover queue,
 heart layer, entry banner and ranking sheet are its own Compose, driven by these
 events and by the asset URLs this API serves from `backend/public/`.
+
+## Gift engine
+
+A gift is bought by the backend and only *drawn* by the client. `POST /api/gifts/send` debits
+diamonds and credits r-coins in one SQL transaction, prices from `gifts.diamond_price` rather than
+whatever the app says, and answers the same `transaction` it created; the app never subtracts a
+balance and never sends a price, a balance, an earning or a commission. `gift_requests` holds the
+per-tap `idempotencyKey`, so a retry of a request whose response was lost is answered with the gift
+already bought instead of a second one (`replayed: true`, nothing re-broadcast). A `roomId` on the
+send has to name a room both halves of the pair are standing in (see *Room scoping* in
+`backend/README.md`); a gift sent from a profile or a DM simply omits it.
+
+The catalogue row carries the animation with it: `animation_format` (`LOTTIE`/`SVGA`/`MP4`, sniffed
+from the uploaded bytes — never from a file name), `duration_ms`, `display_priority` and the combo
+window. Android routes on those fields in `ui/screens/room/gifts/` — Lottie through the existing
+lottie-compose player, MP4 through the platform `MediaPlayer`, the generated burst when a gift has
+no file at all. SVGA is drawn by a reader this build carries itself, in
+`ui/screens/room/gifts/svga/`: `SvgaWire` is the protobuf wire format (varints, tags, length-delimited
+runs, unknown fields skipped whole so a newer exporter's file still opens), `SvgaParser` sniffs the
+container — a zlib stream, a ZIP holding `data.pb`/`movie.binary`, or a 1.x `movie.spec` — and
+`SvgaPlayer` ticks the decoded movie onto a `Canvas`, decoding each bitmap once and recycling them on
+dispose. No dependency was added, and nothing about the format was guessed from memory: the field
+numbers were cross-checked against SVGAPlayer-Android's generated adapters and SVGAPlayer-iOS's
+`Svga.pbobjc.h`. What is deliberately not drawn: `clipPath` masks, vector `shapes`, matte stencils
+(painting one would smear a mask over the gift) and any audio inside the file — the room hears the
+catalogue's `soundUrl`, as it does for an MP4 gift. Combos and the takeover/ticker choice are counted
+and decided server-side; the device only draws the numbers it was given, deduplicated on the
+transaction id the event carries as `eventId`.
+
+A **lucky gift box** (migration `0027`) is one catalogue row whose credit the server draws instead of
+multiplying. The sender always pays `diamond_price × quantity`; the pool is `r_coin_value × quantity`,
+and each unit rolls one weighted prize from `gift_box_outcomes` (`label`, `multiplier_bps`, `weight`),
+floored per unit before anything is summed. The receiver banks `floor(gross × receiver_share_bps /
+10000)` and the platform keeps the remainder — one residual, never a second dial. Everything else
+about the send is unchanged: XP, quests, commission and `rooms.total_gift_value` all read the same
+`totalRCoins`, the transaction stays `GIFT_SENT`, and the roll is written into the receipt's `meta`,
+so a reconnect replay answers the gift it already bought rather than drawing again. The odds a phone
+prints (`chanceBps`) come from the same table the draw walks, and the write refuses a box whose
+expected payout exceeds the pool it sells for (`lucky_box_payout_unbounded`) — so an operator cannot
+build a machine that pays out more than it takes in, and a device never computes an earning.
+
+A **ride** (migration `0026`) is the full-screen cinematic the room watches while a member arrives.
+It is bought and worn like a frame or a flourish — store kind `RIDE`, the *Arrivals* tab of the
+phone's shop — and resolved server-side by `wornRide()`, which honours the copy's expiry and returns
+null for "walks in quietly"; there is no free ride to fall back on. The result ships as the
+`entryRide` object on the account (`GET /api/auth/me`), on a public profile (`GET /api/users/:id`)
+and on the `MiniUser` inside `room:user_joined`, which is what the room plays it from. The fields are
+`url`/`format`/`durationMs` because the renderer and the hold are the row's own answer, not something
+a file extension gets to decide, and rides share the gift engine's format routing — an SVGA, Lottie
+or MP4 arrival draws through the same `RideArtLayer` in the room (`ui/screens/room/EntryRideOverlay.kt`)
+that the shop plays it from in the *Arrivals* preview, so neither can promise a rendering the other
+does not deliver. What an operator maintains lives on the panel's **Decoration** screen, under
+*Entrance rides*.
+
+Two more decisions stopped being client-side. A gift's shelf is a row: `gift_categories` (migration
+`0025`) holds the `key` every gift and every historical transaction refers to plus the `name` and order
+the tab strip prints, `GET /api/gifts` answers `{ gifts, categories }`, and a shelf a gift still sits
+on cannot be deleted (`category_in_use`) rather than silently re-filing it. And the store asks for a
+rank: `min_vip_level` on a frame, theme, flourish or ride is compared against the buyer's account
+inside the same locks that read the balance, so a locked cosmetic answers `403 vip_required` with
+`required`/`current` before it ever mentions a top-up — while the shop list ships the gate as a field
+instead of hiding the row, and putting an owned copy on stays open to any rank, because `min_vip_level`
+is a price to pay and not a licence to hold. `recommended` only decides what the grid shows first.
+What a catalogue is worth is data too —
+`GET /api/admin/gifts/analytics?days=` (1–365, default 30) reads the same `GIFT_SENT`/`COMPLETED` rows
+the ledger wrote and answers totals plus the top 100 gifts by diamonds, with `unattributedDiamonds`
+kept separate so a total that does not match the rows is visible instead of quietly rounded.
+
+What the app shows *before* a member chooses anything is data too: `banners` (migration `0028`) holds
+operator-run art for four fixed surfaces — splash, home, gift panel, game desk — as a file plus a
+renderer plus a tap target stored as a verb (`NONE`/`INTERNAL`/`ROOM`/`URL`) rather than a route the
+phone has to guess, and `GET /api/banners` hands a device only what is live this second, dropping a
+banner whose target room has since closed instead of shipping a broken navigation. An operator retires
+a campaign by switching it off, not by deleting it, because the impressions and taps beside the row are
+the only answer to "did that work". The panel screen is **Banners**.
+
+See `backend/README.md` → *The gift engine (migration 0023)*, and `npm run test:gift:e2e` (66 live
+checks) for what is asserted about it.
 
 ## Room effects
 
 `room:like { roomId, count }` is buffered per room for one second and comes back as a
 single `room:liked { roomId, count, total, user }` batch, so twelve taps are one
 broadcast instead of twelve and every viewer draws the same number (`total` is
-server-side; Postgres keeps the durable copy on `rooms.like_count`). Gifts carry an
+server-side; Postgres keeps the durable copy on `rooms.like_count`).
+`room:reaction { roomId, key }` is the same idea for emoji: the server resolves the key against the operator's
+`emoji_characters` rows, refuses one it never published, allows twenty per member per five seconds,
+and broadcasts the art it found (`{ roomId, userId, key, code, url, label }`) — a device sends a
+name and cannot choose what another room animates. Nothing is stored behind it. Gifts carry an
 `effect_kind` — `TICKER` for the small ones, `FULLSCREEN` for the expensive scenes —
 that only an operator can set, and each room payload names the ambient loop
 (`ambientEffect`) that category wears. `GET /api/users/top` ranks either side of the
@@ -237,6 +340,30 @@ with the profile as it now stands (a cleared field arrives as `null`, not as
 `DELETE /api/rooms/:id` is refused for any room somebody has stood in or that money
 has moved through — see `backend/README.md` → *Room profile and discovery*.
 
+## Social graph and room community
+
+Migration `0022` turns the room into a place with a memory of its people. Follows are
+directed and public in both counts; a block is one row that is read **both ways**, so
+neither side can follow, be followed or send a gift to the other after either taps it —
+the ledger calls `assertInteractionAllowed` inside the same transaction as the balance
+locks, so the rule cannot be raced. A report is a queue item, never an automatic ban:
+filing one writes `PENDING`, a second open report against the same member is a `409`,
+and the target is never told. The admin panel's **Moderation** screen decides each
+report (`REVIEWED`, `ACTIONED`, `DISMISSED`), with banning as a separate checkbox that
+the server refuses to combine with a dismissal; the **Users** screen's eye button opens
+the same account's followers, follows, blocks and both directions of reports.
+
+Rooms gained the controls a host actually needs. A host can pin a `300`-character
+notice above the seats (`PATCH /api/rooms/:id` also writes it, and an operator can
+override it from the room console), bookmark a room, invite a listener straight to a
+seat, hand ownership to a member present in the room (history lands in
+`room_ownership_transfers`, and both LiveKit publish grants move), and switch the
+microphone to **approval required**. That switch is off by default so older clients
+are unchanged; when it is on, taking a seat answers `202 { requested: true }`, the
+host decides the queue, and approval arrives on the requester's private channel with a
+fresh token. Turning approval off cancels the queue rather than stranding it. See
+`backend/README.md` → *Social graph and room community*.
+
 ## Verification
 
 * `cd backend && npm run test:e2e` — 154 checks against a running stack (real Postgres,
@@ -261,6 +388,15 @@ has moved through — see `backend/README.md` → *Room profile and discovery*.
   `fetch` replaced by a recorder, so no account is needed: the exact Twilio form POST
   and Basic header, Vonage's `200`-with-`status:"1"` trap, the Stripe intent body, and
   every webhook-signature rejection. Together with the e2e suite that is 199 checks.
+* `cd backend && npm run test:social` — 24 checks over the migration-0022 edges with no
+  database: the report/status/decision vocabularies, every validator's trim-and-refuse
+  behaviour (details, resolution, block reason, announcement, transfer note, UUIDs), and
+  the report DTO's camelCase and ISO timestamps.
+* `cd backend && npm run test:social:e2e` — the same graph against a *running* stack:
+  51 live checks over follows, symmetric blocks (including the ledger guard on a gift),
+  the report queue and its decisions, pinned announcements, the speaker-approval state
+  machine, host invitations, favorites and an ownership transfer. Needs the API, Postgres
+  and Redis up; it creates timestamped throwaway accounts and one room.
 * `cd backend && npm run test:wire-fixtures` and `npm run test:game-wire-fixtures`,
   then `cd android && ./scripts/run-dto-harness.sh`
   replays the captured live payloads through the mobile client's own Gson DTOs — 44
@@ -269,11 +405,13 @@ has moved through — see `backend/README.md` → *Room profile and discovery*.
   where an absent key lands as null instead of
   the declared default. A response shape change fails in seconds rather than as an NPE on
   a phone.
-* `cd android && ./gradlew testDebugUnitTest` — 54 JVM tests over the DTO→domain
+* `cd android && ./gradlew testDebugUnitTest` — 170 JVM tests over the DTO→domain
   mappers (unknown enums, absent keys, Gson's skipped default initialisers), the game
   boards and the client's copy of the engine's seat rules, the gift
-  purchase guard, and the effect queue policy (takeover depth and eviction, ticker
-  trim, entry tiers, panel paging).
+  purchase guard, the effect queue policy (takeover depth and eviction, ticker
+  trim, entry tiers, panel paging), and the banner wall (rows that cannot be honoured,
+  tap targets this build cannot name, one fetch serving four surfaces, impression
+  dedupe).
 * `.github/workflows/ci.yml` runs all of the above plus `assembleDebug` and an
   unsigned `assembleRelease` (R8 + resource shrinking + lint) on real service
   containers.

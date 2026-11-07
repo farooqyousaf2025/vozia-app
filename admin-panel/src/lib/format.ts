@@ -131,3 +131,14 @@ export function formatBytes(value: number): string {
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(value < 10 * 1024 ? 1 : 0)} KB`;
   return `${(value / 1024 / 1024).toFixed(2)} MB`;
 }
+
+/**
+ * How long a room hands the screen over, the way an operator reads it. `0` is a value rather than an
+ * absence — it is a ride row saying "play the asset for its own length" — so it never reads as "0 ms".
+ */
+export function formatDurationMs(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return 'asset length';
+  if (value < 1000) return `${Math.round(value)} ms`;
+  const seconds = value / 1000;
+  return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)} s`;
+}

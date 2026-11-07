@@ -1,11 +1,14 @@
 import { PoolClient } from 'pg';
+import crypto from 'node:crypto';
 import { env } from '../config/env';
-import { many, one, withTransaction } from '../config/db';
+import { many, one, query, withTransaction } from '../config/db';
 import { rateLimit, redis } from '../config/redis';
-import { GiftRow, TransactionRow, UserRow, WithdrawalRow } from '../types/db';
+import { GiftBoxOutcomeRow, GiftRow, TransactionRow, UserRow, WithdrawalRow } from '../types/db';
 import { ApiError } from '../utils/http';
+import { LuckyRollDto, rollLuckyBox, toBoxOutcomes } from './lucky-box.service';
 import { awardXp, ensureRankRegistry, xpForEarning, xpForSpend } from './rank.service';
 import { recordQuestProgress } from './quest.service';
+import { assertInteractionAllowed } from './social.service';
 import { GiftDto, toGift, toTransaction, toUser, TransactionDto, UserDto } from '../utils/serialize';
 
 const TX_WITH_PARTIES = `
@@ -34,13 +37,140 @@ export async function postedTransaction(id: string): Promise<TransactionRow | nu
   return one<TransactionRow>(`${TX_WITH_PARTIES} WHERE t.id = $1`, [id]);
 }
 
+/**
+ * A sender's own retry key, replayed to the transaction it already bought.
+ *
+ * The client generates it (a uuid per tap-and-hold of Send) and the server treats it as an
+ * opaque string: what matters is that the *same* key with the *same* body answers with the
+ * *same* gift, so a phone that missed the first response can retry without paying twice.
+ * A different body under one key is a bug or an attack, and is refused rather than answered.
+ */
+const MAX_IDEMPOTENCY_KEY_LENGTH = 80;
+const IDEMPOTENCY_KEY_SHAPE = /^[\w.-]{8,80}$/;
+
+/** sha256 over the three fields a retry must repeat; see `gift_requests.request_hash`. */
+function giftRequestHash(giftId: string, receiverId: string, quantity: number): string {
+  return crypto.createHash('sha256').update(`${giftId}|${receiverId}|${quantity}`).digest('hex');
+}
+
+/**
+ * Re-reads a completed gift from its ledger row, so a replay returns the same body the original
+ * POST returned. Nothing here moves money: the transaction being described already exists.
+ */
+async function replayedGift(transactionId: string): Promise<SendGiftResult | null> {
+  const row = await one<TransactionRow & { receiver_id: string; sender_id: string }>(
+    `${TX_WITH_PARTIES} WHERE t.id = $1 AND t.type = 'GIFT_SENT'`,
+    [transactionId],
+  );
+  if (!row) return null;
+  const [sender, receiver] = await Promise.all([
+    one<UserRow>('SELECT * FROM users WHERE id = $1', [row.sender_id]),
+    one<UserRow>('SELECT * FROM users WHERE id = $1', [row.receiver_id]),
+  ]);
+  const gift = row.gift_id ? await one<GiftRow>('SELECT * FROM gifts WHERE id = $1', [row.gift_id]) : null;
+  if (!sender || !receiver) return null;
+  return {
+    transaction: toTransaction(row),
+    sender: toUser(sender),
+    receiver: toUser(receiver),
+    // A gift row can be deleted by an operator (`transactions.gift_id` then falls to a nameless
+    // historical row); the replay still has to answer, so the receipt carries what was paid.
+    gift: gift
+      ? toGift(gift)
+      : { ...toGift(EMPTY_GIFT_ROW), id: row.gift_id ?? '', name: row.gift_name ?? 'Gift', diamondPrice: row.amount_diamonds },
+    replayed: true,
+    // The roll is read back from the row rather than drawn again: a replay answers with the prize
+    // the first request won, and re-rolling would be a second draw for money already paid.
+    lucky: (row.meta as { lucky?: LuckyRollDto }).lucky ?? null,
+  };
+}
+
+/** A row-shaped stand-in for a gift that is no longer in the catalogue. Only the DTO is read. */
+const EMPTY_GIFT_ROW: GiftRow = {
+  id: '',
+  name: '',
+  icon_url: '',
+  animation_url: null,
+  sound_url: null,
+  diamond_price: 0,
+  r_coin_value: 0,
+  category: 'SPECIAL',
+  effect_kind: 'TICKER',
+  animation_format: 'LOTTIE',
+  duration_ms: 0,
+  display_priority: 0,
+  combo_enabled: false,
+  combo_window_ms: 5000,
+  min_vip_level: 0,
+  sort_order: 0,
+  is_active: true,
+  is_lucky_box: false,
+  receiver_share_bps: 10_000,
+};
+
+export type SendGiftResult = {
+  transaction: TransactionDto;
+  sender: UserDto;
+  receiver: UserDto;
+  gift: GiftDto;
+  /** TRUE when this call answered an existing transaction instead of buying a new one. */
+  replayed: boolean;
+  /**
+   * What a lucky box rolled, or NULL for a flat gift and for a send of a box the catalogue has since
+   * changed. The money is already in `transaction` and in both users' balances; this is the part of
+   * the receipt that cannot be re-derived — the prize list itself — and it is what the room's
+   * animation and the wallet row both print.
+   */
+  lucky: LuckyRollDto | null;
+};
+
+/** Everything the ledger transaction produces when it actually pays. */
+type GiftPayment = {
+  transaction: TransactionRow;
+  commission: TransactionRow | null;
+  sender: UserRow;
+  receiver: UserRow;
+  gift: GiftRow;
+  totalDiamonds: number;
+  totalRCoins: number;
+  lucky: LuckyRollDto | null;
+};
+
+/**
+ * Either this request paid, or it found a concurrent twin that already did and has to be answered
+ * from that twin's ledger row instead. The caller discriminates on `replayTransactionId`.
+ */
+type GiftOutcome = { replayTransactionId: string } | { paid: GiftPayment };
+
+/**
+ * Draws one lucky box send's prizes from the rows the operator wrote.
+ *
+ * The read happens here, inside the transaction that posts the credit, rather than from the
+ * catalogue service: `amount_r_coins`, the receiver's XP, the agency's commission and the room's PK
+ * total are all derived from this answer, so a prize table edited between the draw and the debit
+ * would otherwise be paid for one box and credited as another. A write that lands mid-send can
+ * still change *which* prizes exist — it cannot change what this send is credited, because every
+ * downstream number reads the same roll object.
+ */
+async function drawLuckyBox(client: PoolClient, gift: GiftRow, quantity: number): Promise<LuckyRollDto> {
+  const rows = await client.query<GiftBoxOutcomeRow>(
+    'SELECT * FROM gift_box_outcomes WHERE gift_id = $1 ORDER BY sort_order ASC, label ASC',
+    [gift.id],
+  );
+  if (!rows.rowCount) {
+    throw ApiError.conflict(`${gift.name} is a lucky box with no prizes to roll`, 'lucky_box_not_configured');
+  }
+  return rollLuckyBox(toBoxOutcomes(rows.rows), gift.r_coin_value, quantity, gift.receiver_share_bps);
+}
+
 export async function sendGift(input: {
   senderId: string;
   receiverId: string;
   giftId: string;
   quantity: number;
   roomId?: string;
-}): Promise<{ transaction: TransactionDto; sender: UserDto; receiver: UserDto; gift: GiftDto }> {
+  idempotencyKey?: string;
+}): Promise<SendGiftResult> {
   await ensureRankRegistry();
   if (input.senderId === input.receiverId) {
     throw ApiError.badRequest('You cannot send a gift to yourself', 'self_gift');
@@ -48,11 +178,76 @@ export async function sendGift(input: {
   if (input.quantity < 1 || input.quantity > 999) {
     throw ApiError.badRequest('Quantity must be between 1 and 999');
   }
+  if (input.idempotencyKey !== undefined && !IDEMPOTENCY_KEY_SHAPE.test(input.idempotencyKey)) {
+    throw ApiError.badRequest(
+      `idempotencyKey must be 8-${MAX_IDEMPOTENCY_KEY_LENGTH} characters of letters, digits, dot, dash or underscore`,
+      'idempotency_key_invalid',
+    );
+  }
+
+  // A retry whose original already committed is answered from the ledger before anything is
+  // locked: replaying a gift must not take the account locks a live send is waiting on, and it
+  // certainly must not spend diamonds a second time.
+  if (input.idempotencyKey) {
+    const known = await one<{ transaction_id: string; request_hash: string }>(
+      `SELECT transaction_id, request_hash FROM gift_requests
+        WHERE sender_id = $1 AND idempotency_key = $2 AND transaction_id IS NOT NULL`,
+      [input.senderId, input.idempotencyKey],
+    );
+    if (known) {
+      // Checked here as well as in the transaction below, so the fast path cannot answer a
+      // mismatched body: reusing one key for another gift is refused, never replayed.
+      if (known.request_hash !== giftRequestHash(input.giftId, input.receiverId, input.quantity)) {
+        throw ApiError.conflict('That idempotencyKey was already used for a different gift', 'idempotency_key_reused');
+      }
+      const replay = await replayedGift(known.transaction_id);
+      if (replay) return replay;
+    }
+  }
 
   const remaining = await rateLimit(`gift:${input.senderId}`, env.economy.giftRatePerMinute, 60);
   if (remaining === -1) throw ApiError.tooManyRequests('Too many gifts in one minute');
 
-  const result = await withTransaction(async (client) => {
+  const outcome = await withTransaction<GiftOutcome>(async (client) => {
+    const requestHash = input.idempotencyKey
+      ? giftRequestHash(input.giftId, input.receiverId, input.quantity)
+      : null;
+
+    // The key is claimed before the account locks, and in this order on purpose: a concurrent
+    // retry blocks here on the winner's row while holding nothing the winner needs. Claimed the
+    // other way round, the two would each wait on the other and PostgreSQL would kill one of them
+    // with a deadlock error. An insert, not a lock, because it is the same statement that must
+    // roll back with the gift.
+    if (input.idempotencyKey && requestHash) {
+      const claimed = await client.query<{ id: string }>(
+        `INSERT INTO gift_requests (sender_id, idempotency_key, request_hash)
+         VALUES ($1,$2,$3) ON CONFLICT (sender_id, idempotency_key) DO NOTHING RETURNING id`,
+        [input.senderId, input.idempotencyKey, requestHash],
+      );
+      if (!claimed.rowCount) {
+        // Reaching here means the winner has finished: its row is either a committed gift or
+        // nothing at all, since a rolled back insert leaves no row behind.
+        const prior = await client.query<{ request_hash: string; transaction_id: string | null }>(
+          `SELECT request_hash, transaction_id FROM gift_requests
+            WHERE sender_id = $1 AND idempotency_key = $2`,
+          [input.senderId, input.idempotencyKey],
+        );
+        const winner = prior.rows[0];
+        if (!winner) throw ApiError.conflict('Gift request already in flight; retry it', 'gift_request_in_flight');
+        if (winner.request_hash !== requestHash) {
+          throw ApiError.conflict('That idempotencyKey was already used for a different gift', 'idempotency_key_reused');
+        }
+        // A row whose transaction is still NULL belongs to a transaction that has not committed,
+        // and the conflict above only resolves once it has — so this is the race where the winner
+        // rolled back and a third request re-claimed the key between the two statements.
+        if (!winner.transaction_id) throw ApiError.conflict('Gift request already in flight; retry it', 'gift_request_in_flight');
+        // Answer with the winner's gift instead of paying again. This transaction has written
+        // nothing — the conflicting insert was a no-op — so there is nothing to unwind, and the
+        // caller reads the committed row from the ledger the same way a sequential retry does.
+        return { replayTransactionId: winner.transaction_id };
+      }
+    }
+
     // Lock both accounts, sender first, in a stable order so two simultaneous
     // gifts between the same pair cannot deadlock each other.
     const [first, second] = [input.senderId, input.receiverId].sort();
@@ -66,13 +261,34 @@ export async function sendGift(input: {
     const receiver = locked.rows.find((u) => u.id === input.receiverId)!;
     if (sender.status === 'BANNED') throw ApiError.forbidden('Account is banned', 'account_banned');
     if (receiver.status === 'BANNED') throw ApiError.forbidden('Receiver is banned', 'receiver_banned');
+    // A block is read symmetrically, so a gift is refused whichever side pressed block. The check
+    // runs inside the transaction with the two account locks: a block written concurrently either
+    // commits before this gift or waits for it, never lands halfway.
+    await assertInteractionAllowed(sender.id, receiver.id, client);
+
+    // An in-room gift is broadcast to that room, so both halves of the pair have to be in it.
+    // Without this, a client could name any room id and have its animation shown to strangers —
+    // and `rooms.total_gift_value`, which the PK scoreboard and the room's own totals read, would
+    // gain credits for a room neither party was ever in.
+    if (input.roomId) {
+      const present = await client.query<{ user_id: string }>(
+        `SELECT user_id FROM room_participants
+          WHERE room_id = $1 AND user_id = ANY($2::uuid[]) AND left_at IS NULL`,
+        [input.roomId, [sender.id, receiver.id]],
+      );
+      if (!present.rows.some((r) => r.user_id === sender.id)) {
+        throw ApiError.forbidden('You are not in this room', 'not_in_room');
+      }
+      if (!present.rows.some((r) => r.user_id === receiver.id)) {
+        throw ApiError.forbidden('The receiver is not in this room', 'receiver_not_in_room');
+      }
+    }
 
     const giftRes = await client.query<GiftRow>('SELECT * FROM gifts WHERE id = $1 AND is_active', [input.giftId]);
     const gift = giftRes.rows[0];
     if (!gift) throw ApiError.notFound('Gift is not available', 'gift_not_found');
 
     const totalDiamonds = gift.diamond_price * input.quantity;
-    const totalRCoins = gift.r_coin_value * input.quantity;
     // Spend tier is checked before the balance so a low-VIP whale is told why the
     // gift is locked rather than being pushed into a top-up they cannot spend.
     if (gift.min_vip_level > 0 && sender.vip_level < gift.min_vip_level) {
@@ -88,6 +304,15 @@ export async function sendGift(input: {
         available: sender.diamond_balance,
       });
     }
+
+    // What the receiver banks. A flat gift pays `r_coin_value` per unit; a lucky box pays the same
+    // pool multiplied by a prize drawn just now — after both gates, so a send that could not have
+    // been afforded never consumes a draw, and inside this transaction, so the number posted below
+    // is the number that was rolled. Everything after this point reads `totalRCoins` and does not
+    // care which of the two it is: XP, quests, the agency's commission and the room's PK total all
+    // follow the prize, which is what makes a 0.5x roll earn 0.5x on the scoreboard too.
+    const lucky = gift.is_lucky_box ? await drawLuckyBox(client, gift, input.quantity) : null;
+    const totalRCoins = lucky ? lucky.receiverRCoins : gift.r_coin_value * input.quantity;
 
     await client.query(
       `UPDATE users SET diamond_balance = diamond_balance - $2,
@@ -121,7 +346,11 @@ export async function sendGift(input: {
         totalDiamonds,
         totalRCoins,
         input.roomId ?? null,
-        JSON.stringify({ giftName: gift.name, iconUrl: gift.icon_url }),
+        // A box's prize lives in the receipt, not only in the animation: the ledger row is what a
+        // wallet screen and an audit both read, and the odds the box published at the time of the
+        // draw are part of what was paid for. Nothing here is recomputed from the catalogue — which
+        // is also how a box keeps telling the same story after an operator reweights it.
+        JSON.stringify({ giftName: gift.name, iconUrl: gift.icon_url, ...(lucky ? { lucky } : {}) }),
         sender.diamond_balance - totalDiamonds,
         receiver.r_coin_balance + totalRCoins,
       ],
@@ -169,19 +398,39 @@ export async function sendGift(input: {
       ]);
     }
 
+    // The key now points at the money it bought. Same transaction, so a reader either sees the
+    // gift and its key together or sees neither — never a key that promises a transaction that
+    // was rolled back.
+    if (input.idempotencyKey) {
+      await client.query(
+        'UPDATE gift_requests SET transaction_id = $3 WHERE sender_id = $1 AND idempotency_key = $2',
+        [sender.id, input.idempotencyKey, txRes.rows[0].id],
+      );
+    }
+
     const freshSender = await client.query<UserRow>('SELECT * FROM users WHERE id = $1', [sender.id]);
     const freshReceiver = await client.query<UserRow>('SELECT * FROM users WHERE id = $1', [receiver.id]);
 
     return {
-      transaction: txRes.rows[0],
-      commission,
-      sender: freshSender.rows[0],
-      receiver: freshReceiver.rows[0],
-      gift,
-      totalDiamonds,
-      totalRCoins,
-    };
+      paid: {
+        transaction: txRes.rows[0],
+        commission,
+        sender: freshSender.rows[0],
+        receiver: freshReceiver.rows[0],
+        gift,
+        totalDiamonds,
+        totalRCoins,
+        lucky,
+      },
+    } as const;
   });
+
+  if ('replayTransactionId' in outcome) {
+    const replay = await replayedGift(outcome.replayTransactionId);
+    if (!replay) throw ApiError.conflict('Gift request already in flight; retry it', 'gift_request_in_flight');
+    return replay;
+  }
+  const result = outcome.paid;
 
   const enriched = await one<TransactionRow>(`${TX_WITH_PARTIES} WHERE t.id = $1`, [result.transaction.id]);
   return {
@@ -189,7 +438,23 @@ export async function sendGift(input: {
     sender: toUser(result.sender),
     receiver: toUser(result.receiver),
     gift: toGift(result.gift),
+    replayed: false,
+    lucky: result.lucky,
   };
+}
+
+/**
+ * Forget idempotency keys nobody could retry with any more.
+ *
+ * A key is useful for as long as a client might still be holding the request it was generated for
+ * — seconds, or a few minutes on a lift. Thirty-five days is far beyond any of that, and the row's
+ * job by then is done: the transaction it names stays in the ledger forever, which is the audit
+ * trail. Called from the boot sweep alongside recharge-order expiry so the table cannot grow with
+ * every tap of Send.
+ */
+export async function pruneGiftRequests(): Promise<number> {
+  const res = await query("DELETE FROM gift_requests WHERE created_at < now() - interval '35 days'");
+  return res.rowCount ?? 0;
 }
 
 /** Simulated top-up: no PSP is wired, so this credits diamonds directly. */

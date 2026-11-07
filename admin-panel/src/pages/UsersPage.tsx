@@ -23,6 +23,7 @@ import {
   IconCheck,
   IconCoin,
   IconDiamond,
+  IconEye,
   IconGift,
   IconSearch,
   IconSpark,
@@ -33,7 +34,7 @@ import {
 import { Table, TBody, Td, Th, THead, Tr } from '../components/ui/Table';
 import { ApiError, api, assetUrl } from '../lib/api';
 import { formatCompact, formatDiamonds, formatRCoin, parseSignedInt, relativeTime } from '../lib/format';
-import type { StoreItemKind, UserListQuery, UserRow, UserStatus, UserType } from '../types';
+import type { StoreItemKind, UserListQuery, UserRow, UserSocialSummary, UserStatus, UserType } from '../types';
 
 const PAGE_LIMIT = 20;
 
@@ -66,6 +67,7 @@ export default function UsersPage() {
   const [banTarget, setBanTarget] = useState<UserRow | null>(null);
   const [xpTarget, setXpTarget] = useState<UserRow | null>(null);
   const [grantTarget, setGrantTarget] = useState<UserRow | null>(null);
+  const [socialTarget, setSocialTarget] = useState<UserRow | null>(null);
 
   const query = useMemo<UserListQuery>(
     () => ({
@@ -290,6 +292,12 @@ export default function UsersPage() {
                         >
                           Grant
                         </Button>
+                        <IconButton
+                          label={`Social graph for ${user.username}`}
+                          onClick={() => setSocialTarget(user)}
+                        >
+                          <IconEye className="h-4 w-4" />
+                        </IconButton>
                         {user.status === 'ACTIVE' ? (
                           <IconButton label={`Ban ${user.username}`} tone="danger" onClick={() => setBanTarget(user)}>
                             <IconBan className="h-4 w-4" />
@@ -345,6 +353,10 @@ export default function UsersPage() {
             toast.success(message);
           }}
         />
+      )}
+
+      {socialTarget !== null && (
+        <UserSocialModal user={socialTarget} onClose={() => setSocialTarget(null)} />
       )}
 
       {banTarget !== null && (
@@ -705,6 +717,147 @@ function BanModal({ user, onClose, onUpdated }: BanModalProps) {
           </div>
         )}
       </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Social graph: follows, blocks and reports in both directions, read-only. The
+// panel is where an operator finds out why a gift failed or two members cannot
+// see each other — the app never reveals who blocked whom to the other side.
+// ---------------------------------------------------------------------------
+interface UserSocialModalProps {
+  user: UserRow;
+  onClose: () => void;
+}
+
+function UserSocialModal({ user, onClose }: UserSocialModalProps) {
+  const [summary, setSummary] = useState<UserSocialSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .userSocial(user.id)
+      .then((result) => {
+        if (!cancelled) setSummary(result);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof ApiError ? err.message : 'Could not load the social graph.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user.id]);
+
+  const columns = summary === null
+    ? []
+    : [
+        { label: 'Followers', entries: summary.followers },
+        { label: 'Following', entries: summary.following },
+        { label: 'Blocked', entries: summary.blocked },
+      ];
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="lg"
+      title="Social graph"
+      subtitle={
+        <span className="flex items-center gap-2">
+          <Avatar name={user.username} src={user.avatarUrl} size="xs" />
+          {user.username} · {user.phone}
+        </span>
+      }
+      footer={<Button onClick={onClose}>Close</Button>}
+    >
+      {error !== null ? (
+        <div className="flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 py-2 text-xs text-rose-200">
+          <IconAlert className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      ) : summary === null ? (
+        <div className="grid h-40 place-items-center text-violet-300">
+          <Spinner className="h-6 w-6" />
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: 'Followers', value: summary.counts.followers },
+              { label: 'Following', value: summary.counts.following },
+              { label: 'Blocked', value: summary.counts.blocked },
+              { label: 'Blocked by', value: summary.counts.blockedBy },
+            ].map((cell) => (
+              <div key={cell.label} className="rounded-lg border border-edge/60 bg-elevated/40 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-faint">{cell.label}</p>
+                <p className="mt-0.5 text-lg font-bold tabular-nums text-ink">{cell.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            {columns.map((column) => (
+              <div key={column.label} className="rounded-lg border border-edge/60 p-3">
+                <p className="text-xs font-semibold text-ink">{column.label}</p>
+                {column.entries.length === 0 ? (
+                  <p className="mt-2 text-[11px] text-faint">None</p>
+                ) : (
+                  <ul className="mt-2 space-y-1.5">
+                    {column.entries.map((entry) => (
+                      <li key={entry.id} className="flex items-center gap-2">
+                        <Avatar name={entry.username} src={entry.avatarUrl} size="xs" />
+                        <span className="min-w-0">
+                          <span className="block truncate text-xs text-ink">{entry.username}</span>
+                          <span className="block text-[10px] text-faint">
+                            {entry.blockReason ? entry.blockReason : relativeTime(entry.followedAt)}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {[
+              { label: 'Reports against this member', reports: summary.reportsAgainst },
+              { label: 'Reports filed by this member', reports: summary.reportsFiled },
+            ].map((section) => (
+              <div key={section.label} className="rounded-lg border border-edge/60 p-3">
+                <p className="text-xs font-semibold text-ink">{section.label}</p>
+                {section.reports.length === 0 ? (
+                  <p className="mt-2 text-[11px] text-faint">None</p>
+                ) : (
+                  <ul className="mt-2 space-y-2">
+                    {section.reports.map((report) => (
+                      <li key={report.id} className="text-[11px] text-muted">
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-ink">{report.reason}</span>
+                          <Badge tone={report.status === 'PENDING' ? 'amber' : 'slate'}>
+                            {report.status}
+                          </Badge>
+                        </span>
+                        {report.details !== null && (
+                          <span className="mt-0.5 block truncate">{report.details}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <p className="text-[11px] text-faint">
+            A block is symmetric: neither side can follow or send gifts to the other. Blocked-by
+            members are counted, never listed.
+          </p>
+        </div>
+      )}
     </Modal>
   );
 }

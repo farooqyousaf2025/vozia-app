@@ -24,6 +24,9 @@ export type UserRow = {
   profile_frame_expires_at?: Date | null;
   welcome_effect_key?: string | null;
   welcome_effect_expires_at?: Date | null;
+  /** Migration 0026: the entrance cinematic other members see, and the copy of its expiry. */
+  profile_ride_key?: string | null;
+  profile_ride_expires_at?: Date | null;
   device_token: string | null;
   last_seen_at: Date | null;
   created_at: Date;
@@ -48,6 +51,11 @@ export type RoomRow = {
   region: string | null;
   /** Host-written house rules shown in the room; never a moderation record. */
   rules: string | null;
+  /** Host-pinned notice above chat (migration 0022); NULL hides the banner. */
+  announcement: string | null;
+  announcement_updated_at: Date | null;
+  /** true turns seat-taking into a request the host must approve. */
+  speaker_approval_required: boolean;
   livekit_room_name: string;
   listener_count: number;
   like_count?: string | number;
@@ -85,11 +93,28 @@ export type GiftRow = {
   r_coin_value: number;
   category: string;
   effect_kind: 'TICKER' | 'FULLSCREEN';
+  animation_format: 'LOTTIE' | 'SVGA' | 'MP4';
+  duration_ms: number;
+  display_priority: number;
+  combo_enabled: boolean;
+  combo_window_ms: number;
   min_vip_level: number;
   sort_order: number;
   is_active: boolean;
+  is_lucky_box: boolean;
+  receiver_share_bps: number;
   created_at?: Date;
   updated_at?: Date;
+};
+
+/** `gift_box_outcomes` (migration 0027) — one prize one lucky box can roll. */
+export type GiftBoxOutcomeRow = {
+  id: string;
+  gift_id: string;
+  label: string;
+  multiplier_bps: number;
+  weight: number;
+  sort_order: number;
 };
 
 export type TransactionRow = {
@@ -506,6 +531,15 @@ export type MediaAssetRow = {
   created_at: Date;
 };
 
+/** `gift_categories` (migration 0025) — one tab in the gift panel. */
+export type GiftCategoryRow = {
+  key: string;
+  name: string;
+  sort_order: number;
+  created_at: Date;
+  updated_at: Date;
+};
+
 export type VisualEffectRow = {
   key: string;
   kind: 'AMBIENT' | 'WELCOME';
@@ -516,6 +550,9 @@ export type VisualEffectRow = {
   price_diamonds: number;
   for_sale: boolean;
   period_days: number | null;
+  /** Migration 0024: lowest `users.vip_level` allowed to buy, and whether to point at it. */
+  min_vip_level: number;
+  recommended: boolean;
   created_at: Date;
   updated_at: Date;
 };
@@ -532,6 +569,9 @@ export type RoomThemeRow = {
   price_diamonds: number;
   for_sale: boolean;
   period_days: number | null;
+  /** Migration 0024: lowest `users.vip_level` allowed to buy, and whether to point at it. */
+  min_vip_level: number;
+  recommended: boolean;
   created_at: Date;
   updated_at: Date;
 };
@@ -546,6 +586,30 @@ export type ProfileFrameRow = {
   price_diamonds: number;
   for_sale: boolean;
   period_days: number | null;
+  /** Migration 0024: lowest `users.vip_level` allowed to buy, and whether to point at it. */
+  min_vip_level: number;
+  recommended: boolean;
+  created_at: Date;
+  updated_at: Date;
+};
+
+/**
+ * `profile_rides` (migration 0026) — one full-screen entrance cinematic the store sells.
+ * `format` names the renderer a device hands `url` to, and `duration_ms` is how long the room hands
+ * it the screen (0 = the client's own fallback).
+ */
+export type ProfileRideRow = {
+  key: string;
+  name: string;
+  url: string;
+  format: 'LOTTIE' | 'SVGA' | 'MP4';
+  duration_ms: number;
+  sort_order: number;
+  price_diamonds: number;
+  for_sale: boolean;
+  period_days: number | null;
+  min_vip_level: number;
+  recommended: boolean;
   created_at: Date;
   updated_at: Date;
 };
@@ -554,11 +618,34 @@ export type ProfileFrameRow = {
 export type UserItemRow = {
   id: string;
   user_id: string;
-  kind: 'FRAME' | 'THEME' | 'EFFECT';
+  kind: 'FRAME' | 'THEME' | 'EFFECT' | 'RIDE';
   item_key: string;
   acquired_via: 'PURCHASE' | 'ADMIN_GRANT';
   transaction_id: string | null;
   expires_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+/** `banners` (migration 0028) — one operator-run campaign on one of the four app surfaces. */
+export type BannerRow = {
+  id: string;
+  key: string;
+  placement: 'SPLASH' | 'HOME' | 'GIFT' | 'GAME';
+  title: string;
+  subtitle: string | null;
+  url: string;
+  format: 'PNG' | 'GIF' | 'WEBP' | 'JPEG' | 'LOTTIE' | 'SVGA' | 'MP4';
+  duration_ms: number;
+  cta_type: 'NONE' | 'INTERNAL' | 'ROOM' | 'URL';
+  cta_value: string | null;
+  starts_at: Date | null;
+  ends_at: Date | null;
+  sort_order: number;
+  is_active: boolean;
+  /** `BIGINT`, which `pg` hands over as a string — the same shape as `rooms.like_count`. */
+  impressions: string | number;
+  taps: string | number;
   created_at: Date;
   updated_at: Date;
 };

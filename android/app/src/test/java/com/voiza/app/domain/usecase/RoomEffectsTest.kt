@@ -18,27 +18,33 @@ class RoomEffectsTest {
 
     private fun user(id: String) = MiniUser(id = id, username = id, avatarUrl = null)
 
-    private fun event(senderId: String, tier: GiftEffectKind = GiftEffectKind.FULLSCREEN) =
-        GiftAnimatedEvent(
-            roomId = "r1",
-            gift = Gift(
-                id = "g$senderId",
-                name = "Gift",
-                iconUrl = "/gifts/rose.png",
-                animationUrl = null,
-                diamondPrice = 10,
-                rCoinValue = 9,
-                category = "ROSE",
-                effectKind = tier,
-            ),
-            sender = user(senderId),
-            receiver = user("host"),
-            quantity = 1,
+    private fun event(
+        senderId: String,
+        tier: GiftEffectKind = GiftEffectKind.FULLSCREEN,
+        eventId: String? = null,
+        priority: Int = 0,
+    ) = GiftAnimatedEvent(
+        roomId = "r1",
+        gift = Gift(
+            id = "g$senderId",
+            name = "Gift",
+            iconUrl = "/gifts/rose.png",
             animationUrl = null,
-            totalDiamonds = 10,
-            totalRCoins = 9,
-            seatIndex = null,
-        )
+            diamondPrice = 10,
+            rCoinValue = 9,
+            category = "ROSE",
+            effectKind = tier,
+            displayPriority = priority,
+        ),
+        sender = user(senderId),
+        receiver = user("host"),
+        quantity = 1,
+        animationUrl = null,
+        totalDiamonds = 10,
+        totalRCoins = 9,
+        seatIndex = null,
+        eventId = eventId,
+    )
 
     @Test
     fun `the takeover line holds three and no more`() {
@@ -77,6 +83,49 @@ class RoomEffectsTest {
 
         assertEquals(listOf("u4", "u5", "u6"), rows.map { it.sender.id })
     }
+
+    @Test
+    fun `a gift the room already showed is not queued a second time`() {
+        // The join path of a paid gift: it went out live, and the history page the room joins with
+        // carries the same transaction id. One gift, one animation.
+        val live = RoomEffects.appendTicker(emptyList(), event("u1", GiftEffectKind.TICKER, eventId = "t1"))
+        val afterHistory = RoomEffects.appendTicker(live, event("u1", GiftEffectKind.TICKER, eventId = "t1"))
+        assertEquals(1, afterHistory.size)
+
+        val takeover = RoomEffects.enqueueTakeover(emptyList(), event("u1", eventId = "t2"), myUserId = "me")
+        assertEquals(takeover, RoomEffects.enqueueTakeover(takeover, event("u1", eventId = "t2"), myUserId = "me"))
+    }
+
+    @Test
+    fun `an event with no id is never swallowed by the dedupe`() {
+        // A backend that predates the gift engine sends no transaction id. Losing somebody's paid
+        // animation to a guess is worse than showing the same ticker row twice.
+        val once = RoomEffects.appendTicker(emptyList(), event("u1", GiftEffectKind.TICKER))
+        assertEquals(2, RoomEffects.appendTicker(once, event("u1", GiftEffectKind.TICKER)).size)
+    }
+
+    @Test
+    fun `display priority decides which waiting gift is displaced`() {
+        val line = listOf(event("other", eventId = "a", priority = 90), event("other", eventId = "b", priority = 10))
+        val next = RoomEffects.enqueueTakeover(line + listOf(event("me", eventId = "c", priority = 10)), event("u3", eventId = "d", priority = 5), myUserId = "me")
+
+        // The quietest waits — and among equals, somebody else's before mine.
+        assertEquals(listOf("other", "me", "u3"), next.map { it.sender.id })
+        assertEquals(listOf(90, 10, 5), next.map { it.gift.displayPriority })
+    }
+
+    @Test
+    fun `a quiet gift does not push a loud one out of line`() {
+        val mine = listOf(
+            event("me", eventId = "a", priority = 90),
+            event("me", eventId = "b", priority = 90),
+            event("me", eventId = "c", priority = 90),
+        )
+        val next = RoomEffects.enqueueTakeover(mine, event("other", eventId = "d", priority = 10), myUserId = "me")
+
+        assertEquals(mine, next)
+    }
+
 
     @Test
     fun `entry tiers split at the levels an operator can actually award`() {

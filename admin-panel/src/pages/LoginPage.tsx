@@ -111,14 +111,19 @@ export default function LoginPage() {
             {submitting ? 'Signing in…' : 'Sign in'}
           </Button>
 
-          <div className="rounded-lg border border-violet-500/30 bg-brand-gradient-soft px-3 py-2.5 text-[11px] leading-relaxed text-violet-200">
-            <span className="font-semibold">Bootstrap hint:</span> on a fresh dev stack the backend seeds a
-            super-admin from its <code className="rounded bg-black/30 px-1">ADMIN_USERNAME</code> /
-            <code className="rounded bg-black/30 px-1">ADMIN_PASSWORD</code> env
-            vars — with the defaults in <code className="rounded bg-black/30 px-1">docker-compose.yml</code>{' '}
-            that is username <span className="font-semibold">admin</span> / password{' '}
-            <span className="font-semibold">voiza-admin</span>. See the panel README for details.
-          </div>
+          {/* Dev-only: this names the seeded password, so it must not survive a production bundle.
+              `import.meta.env.DEV` is inlined at build time, so the whole block is dead-code
+              eliminated from the shipped JS rather than merely hidden at render. */}
+          {import.meta.env.DEV && (
+            <div className="rounded-lg border border-violet-500/30 bg-brand-gradient-soft px-3 py-2.5 text-[11px] leading-relaxed text-violet-200">
+              <span className="font-semibold">Bootstrap hint:</span> on a fresh dev stack the backend
+              seeds a super-admin from its <code className="rounded bg-black/30 px-1">ADMIN_USERNAME</code> /
+              <code className="rounded bg-black/30 px-1">ADMIN_PASSWORD</code> env
+              vars — with the defaults in <code className="rounded bg-black/30 px-1">docker-compose.yml</code>{' '}
+              that is username <span className="font-semibold">admin</span> / password{' '}
+              <span className="font-semibold">voiza-admin</span>. See the panel README for details.
+            </div>
+          )}
         </form>
 
         <p className="mt-6 text-center text-[11px] text-faint">

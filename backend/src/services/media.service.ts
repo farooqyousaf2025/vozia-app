@@ -16,10 +16,10 @@ import { ApiError } from '../utils/http';
  * no app update — which is the whole point of letting the operator add gifts at all.
  */
 
-export const MEDIA_KINDS = ['GIFT_ICON', 'GIFT_ANIMATION', 'GIFT_SOUND', 'EFFECT', 'BADGE', 'WALLPAPER', 'EMOJI'] as const;
+export const MEDIA_KINDS = ['GIFT_ICON', 'GIFT_ANIMATION', 'GIFT_SOUND', 'EFFECT', 'RIDE', 'BANNER', 'BADGE', 'WALLPAPER', 'EMOJI'] as const;
 export type MediaKind = (typeof MEDIA_KINDS)[number];
 
-type Format = 'png' | 'gif' | 'webp' | 'jpeg' | 'lottie' | 'wav' | 'mp3' | 'm4a';
+type Format = 'png' | 'gif' | 'webp' | 'jpeg' | 'lottie' | 'svga' | 'mp4' | 'wav' | 'mp3' | 'm4a';
 
 const FORMATS: Record<Format, { contentType: string; ext: string }> = {
   png: { contentType: 'image/png', ext: 'png' },
@@ -27,35 +27,59 @@ const FORMATS: Record<Format, { contentType: string; ext: string }> = {
   webp: { contentType: 'image/webp', ext: 'webp' },
   jpeg: { contentType: 'image/jpeg', ext: 'jpg' },
   lottie: { contentType: 'application/json', ext: 'json' },
+  // A .svga is a zip of sprite PNGs plus a protobuf scene; nothing in a browser plays it, so it is
+  // served as opaque bytes and only the app's SVGA renderer opens it.
+  svga: { contentType: 'application/octet-stream', ext: 'svga' },
+  mp4: { contentType: 'video/mp4', ext: 'mp4' },
   wav: { contentType: 'audio/wav', ext: 'wav' },
   mp3: { contentType: 'audio/mpeg', ext: 'mp3' },
   m4a: { contentType: 'audio/mp4', ext: 'm4a' },
 };
 
 /**
- * `maxBytes` is the cap on the decoded file, and `formats` the set it may be. A gift sound
- * longer than a couple of seconds is unpleasant on a 15-seat room, so the caps are deliberately
- * small rather than generous. A wallpaper is the one full-screen image in the app, so it gets the
- * largest budget — but still under the ~3.7 MB those bytes shrink to inside the base64 body below.
+ * What each slot accepts, and how much of it.
+ *
+ * The key is the format, so a slot can give different budgets to different containers: a gift
+ * animation may be a few hundred KB of Lottie JSON or a short MP4 cinematic, and letting the video
+ * slot's 8 MB apply to the JSON would remove the guard that keeps a 6 MB scene out of a phone's
+ * animation cache. A missing key is a refusal, so there is no separate `formats` list to keep in
+ * step with.
  */
-const POLICY: Record<MediaKind, { maxBytes: number; formats: readonly Format[] }> = {
-  GIFT_ICON: { maxBytes: 2 * 1024 * 1024, formats: ['png', 'gif', 'webp', 'jpeg'] },
-  GIFT_ANIMATION: { maxBytes: 2 * 1024 * 1024, formats: ['lottie'] },
-  GIFT_SOUND: { maxBytes: 2 * 1024 * 1024, formats: ['wav', 'mp3', 'm4a'] },
-  EFFECT: { maxBytes: 3 * 1024 * 1024, formats: ['lottie'] },
-  BADGE: { maxBytes: 512 * 1024, formats: ['png', 'gif', 'webp'] },
-  WALLPAPER: { maxBytes: 3 * 1024 * 1024, formats: ['png', 'gif', 'webp', 'jpeg'] },
+const MB = 1024 * 1024;
+const POLICY: Record<MediaKind, Partial<Record<Format, number>>> = {
+  GIFT_ICON: { png: 2 * MB, gif: 2 * MB, webp: 2 * MB, jpeg: 2 * MB },
+  GIFT_ANIMATION: { lottie: 2 * MB, svga: 8 * MB, mp4: 8 * MB },
+  GIFT_SOUND: { wav: 2 * MB, mp3: 2 * MB, m4a: 2 * MB },
+  EFFECT: { lottie: 3 * MB },
+  // A ride is the same kind of art as a gift animation and none of the kind an EFFECT slot accepts:
+  // operators cut them as short MP4s, so the Lottie-only EFFECT budget would refuse the files that
+  // make a ride worth buying. Same ceilings as GIFT_ANIMATION, because the device cost is the same.
+  RIDE: { lottie: 3 * MB, svga: 8 * MB, mp4: 8 * MB },
+  // A banner is loaded by every device that opens the app, often before it has anything else to
+  // show — a splash image arrives on a cold start, on whatever network a member happens to have.
+  // So the budgets sit under the gift slots' for the same pixel count: a scene a member chose to
+  // watch may cost more than one they were shown.
+  BANNER: { png: 3 * MB, gif: 3 * MB, webp: 3 * MB, jpeg: 3 * MB, lottie: 2 * MB, svga: 6 * MB, mp4: 6 * MB },
+  BADGE: { png: 512 * 1024, gif: 512 * 1024, webp: 512 * 1024 },
+  WALLPAPER: { png: 3 * MB, gif: 3 * MB, webp: 3 * MB, jpeg: 3 * MB },
   // A picker of 60 tiles loads on a phone keyboard tap, so each glyph stays tiny.
-  EMOJI: { maxBytes: 256 * 1024, formats: ['png', 'gif', 'webp'] },
+  EMOJI: { png: 256 * 1024, gif: 256 * 1024, webp: 256 * 1024 },
 };
+
+const MAX_FILE_NAME_LENGTH = 120;
+
+/** The largest single upload any `POLICY` row allows. */
+export const MAX_UPLOAD_BYTES = Math.max(
+  ...MEDIA_KINDS.map((kind) => Math.max(0, ...Object.values(POLICY[kind] as Record<string, number>))),
+);
 
 /**
  * Uploads arrive as base64 inside a JSON body, so the request is a third larger than the file.
  * The route mounts its own parser with this limit; every other route keeps the 64 kb default.
+ * Derived from `MAX_UPLOAD_BYTES` so raising a format budget cannot leave the route silently
+ * refusing the files it just started to accept.
  */
-export const UPLOAD_JSON_BODY_LIMIT = '5mb';
-
-const MAX_FILE_NAME_LENGTH = 120;
+export const UPLOAD_JSON_BODY_LIMIT = `${Math.ceil((MAX_UPLOAD_BYTES * 4) / 3 / MB + 1)}mb`;
 
 /** Where the bytes live. Outside `public/` on purpose: that directory is regenerated. */
 export const UPLOADS_DIR = path.resolve(__dirname, '..', '..', 'uploads');
@@ -73,6 +97,13 @@ const REFERENCE_SITES: ReadonlyArray<{ table: string; column: string; label: str
   { table: 'visual_effects', column: 'url', label: 'room effect' },
   { table: 'room_themes', column: 'wallpaper_url', label: 'room wallpaper' },
   { table: 'emoji_characters', column: 'url', label: 'chat emoji' },
+  { table: 'rank_levels', column: 'badge_url', label: 'level badge' },
+  // These three were missing until the banner work put them beside the rest: a ring or a ride whose
+  // file was deleted from the library draws a broken circle on every avatar wearing it, and a banner
+  // that lost its art is a promotional surface showing nothing at all.
+  { table: 'profile_frames', column: 'art_url', label: 'profile ring' },
+  { table: 'profile_rides', column: 'url', label: 'entrance ride' },
+  { table: 'banners', column: 'url', label: 'banner' },
 ];
 
 /**
@@ -100,11 +131,68 @@ function sniff(buffer: Buffer): Format | null {
   if (starts(0, [0x49, 0x44, 0x33])) return 'mp3';
   // MPEG-1/2 Layer III frame sync: 11 set bits across the first two bytes.
   if (starts(0, [0xff, 0xe0], [0xff, 0xe0])) return 'mp3';
-  if (starts(4, [0x66, 0x74, 0x79, 0x70]) && (starts(8, [0x4d, 0x34, 0x41]) || starts(8, [0x4d, 0x34, 0x42]))) {
-    return 'm4a';
-  }
+  if (starts(4, [0x66, 0x74, 0x79, 0x70])) return isoBrand(buffer);
+  if (isSvga(buffer)) return 'svga';
   if (isLottie(buffer)) return 'lottie';
   return null;
+}
+
+const FTYP_BRAND_LENGTH = 4;
+/** AAC in an ISO base-media container. The brand is four bytes, trailing space included. */
+const AUDIO_BRANDS = new Set(['M4A ', 'M4B ', 'M4P ']);
+/** The containers the MP4 renderer is documented to play. Anything else in `ftyp` is refused. */
+const VIDEO_BRANDS = new Set(['isom', 'iso2', 'iso4', 'iso5', 'iso6', 'mp41', 'mp42', 'mmp4', 'avc1', 'mp4v', 'M4V ', 'dash']);
+
+/**
+ * `ftyp` carries the major brand at offset 8 and the compatible brands after it. Audio and video
+ * share this container, so the brand — not the extension — decides whether the bytes belong in a
+ * sound slot or an animation slot, and a file naming neither set is refused rather than guessed at.
+ */
+function isoBrand(buffer: Buffer): Format | null {
+  const boxSize = buffer.length >= 8 ? buffer.readUInt32BE(0) : 0;
+  // A `ftyp` box is at least 16 bytes and never larger than the file; either way the brand list
+  // below is untrustworthy, and an untrustworthy header is a refusal.
+  if (boxSize < 16 || boxSize > buffer.length) return null;
+  const brands: string[] = [];
+  for (let at = 8; at + FTYP_BRAND_LENGTH <= boxSize; at += FTYP_BRAND_LENGTH) {
+    brands.push(buffer.toString('ascii', at, at + FTYP_BRAND_LENGTH));
+  }
+  const major = brands[0];
+  if (AUDIO_BRANDS.has(major)) return 'm4a';
+  if (VIDEO_BRANDS.has(major)) return 'mp4';
+  // An unusual or fragmented writer names neither here in the major slot, so read the compatible
+  // list — with audio checked first. That order is not arbitrary: an M4A lists `mp42` for
+  // part-14 compatibility, while a real video never claims the audio-only brands.
+  if (brands.some((brand) => AUDIO_BRANDS.has(brand))) return 'm4a';
+  if (brands.some((brand) => VIDEO_BRANDS.has(brand))) return 'mp4';
+  return null;
+}
+
+const SVGAFORMAT = Buffer.from('%SVGAFORMAT%', 'ascii');
+
+/**
+ * SVGA v2 is a ZIP whose first entry is the protobuf scene, named `svgaprotobuf_2.0`; some tools
+ * write that protobuf straight to disk instead. Both start with bytes a real SVGA player can read
+ * and nothing else in this app does, so an arbitrary zip — say a renamed PNG sprite sheet — stays
+ * rejected by the entry name rather than by the `PK` header alone.
+ */
+function isSvga(buffer: Buffer): boolean {
+  const marker = (at: number) => buffer.length >= at + SVGAFORMAT.length && buffer.subarray(at, at + SVGAFORMAT.length).equals(SVGAFORMAT);
+  // Raw scene: protobuf field 1 (`version`, a string) is 0x0a, its length, then the marker.
+  if (marker(0)) return true;
+  if (buffer.length >= 3 && buffer[0] === 0x0a && buffer[1] === SVGAFORMAT.length && marker(2)) return true;
+  // ZIP local file header: signature, then the name length at 26 and the name at 30.
+  if (!startsPkLocalHeader(buffer)) return false;
+  const nameLength = buffer.readUInt16LE(26);
+  if (nameLength === 0 || buffer.length < 30 + nameLength) return false;
+  return buffer.toString('utf8', 30, 30 + nameLength).toLowerCase().startsWith('svgaprotobuf');
+}
+
+function startsPkLocalHeader(buffer: Buffer): boolean {
+  return (
+    buffer.length >= 28 &&
+    buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04
+  );
 }
 
 /** A Lottie scene is JSON with a version and at least one layer; anything else is just JSON. */
@@ -218,20 +306,24 @@ export async function saveUpload(input: {
     throw ApiError.badRequest(`fileName must be ${MAX_FILE_NAME_LENGTH} characters or fewer`);
   }
   if (input.buffer.length === 0) throw ApiError.badRequest('The uploaded file is empty');
-  if (input.buffer.length > policy.maxBytes) {
-    throw ApiError.badRequest(
-      `That file is ${(input.buffer.length / 1024 / 1024).toFixed(1)} MB; ${input.kind} accepts at most ${(policy.maxBytes / 1024 / 1024).toFixed(1)} MB`,
-      'upload_too_large',
-    );
-  }
 
+  // The format is read from the bytes before the size is judged, because the budget depends on it:
+  // the same slot accepts a 2 MB Lottie scene and an 8 MB MP4, and a cap checked against the slot
+  // alone would either reject the video or wave through an oversized scene.
   const format = sniff(input.buffer);
-  if (!format || !policy.formats.includes(format)) {
+  const maxBytes = format ? policy[format] : undefined;
+  if (!format || maxBytes === undefined) {
     throw ApiError.badRequest(
       format
-        ? `A ${format.toUpperCase()} file is not accepted for ${input.kind}; this slot takes ${policy.formats.join(', ')}`
-        : 'Unrecognised file format — the bytes do not match any image, Lottie or audio type this app plays',
+        ? `A ${format.toUpperCase()} file is not accepted for ${input.kind}; this slot takes ${Object.keys(policy).join(', ')}`
+        : 'Unrecognised file format — the bytes do not match any image, animation or audio type this app plays',
       'upload_format_unsupported',
+    );
+  }
+  if (input.buffer.length > maxBytes) {
+    throw ApiError.badRequest(
+      `That ${format.toUpperCase()} file is ${(input.buffer.length / 1024 / 1024).toFixed(1)} MB; ${input.kind} accepts ${format} up to ${(maxBytes / 1024 / 1024).toFixed(maxBytes < MB ? 0 : 1)} MB`,
+      'upload_too_large',
     );
   }
 

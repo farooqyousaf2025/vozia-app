@@ -122,7 +122,7 @@ const PARTICIPANT_SELECT = `
     JOIN users u ON u.id = p.user_id
    WHERE p.room_id = $1 AND p.left_at IS NULL`;
 
-const ROOM_SELECT = `
+export const ROOM_SELECT = `
   SELECT r.*, u.username AS host_username, u.avatar_url AS host_avatar_url,
          u.profile_frame_key AS host_profile_frame_key,
          u.profile_frame_expires_at AS host_profile_frame_expires_at
@@ -155,10 +155,13 @@ export async function fetchMiniUser(userId: string): Promise<MiniUser | null> {
     profile_frame_expires_at: Date | null;
     welcome_effect_key: string | null;
     welcome_effect_expires_at: Date | null;
+    profile_ride_key: string | null;
+    profile_ride_expires_at: Date | null;
   }>(
     `SELECT id, username, avatar_url, vip_level, xp,
             profile_frame_key, profile_frame_expires_at,
-            welcome_effect_key, welcome_effect_expires_at
+            welcome_effect_key, welcome_effect_expires_at,
+            profile_ride_key, profile_ride_expires_at
        FROM users WHERE id = $1`,
     [userId],
   );
@@ -212,6 +215,34 @@ async function assertNotBanned(roomId: string, userId: string): Promise<void> {
     userId,
   ]);
   if (banned) throw ApiError.forbidden('A moderator removed you from this room', 'room_banned');
+}
+
+/**
+ * Whether the account still holds presence in the room. Only `joinRoom` and room creation write that
+ * row, so it is the one fact both transports can agree on: a socket that never went through REST join
+ * has no claim on the room's traffic.
+ */
+export async function isActiveRoomMember(roomId: string, userId: string): Promise<boolean> {
+  const row = await one<{ id: string }>(
+    'SELECT id FROM room_participants WHERE room_id = $1 AND user_id = $2 AND left_at IS NULL',
+    [roomId, userId],
+  );
+  return Boolean(row);
+}
+
+/**
+ * The moderation gates `joinRoom` runs, without the LiveKit token and seat snapshot a REST join also
+ * returns. The socket path attaches a client to a room on its own, so it has to ask the same
+ * questions: a banned or removed member must not reattach simply by skipping HTTP, and a closed room
+ * has no traffic left to attend.
+ */
+export async function assertMayAttendRoom(roomId: string, userId: string): Promise<void> {
+  const room = await loadRoom(roomId);
+  assertActive(room);
+  await assertNotBanned(roomId, userId);
+  if (!(await isActiveRoomMember(roomId, userId))) {
+    throw ApiError.forbidden('Join this room before following it', 'not_a_member');
+  }
 }
 
 export type RoomWithState = {
@@ -986,6 +1017,8 @@ export function normalizeRules(value: string | null | undefined): string | null 
 }
 
 export const RULES_MAX_LENGTH = 1000;
+/** The pinned notice above chat (migration 0022); blank clears it. */
+export const ANNOUNCEMENT_MAX_LENGTH = 300;
 
 export type UpdateRoomInput = {
   title?: string;
@@ -995,6 +1028,10 @@ export type UpdateRoomInput = {
   language?: string | null;
   region?: string | null;
   rules?: string | null;
+  /** Host-pinned notice; empty clears it. */
+  announcement?: string | null;
+  /** Whether a member's seat tap becomes a request the host must approve. */
+  speakerApprovalRequired?: boolean;
 };
 
 /**
@@ -1030,9 +1067,27 @@ export async function updateRoom(
   if (patch.language !== undefined) put('language', normalizeLanguage(patch.language));
   if (patch.region !== undefined) put('region', normalizeRegion(patch.region));
   if (patch.rules !== undefined) put('rules', normalizeRules(patch.rules));
+  if (patch.announcement !== undefined) {
+    put('announcement', trimOrNull(patch.announcement, ANNOUNCEMENT_MAX_LENGTH, 'announcement'));
+    // Clearing the notice also bumps the timestamp, so a client can tell "removed" from "never set".
+    put('announcement_updated_at', new Date());
+  }
+  if (patch.speakerApprovalRequired !== undefined) {
+    put('speaker_approval_required', patch.speakerApprovalRequired);
+  }
   if (!sets.length) throw ApiError.badRequest('Nothing to change', 'empty_update');
 
   await query(`UPDATE rooms SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`, params);
+  // Turning approval off leaves no queue behind: every pending request is answered with a
+  // cancellation instead of becoming an item that can never be decided.
+  if (patch.speakerApprovalRequired === false) {
+    await query(
+      `UPDATE room_speaker_requests
+          SET status = 'CANCELLED', decided_by = $2, decided_at = now()
+        WHERE room_id = $1 AND status = 'PENDING'`,
+      [roomId, actorId],
+    );
+  }
   return { room: toRoom(await loadRoom(roomId)) };
 }
 

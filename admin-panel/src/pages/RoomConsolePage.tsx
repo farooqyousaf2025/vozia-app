@@ -12,7 +12,7 @@ import { Badge } from '../components/ui/Badge';
 import { Button, IconButton } from '../components/ui/Button';
 import { Card, StatCard } from '../components/ui/Card';
 import { EmptyState } from '../components/ui/EmptyState';
-import { Input } from '../components/ui/Input';
+import { Input, Textarea } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
@@ -393,6 +393,24 @@ export default function RoomConsolePage() {
         </div>
 
         <div className="space-y-5">
+          <AnnouncementEditor
+            roomId={view.room.id}
+            announcement={view.room.announcement ?? null}
+            onApplied={(announcement) =>
+              setView((state) =>
+                state === null
+                  ? state
+                  : {
+                      ...state,
+                      room: {
+                        ...state.room,
+                        announcement,
+                        announcementUpdatedAt: announcement === null ? null : new Date().toISOString(),
+                      },
+                    },
+              )
+            }
+          />
           <ThemePicker
             roomId={view.room.id}
             current={view.room.theme}
@@ -542,6 +560,94 @@ function ChatFeed({ roomTitle, chat }: { roomTitle: string; chat: RoomChatMessag
 // Room look: the theme a host's clients paint behind the seat grid, plus a
 // preview of the entry animation that ships with it.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Pinned notice above the seats. The host owns the same field from the app; this
+// is the override for a notice that must come down and a host who is not doing it.
+// ---------------------------------------------------------------------------
+const ANNOUNCEMENT_MAX = 300;
+
+interface AnnouncementEditorProps {
+  roomId: string;
+  announcement: string | null;
+  onApplied: (announcement: string | null) => void;
+}
+
+function AnnouncementEditor({ roomId, announcement, onApplied }: AnnouncementEditorProps) {
+  const toast = useToast();
+  const [draft, setDraft] = useState(announcement ?? '');
+  const [saving, setSaving] = useState<'save' | 'clear' | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  // Follow the server after a reload or another operator's edit, unless a save is in flight.
+  useEffect(() => {
+    if (saving === null) setDraft(announcement ?? '');
+  }, [announcement, saving]);
+
+  const save = async (value: string | null) => {
+    setSaving(value === null ? 'clear' : 'save');
+    setServerError(null);
+    try {
+      const { room } = await api.setRoomAnnouncement(roomId, value);
+      onApplied(room.announcement ?? null);
+      toast.success(room.announcement === null ? 'Pinned notice cleared.' : 'Notice pinned for everyone in the room.');
+    } catch (err) {
+      setServerError(err instanceof ApiError ? err.message : 'The notice could not be saved.');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const trimmed = draft.trim();
+  const unchanged = trimmed === (announcement ?? '');
+  const tooLong = trimmed.length > ANNOUNCEMENT_MAX;
+
+  return (
+    <Card title="Pinned notice" subtitle="Shown above the seats to everyone in the room.">
+      <div className="space-y-3">
+        <Textarea
+          rows={3}
+          maxLength={ANNOUNCEMENT_MAX}
+          placeholder="e.g. Weekly contest starts at 21:00 — no gift spam, please."
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          error={tooLong ? `Limited to ${ANNOUNCEMENT_MAX} characters.` : null}
+        />
+        {announcement !== null && unchanged && (
+          <p className="text-[11px] text-faint">
+            Currently pinned: “{announcement}”
+          </p>
+        )}
+        {serverError !== null && (
+          <div className="flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 py-2 text-xs text-rose-200">
+            <IconAlert className="h-4 w-4 shrink-0" />
+            {serverError}
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="primary"
+            loading={saving === 'save'}
+            disabled={saving !== null || unchanged || tooLong}
+            onClick={() => void save(trimmed === '' ? null : trimmed)}
+          >
+            Pin notice
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            loading={saving === 'clear'}
+            disabled={saving !== null || announcement === null}
+            onClick={() => void save(null)}
+          >
+            Clear
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 interface ThemePickerProps {
   roomId: string;
   current: string;

@@ -4,9 +4,11 @@ import com.voiza.app.data.mapper.toDomain
 import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.data.remote.VoizaApiService
 import com.voiza.app.data.remote.apiCall
+import com.voiza.app.data.remote.dto.AnnouncementBody
 import com.voiza.app.data.remote.dto.CreateRoomBody
 import com.voiza.app.data.remote.dto.HandRaiseBody
 import com.voiza.app.data.remote.dto.JoinRoomBody
+import com.voiza.app.data.remote.dto.SeatInviteBody
 import com.voiza.app.data.remote.dto.SeatMuteBody
 import com.voiza.app.data.remote.dto.SeatStatusBody
 import com.voiza.app.data.remote.dto.SetRoomThemeBody
@@ -20,6 +22,8 @@ import com.voiza.app.domain.model.RoomJoinResult
 import com.voiza.app.domain.model.RoomSummary
 import com.voiza.app.domain.model.Seat
 import com.voiza.app.domain.model.SeatPolicy
+import com.voiza.app.domain.model.SeatTakeResult
+import com.voiza.app.domain.model.SpeakerRequest
 import com.voiza.app.domain.model.ThemeCatalogue
 import com.voiza.app.domain.repository.RoomRepository
 
@@ -90,6 +94,7 @@ class RoomRepositoryImpl(
         language: String?,
         region: String?,
         rules: String?,
+        speakerApprovalRequired: Boolean?,
     ): ApiResult<Room> =
         apiCall {
             api.updateRoom(
@@ -102,6 +107,7 @@ class RoomRepositoryImpl(
                     language = language,
                     region = region,
                     rules = rules,
+                    speakerApprovalRequired = speakerApprovalRequired,
                 )
             )
         }.mapSuccess { it.room.toDomain() }
@@ -133,9 +139,9 @@ class RoomRepositoryImpl(
     override suspend fun leaveRoom(roomId: String): ApiResult<Boolean> =
         apiCall { api.leaveRoom(roomId) }.mapSuccess { it.ok }
 
-    override suspend fun takeSeat(roomId: String, seatIndex: Int): ApiResult<List<Seat>> =
+    override suspend fun takeSeat(roomId: String, seatIndex: Int): ApiResult<SeatTakeResult> =
         apiCall { api.takeSeat(roomId, mapOf("seatIndex" to seatIndex)) }
-            .mapSuccess { resp -> resp.seats.map { it.toDomain() } }
+            .mapSuccess { it.toDomain() }
 
     override suspend fun leaveSeat(roomId: String, seatIndex: Int): ApiResult<List<Seat>> =
         apiCall { api.leaveSeat(roomId, seatIndex) }
@@ -152,6 +158,28 @@ class RoomRepositoryImpl(
     override suspend fun kickFromSeat(roomId: String, seatIndex: Int): ApiResult<List<Seat>> =
         apiCall { api.kickFromSeat(roomId, seatIndex) }
             .mapSuccess { resp -> resp.seats.map { it.toDomain() } }
+
+    override suspend fun inviteToSeat(roomId: String, seatIndex: Int, userId: String): ApiResult<List<Seat>> =
+        apiCall { api.inviteToSeat(roomId, seatIndex, SeatInviteBody(userId)) }
+            .mapSuccess { resp -> resp.seats.map { it.toDomain() } }
+
+    override suspend fun speakerRequests(roomId: String): ApiResult<List<SpeakerRequest>> =
+        apiCall { api.speakerRequests(roomId) }
+            .mapSuccess { resp -> resp.requests.orEmpty().map { it.toDomain() } }
+
+    override suspend fun approveSpeakerRequest(roomId: String, requestId: String): ApiResult<List<Seat>> =
+        apiCall { api.approveSpeakerRequest(roomId, requestId) }
+            .mapSuccess { resp -> resp.seats.orEmpty().map { it.toDomain() } }
+
+    override suspend fun rejectSpeakerRequest(roomId: String, requestId: String): ApiResult<Boolean> =
+        apiCall { api.rejectSpeakerRequest(roomId, requestId) }.mapSuccess { true }
+
+    override suspend fun cancelSpeakerRequest(roomId: String): ApiResult<Boolean> =
+        apiCall { api.cancelSpeakerRequest(roomId) }.mapSuccess { it.cancelled > 0 }
+
+    override suspend fun setAnnouncement(roomId: String, text: String): ApiResult<Room> =
+        apiCall { api.setAnnouncement(roomId, AnnouncementBody(text.trim())) }
+            .mapSuccess { it.room.toDomain() }
 
     override suspend fun raiseHand(roomId: String, raise: Boolean): ApiResult<Boolean> =
         apiCall { api.handRaise(roomId, HandRaiseBody(raise)) }.mapSuccess { it.raised }

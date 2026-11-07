@@ -49,6 +49,27 @@ data class MiniUserDto(
     @SerializedName("profileFrame") val profileFrame: FrameArtDto? = null,
     // The paid entry flourish URL on join payloads; null means the room's free default.
     @SerializedName("entryEffect") val entryEffect: String? = null,
+    // The ride on the join payload, from the same SELECT that reads the decoration columns. Null
+    // for a member who owns none, and absent on every lean roster that never asked for it.
+    @SerializedName("entryRide") val entryRide: RideArtDto? = null,
+)
+
+/**
+ * The entrance cinematic a member arrives with, as both the account DTO and `room:user_joined`
+ * spell it (migration 0026).
+ *
+ * The two field names that matter are `url` and `format`: the shop row for the same purchase calls
+ * them `art` and `animationFormat`, so a mapper that reused one shape would silently read nulls.
+ * `durationMs` is nullable by the Gson rule — an absent key stays null through Unsafe, and the
+ * mapper decides the fallback. 0 is not that fallback: it is the operator saying "the clip's own
+ * length", which is why it survives mapping instead of becoming null.
+ */
+data class RideArtDto(
+    @SerializedName("key") val key: String? = null,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("url") val url: String? = null,
+    @SerializedName("format") val format: String? = null,
+    @SerializedName("durationMs") val durationMs: Int? = null,
 )
 
 /** A rung of the earned ladder, resolved server-side from the member's XP. */
@@ -80,6 +101,9 @@ data class UserDto(
     // The account's own worn decoration, so the profile header draws what the server says.
     @SerializedName("profileFrame") val profileFrame: FrameArtDto? = null,
     @SerializedName("entryEffect") val entryEffect: String? = null,
+    // The account's own ride, always sent on this DTO (null when nothing is worn or the copy
+    // lapsed) — the profile screen previews it so the owner sees what the room will see.
+    @SerializedName("entryRide") val entryRide: RideArtDto? = null,
 )
 
 data class AuthResponse(
@@ -131,6 +155,11 @@ data class RoomDto(
     @SerializedName("language") val language: String? = null,
     @SerializedName("region") val region: String? = null,
     @SerializedName("rules") val rules: String? = null,
+    // The pinned notice. Both keys are absent — not empty — on a backend that predates them, and
+    // Gson leaves an absent key null even with a default written here.
+    @SerializedName("announcement") val announcement: String? = null,
+    @SerializedName("announcementUpdatedAt") val announcementUpdatedAt: String? = null,
+    @SerializedName("speakerApprovalRequired") val speakerApprovalRequired: Boolean? = null,
     // Which ambient loop breathes behind this room. Sent by the API so the look is
     // the server's call; null on an older backend means "use the shipped default".
     @SerializedName("ambientEffect") val ambientEffect: String? = null,
@@ -196,6 +225,12 @@ data class UpdateRoomBody(
     @SerializedName("language") val language: String? = null,
     @SerializedName("region") val region: String? = null,
     @SerializedName("rules") val rules: String? = null,
+    /**
+     * The microphone gate. This is the only way to write it: the approval queue has no route of its
+     * own, and the pinned notice has one (`POST /api/rooms/:id/announcement`) precisely so this body
+     * does not grow a second write path for a field a phone changes rarely.
+     */
+    @SerializedName("speakerApprovalRequired") val speakerApprovalRequired: Boolean? = null,
 )
 
 data class JoinRoomBody(@SerializedName("password") val password: String? = null)
@@ -280,6 +315,67 @@ data class JoinRoomResponse(
 
 data class SeatsResponse(@SerializedName("seats") val seats: List<SeatDto>)
 
+/**
+ * `POST /api/rooms/:id/seat` — the only seat route with two answers.
+ *
+ * An approval-enabled room replies 202 `{requested, request}` and seats nobody, so both keys are
+ * nullable here and the mapper decides which half of [com.voiza.app.domain.model.SeatTakeResult]
+ * the body describes. Reading `seats` out of a 202 the way the other seat routes do would hand the
+ * caller a list that is null because it was never sent.
+ */
+data class TakeSeatResponse(
+    @SerializedName("seats") val seats: List<SeatDto>? = null,
+    @SerializedName("livekit") val livekit: LiveKitTokenDto? = null,
+    @SerializedName("requested") val requested: Boolean? = null,
+    @SerializedName("request") val request: SpeakerRequestDto? = null,
+)
+
+/**
+ * One line of the host's speaker queue. `user` is nullable the way every wire user is here: an
+ * account deleted after the request was filed still has a row, and the queue must show it rather
+ * than drop it.
+ */
+data class SpeakerRequestDto(
+    @SerializedName("id") val id: String,
+    @SerializedName("roomId") val roomId: String,
+    @SerializedName("seatIndex") val seatIndex: Int,
+    @SerializedName("status") val status: String = "PENDING",
+    @SerializedName("createdAt") val createdAt: String? = null,
+    @SerializedName("user") val user: MiniUserDto? = null,
+)
+
+/** `GET /api/rooms/:id/speaker-requests`, already in the server's first-come order. */
+data class SpeakerRequestsResponse(
+    // Nullable, not `= emptyList()`: Gson leaves an absent key null and never runs the default,
+    // so an empty queue that the server omitted entirely has to read as empty here.
+    @SerializedName("requests") val requests: List<SpeakerRequestDto>? = null,
+)
+
+/** `POST /api/rooms/:id/speaker-requests/:requestId/approve` — the seat list follows the decision. */
+data class ApproveSpeakerRequestResponse(
+    @SerializedName("request") val request: SpeakerRequestDto? = null,
+    @SerializedName("seats") val seats: List<SeatDto>? = null,
+)
+
+/** `POST /api/rooms/:id/speaker-requests/:requestId/reject`. */
+data class RejectSpeakerRequestResponse(
+    @SerializedName("request") val request: SpeakerRequestDto? = null,
+)
+
+data class SpeakerCancelResponse(
+    @SerializedName("ok") val ok: Boolean = true,
+    @SerializedName("cancelled") val cancelled: Int = 0,
+)
+
+/** `POST /api/rooms/:id/seat/:index/invite` — a host seats a member already in the audience. */
+data class SeatInviteBody(@SerializedName("userId") val userId: String)
+
+/**
+ * `POST /api/rooms/:id/announcement`. An empty string clears the notice; the route exists so a
+ * phone can change one line without resending the whole room profile.
+ */
+data class AnnouncementBody(@SerializedName("announcement") val announcement: String)
+
 data class SeatStatusBody(@SerializedName("locked") val locked: Boolean)
 
 data class SeatMuteBody(@SerializedName("muted") val muted: Boolean)
@@ -313,21 +409,101 @@ data class GiftDto(
     // TICKER | FULLSCREEN — how loud the gift plays. Nullable: Gson skips the
     // default initializer for an absent key, and an old backend omits it entirely.
     @SerializedName("effectKind") val effectKind: String? = null,
+    /** LOTTIE | SVGA | MP4 — which renderer opens [animationUrl]. */
+    @SerializedName("animationFormat") val animationFormat: String? = null,
+    @SerializedName("durationMs") val durationMs: Int? = null,
+    @SerializedName("displayPriority") val displayPriority: Int? = null,
+    @SerializedName("comboEnabled") val comboEnabled: Boolean? = null,
+    @SerializedName("comboWindowMs") val comboWindowMs: Int? = null,
+    /**
+     * Present only on a box, and absent — not `false` — on every other gift, which is how a device
+     * tells "this gift rolls nothing" from "this box has no prizes configured".
+     */
+    @SerializedName("isLuckyBox") val isLuckyBox: Boolean? = null,
+    @SerializedName("receiverShareBps") val receiverShareBps: Int? = null,
+    /** The published odds. Only the operator's own catalogue route adds `weight`; this one cannot. */
+    @SerializedName("boxOutcomes") val boxOutcomes: List<GiftBoxOutcomeDto>? = null,
 )
 
-data class GiftsResponse(@SerializedName("gifts") val gifts: List<GiftDto>)
+/** One disclosed prize of a lucky box. */
+data class GiftBoxOutcomeDto(
+    @SerializedName("label") val label: String = "",
+    @SerializedName("multiplierBps") val multiplierBps: Int = 0,
+    @SerializedName("chanceBps") val chanceBps: Int = 0,
+)
 
+/** One prize that came up in a draw, counted. */
+data class LuckyPrizeDto(
+    @SerializedName("label") val label: String = "",
+    @SerializedName("multiplierBps") val multiplierBps: Int = 0,
+    @SerializedName("chanceBps") val chanceBps: Int? = null,
+    @SerializedName("count") val count: Int? = null,
+)
+
+/**
+ * `lucky` on a gift event, a replay and the ledger row's `meta`: the draw that set this gift's
+ * credit. Every field is nullable because Gson's `Unsafe` allocator does not run the Kotlin
+ * initialiser for a key the server left out, and a `0` read as a payout would be a lie about money.
+ */
+data class LuckyRollDto(
+    @SerializedName("outcomes") val outcomes: List<LuckyPrizeDto>? = null,
+    @SerializedName("headline") val headline: LuckyPrizeDto? = null,
+    @SerializedName("grossRCoins") val grossRCoins: Long? = null,
+    @SerializedName("receiverRCoins") val receiverRCoins: Long? = null,
+    @SerializedName("platformTaxRCoins") val platformTaxRCoins: Long? = null,
+    @SerializedName("receiverShareBps") val receiverShareBps: Int? = null,
+)
+
+data class GiftsResponse(
+    @SerializedName("gifts") val gifts: List<GiftDto>,
+    /**
+     * The operator-managed shelves from migration 0025, already sorted by `sortOrder`. Nullable
+     * because an older server omits the key entirely and Gson's Unsafe allocator skips the Kotlin
+     * default for absent keys — callers read null as "no shelf list" and derive tabs from [gifts].
+     */
+    @SerializedName("categories") val categories: List<GiftCategoryDto>? = null,
+)
+
+/**
+ * One gift shelf as the operator maintains it. Every field is nullable for the same reason:
+ * a key Gson does not see stays at the JVM zero value, never at a Kotlin default.
+ */
+data class GiftCategoryDto(
+    @SerializedName("key") val key: String? = null,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("sortOrder") val sortOrder: Int? = null,
+)
+
+/**
+ * `POST /api/gifts/send`.
+ *
+ * [idempotencyKey] is generated once per Send tap and reused by every retry of that tap, so the
+ * server can answer a request whose response was lost with the gift it already bought instead of
+ * buying a second one. Absent means "no replay protection", which is what an app built before the
+ * gift engine sends.
+ */
 data class SendGiftBody(
     @SerializedName("roomId") val roomId: String,
     @SerializedName("receiverId") val receiverId: String,
     @SerializedName("giftId") val giftId: String,
     @SerializedName("quantity") val quantity: Int,
+    @SerializedName("idempotencyKey") val idempotencyKey: String? = null,
+)
+
+/** The server's combo tally for the gift that was just paid for. */
+data class GiftComboDto(
+    @SerializedName("comboId") val comboId: String? = null,
+    @SerializedName("count") val count: Int = 1,
 )
 
 data class SendGiftResponse(
     @SerializedName("transaction") val transaction: TransactionDto,
     @SerializedName("sender") val sender: MiniUserDto,
     @SerializedName("receiver") val receiver: MiniUserDto,
+    @SerializedName("gift") val gift: GiftDto? = null,
+    /** TRUE when the server answered an existing transaction rather than buying a new one. */
+    @SerializedName("replayed") val replayed: Boolean? = null,
+    @SerializedName("combo") val combo: GiftComboDto? = null,
 )
 
 data class TransactionDto(
@@ -339,6 +515,28 @@ data class TransactionDto(
     @SerializedName("sender") val sender: MiniUserDto? = null,
     @SerializedName("receiver") val receiver: MiniUserDto? = null,
     @SerializedName("createdAt") val createdAt: String = "",
+)
+
+/**
+ * One row of `GET /api/rooms/:id/gifts` — the gifts a room has just animated.
+ *
+ * Same idea as [com.voiza.app.data.remote.dto.SocketGiftAnimatedDto] but without the combo tally
+ * (a window that has closed is not worth counting) and with no `roomId`, because the room is what
+ * the URL already said. [eventId] is the transaction id, which is exactly the id the socket event
+ * for the same gift carried, so a device that saw it live can drop this row.
+ */
+data class RoomGiftEventDto(
+    @SerializedName("eventId") val eventId: String,
+    @SerializedName("gift") val gift: GiftDto,
+    @SerializedName("sender") val sender: MiniUserDto,
+    @SerializedName("receiver") val receiver: MiniUserDto,
+    @SerializedName("seatIndex") val seatIndex: Int? = null,
+    @SerializedName("quantity") val quantity: Int = 1,
+    @SerializedName("totalDiamonds") val totalDiamonds: Long = 0,
+    @SerializedName("totalRCoins") val totalRCoins: Long = 0,
+    @SerializedName("createdAt") val createdAt: String = "",
+    /** What the box rolled for this row, read off the ledger row the same way the socket event has it. */
+    @SerializedName("lucky") val lucky: LuckyRollDto? = null,
 )
 
 data class WalletStatsDto(
@@ -404,8 +602,8 @@ data class LeaderboardResponse(
  *
  * `owned` and `equipped` are per-caller answers from the server, never derived here: a modified
  * client that flips them changes only what it draws. `expiresAt` is null for a purchase that
- * never runs out, and `equipped` is only ever true for a frame or an effect — a theme is worn by
- * a room, not by an account.
+ * never runs out, and `equipped` is only ever true for a frame, an effect or a ride — a theme is
+ * worn by a room, not by an account.
  */
 data class StoreItemDto(
     @SerializedName("kind") val kind: String? = null,
@@ -418,6 +616,17 @@ data class StoreItemDto(
     @SerializedName("owned") val owned: Boolean = false,
     @SerializedName("expiresAt") val expiresAt: String? = null,
     @SerializedName("equipped") val equipped: Boolean = false,
+    // Nullable by project rule: Gson runs with Unsafe, so an absent key takes the JVM zero value,
+    // NOT these Kotlin defaults. The mapper applies the real fallback (`?: 0` / `?: false`), so an
+    // older backend that omits these reads as "anybody can buy, not recommended" rather than a lie.
+    @SerializedName("minVipLevel") val minVipLevel: Int? = null,
+    @SerializedName("recommended") val recommended: Boolean? = null,
+    // RIDE rows only, and nullable for both reasons: the other three catalogues never send them,
+    // and Gson's Unsafe allocator leaves an absent key null rather than running the Kotlin
+    // default. The mapper owns the fallbacks (LOTTIE for an unknown/missing format, 0 for a
+    // missing duration), so an older backend that has no rides still parses every row it does send.
+    @SerializedName("animationFormat") val animationFormat: String? = null,
+    @SerializedName("durationMs") val durationMs: Int? = null,
 )
 
 /** What the member holds, including rows an operator has since retired from the shop. */
@@ -447,4 +656,113 @@ data class StorePurchaseResponse(
     @SerializedName("item") val item: StoreItemDto? = null,
     @SerializedName("transaction") val transaction: TransactionDto? = null,
     @SerializedName("wallet") val wallet: UserDto? = null,
+)
+
+// ---------------------------------------------------------------------------
+// Promotional banners (GET /api/banners, migration 0028)
+// ---------------------------------------------------------------------------
+
+/**
+ * One live campaign row.
+ *
+ * Every field is nullable because Gson allocates these data classes without running the constructor,
+ * so a key the server omits stays at the JVM zero value rather than a Kotlin default — the mapper
+ * decides what an absent field means, and a row missing the two things it cannot be drawn or counted
+ * without is dropped rather than guessed at.
+ */
+data class BannerDto(
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("key") val key: String? = null,
+    /** SPLASH | HOME | GIFT | GAME. */
+    @SerializedName("placement") val placement: String? = null,
+    @SerializedName("title") val title: String? = null,
+    @SerializedName("subtitle") val subtitle: String? = null,
+    @SerializedName("url") val url: String? = null,
+    /** PNG | GIF | WEBP | JPEG | LOTTIE | SVGA | MP4 — which renderer opens [url]. */
+    @SerializedName("format") val format: String? = null,
+    @SerializedName("durationMs") val durationMs: Int? = null,
+    /** NONE | INTERNAL | ROOM | URL — the verb [ctaValue] belongs to. Never read without it. */
+    @SerializedName("ctaType") val ctaType: String? = null,
+    @SerializedName("ctaValue") val ctaValue: String? = null,
+)
+
+data class BannersResponse(
+    @SerializedName("banners") val banners: List<BannerDto>? = null,
+)
+
+/** POST /api/banners/track. One look or one tap on one row; the server owns both counters. */
+data class BannerTrackBody(
+    @SerializedName("id") val id: String,
+    /** IMPRESSION | TAP. */
+    @SerializedName("event") val event: String,
+)
+
+// ---------------------------------------------------------------------------
+// Social moderation: follows, blocks and reports between two members
+// (GET/POST/DELETE /api/users/:id/…).
+//
+// Every field here is nullable that the server may omit, and the mapper decides what an omission
+// means. Gson builds these without running the defaults, so a key that is not in the body arrives
+// as null rather than as the value written below.
+// ---------------------------------------------------------------------------
+
+/**
+ * `GET /api/users/:id/relationship` — how the caller stands to one member.
+ *
+ * [interactionBlocked] is the server's own conclusion that either side blocked the other. It is
+ * read rather than re-derived from the two flags because the rule about which interactions a block
+ * stops lives in the backend, not here.
+ */
+data class RelationshipDto(
+    @SerializedName("following") val following: Boolean? = null,
+    @SerializedName("blockedByMe") val blockedByMe: Boolean? = null,
+    @SerializedName("blockedByThem") val blockedByThem: Boolean? = null,
+    @SerializedName("interactionBlocked") val interactionBlocked: Boolean? = null,
+)
+
+/**
+ * `POST`/`DELETE /api/users/:id/follow`. Only the new state is read; the counts the server also
+ * sends belong to a profile screen this app does not have.
+ */
+data class FollowResponse(
+    @SerializedName("following") val following: Boolean? = null,
+)
+
+/** `POST`/`DELETE /api/users/:id/block`, same shape as the follow answer. */
+data class BlockResponse(
+    @SerializedName("blocked") val blocked: Boolean? = null,
+)
+
+/**
+ * `POST /api/users/:id/block`. [reason] is the blocker's private note for their own list — the
+ * blocked member is told only that the interaction closed, never why — and blank means no note.
+ */
+data class BlockBody(
+    @SerializedName("reason") val reason: String? = null,
+)
+
+/**
+ * `POST /api/users/:id/report`. [reason] is one of the six strings the server accepts and refuses
+ * anything else; [roomId] is where it happened, so the operator's queue can open the room.
+ */
+data class ReportBody(
+    @SerializedName("reason") val reason: String,
+    @SerializedName("details") val details: String? = null,
+    @SerializedName("roomId") val roomId: String? = null,
+)
+
+/**
+ * The row the report endpoint writes. Nothing on this screen shows it — the phone's answer is the
+ * 201 itself — but the envelope is modelled so the call has a real type to parse into instead of a
+ * shape it invented.
+ */
+data class ReportDto(
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("reason") val reason: String? = null,
+    /** PENDING until an operator moves it. A report is never an automatic ban. */
+    @SerializedName("status") val status: String? = null,
+)
+
+data class ReportResponse(
+    @SerializedName("report") val report: ReportDto? = null,
 )

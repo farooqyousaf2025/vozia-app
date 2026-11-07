@@ -1,9 +1,9 @@
 // ---------------------------------------------------------------------------
-// Room decoration: the themes a host can pick and the Lottie loops a room
-// breathes. Since migration 0015 these are database rows, so a new skin or a
-// different loop for PARTY rooms ships without a backend release. Writes need
-// `config:manage`; the server refuses a delete that would strand a room, a
-// category mapping, or an upload something still points at.
+// Room decoration: the themes a host can pick, the Lottie loops a room breathes and the
+// entrance rides a member arrives with. Since migration 0015 these are database rows, so a
+// new skin or a different loop for PARTY rooms ships without a backend release. Writes need
+// `config:manage`; the server refuses a delete that would strand a room, a category mapping,
+// or an upload something still points at.
 // ---------------------------------------------------------------------------
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { ArtField } from '../components/ui/ArtField';
@@ -22,7 +22,7 @@ import { IconAlert, IconEdit, IconPlus, IconRefresh, IconSpark, IconTrash, IconU
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { ApiError, api, assetUrl } from '../lib/api';
-import { formatDiamonds } from '../lib/format';
+import { formatDiamonds, formatDurationMs } from '../lib/format';
 import type {
   AdminRoomTheme,
   DecorCatalogue,
@@ -30,6 +30,10 @@ import type {
   FrameHolder,
   FrameInput,
   ProfileFrame,
+  ProfileRide,
+  ProfileRideFormat,
+  RideHolder,
+  RideInput,
   VisualEffectKind,
   ThemeCatalogue,
   ThemeInput,
@@ -41,6 +45,8 @@ const ACCENT_PATTERN = /^#[0-9a-fA-F]{6}$/;
 // The same rule the `CHECK` in 0015 enforces: this string is handed to every device
 // that joins a room, so a `javascript:` value must not be storable even by an operator.
 const URL_PATTERN = /^(\/|https:\/\/)/;
+// The three renderers a phone routes on — `profile_rides.format` in 0026 accepts nothing else.
+const RIDE_FORMATS: readonly ProfileRideFormat[] = ['LOTTIE', 'SVGA', 'MP4'];
 
 const CATEGORY_TONE: BadgeTone = 'sky';
 
@@ -62,6 +68,9 @@ export default function DecorPage() {
   const [editingFrame, setEditingFrame] = useState<ProfileFrame | 'new' | null>(null);
   const [deletingFrame, setDeletingFrame] = useState<ProfileFrame | null>(null);
   const [holdersFrame, setHoldersFrame] = useState<ProfileFrame | null>(null);
+  const [editingRide, setEditingRide] = useState<ProfileRide | 'new' | null>(null);
+  const [deletingRide, setDeletingRide] = useState<ProfileRide | null>(null);
+  const [holdersRide, setHoldersRide] = useState<ProfileRide | null>(null);
   const [effectKind, setEffectKind] = useState<VisualEffectKind>('AMBIENT');
   const [mappingBusy, setMappingBusy] = useState<Set<string>>(new Set());
 
@@ -118,6 +127,7 @@ export default function DecorPage() {
 
   const themes = [...(catalogue?.themes ?? [])].sort((a, b) => a.sortOrder - b.sortOrder || (a.slug < b.slug ? -1 : 1));
   const frames = [...(catalogue?.frames ?? [])].sort((a, b) => a.sortOrder - b.sortOrder || (a.key < b.key ? -1 : 1));
+  const rides = [...(catalogue?.rides ?? [])].sort((a, b) => a.sortOrder - b.sortOrder || (a.key < b.key ? -1 : 1));
   const ambient = (catalogue?.effects ?? []).filter((effect) => effect.kind === 'AMBIENT');
   const welcomes = (catalogue?.effects ?? []).filter((effect) => effect.kind === 'WELCOME');
   const mappings = [...(catalogue?.categoryEffects ?? [])].sort((a, b) => (a.category < b.category ? -1 : 1));
@@ -178,7 +188,13 @@ export default function DecorPage() {
                     <p className="mt-0.5 truncate font-mono text-[11px] text-faint">{theme.slug}</p>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                       {theme.isDefault && <Badge tone="green">default</Badge>}
-                      <PriceBadge forSale={theme.forSale} priceDiamonds={theme.priceDiamonds} periodDays={theme.periodDays} />
+                      <PriceBadge
+                        forSale={theme.forSale}
+                        priceDiamonds={theme.priceDiamonds}
+                        periodDays={theme.periodDays}
+                        minVipLevel={theme.minVipLevel}
+                        recommended={theme.recommended}
+                      />
                       <span className="inline-flex items-center gap-1 text-[11px] text-muted">
                         <span
                           className="h-3 w-3 rounded-full border border-white/20"
@@ -253,7 +269,13 @@ export default function DecorPage() {
                     </p>
                     <p className="mt-0.5 truncate font-mono text-[11px] text-faint">{frame.key}</p>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                      <PriceBadge forSale={frame.forSale} priceDiamonds={frame.priceDiamonds} periodDays={frame.periodDays} />
+                      <PriceBadge
+                        forSale={frame.forSale}
+                        priceDiamonds={frame.priceDiamonds}
+                        periodDays={frame.periodDays}
+                        minVipLevel={frame.minVipLevel}
+                        recommended={frame.recommended}
+                      />
                       <span className="inline-flex items-center gap-1 text-[11px] text-muted">
                         <span
                           className="h-3 w-3 rounded-full border border-white/20"
@@ -287,6 +309,81 @@ export default function DecorPage() {
                           <IconEdit className="h-4 w-4" />
                         </IconButton>
                         <IconButton label={`Retire ${frame.name}`} tone="danger" onClick={() => setDeletingFrame(frame)}>
+                          <IconTrash className="h-4 w-4" />
+                        </IconButton>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card
+        title="Entrance rides"
+        subtitle="The full-screen cinematic the whole room watches while a member arrives (migration 0026). Bought and worn like a frame, but the row also names the renderer that opens the file and how long the room hands it the screen — 0 defers to the asset's own length, so an MP4 that never reports one should carry a real budget."
+        actions={
+          canManage && (
+            <Button variant="primary" size="sm" icon={<IconPlus className="h-4 w-4" />} onClick={() => setEditingRide('new')}>
+              New ride
+            </Button>
+          )
+        }
+      >
+        {rides.length === 0 ? (
+          <EmptyState
+            title="No rides"
+            message="Nobody has an entrance cinematic to buy, so members join with the plain entry banner. Upload a Lottie, SVGA or MP4 and add a row."
+            icon={<IconSpark className="h-6 w-6" />}
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {rides.map((ride) => (
+              <Card key={ride.key} bodyClassName="flex flex-col gap-3 p-3.5">
+                <div className="flex items-start gap-3">
+                  <RideArt ride={ride} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-ink" title={ride.name}>
+                      {ride.name}
+                    </p>
+                    <p className="mt-0.5 truncate font-mono text-[11px] text-faint">{ride.key}</p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <PriceBadge
+                        forSale={ride.forSale}
+                        priceDiamonds={ride.priceDiamonds}
+                        periodDays={ride.periodDays}
+                        minVipLevel={ride.minVipLevel}
+                        recommended={ride.recommended}
+                      />
+                      <Badge tone="red">{ride.format}</Badge>
+                      <Badge tone="slate">{formatDurationMs(ride.durationMs)}</Badge>
+                    </div>
+                  </div>
+                </div>
+
+                <p
+                  className="truncate rounded-lg bg-elevated/60 px-2 py-1.5 font-mono text-[11px] text-muted"
+                  title={ride.url}
+                >
+                  {ride.url}
+                </p>
+
+                <div className="mt-auto flex items-center justify-between border-t border-edge/50 pt-2.5">
+                  <p className="text-[11px] text-faint">
+                    {ride.holders} holder{ride.holders === 1 ? '' : 's'} · order {ride.sortOrder}
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <IconButton label={`Who holds ${ride.name}`} onClick={() => setHoldersRide(ride)}>
+                      <IconUsers className="h-4 w-4" />
+                    </IconButton>
+                    {canManage && (
+                      <>
+                        <IconButton label={`Edit ${ride.name}`} onClick={() => setEditingRide(ride)}>
+                          <IconEdit className="h-4 w-4" />
+                        </IconButton>
+                        <IconButton label={`Retire ${ride.name}`} tone="danger" onClick={() => setDeletingRide(ride)}>
                           <IconTrash className="h-4 w-4" />
                         </IconButton>
                       </>
@@ -346,7 +443,13 @@ export default function DecorPage() {
                     <p className="mt-0.5 truncate font-mono text-[11px] text-faint">{effect.key}</p>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                       {published !== null && published.welcome === effect.url && <Badge tone="green">published</Badge>}
-                      <PriceBadge forSale={effect.forSale} priceDiamonds={effect.priceDiamonds} periodDays={effect.periodDays} />
+                      <PriceBadge
+                        forSale={effect.forSale}
+                        priceDiamonds={effect.priceDiamonds}
+                        periodDays={effect.periodDays}
+                        minVipLevel={effect.minVipLevel}
+                        recommended={effect.recommended}
+                      />
                       {effect.usedByCategories.map((category) => (
                         <Badge key={category} tone={CATEGORY_TONE}>
                           {category}
@@ -521,6 +624,37 @@ export default function DecorPage() {
       )}
 
       {holdersFrame !== null && <FrameHoldersModal frame={holdersFrame} onClose={() => setHoldersFrame(null)} />}
+
+      {editingRide !== null && (
+        <RideFormModal
+          ride={editingRide === 'new' ? null : editingRide}
+          existingKeys={rides.map((each) => each.key)}
+          onClose={() => setEditingRide(null)}
+          onSaved={(ride, isNew) => {
+            setEditingRide(null);
+            toast.success(isNew ? `Ride “${ride.name}” is on sale.` : `Ride “${ride.name}” saved.`);
+            refresh();
+          }}
+        />
+      )}
+
+      {deletingRide !== null && (
+        <DeleteRideModal
+          ride={deletingRide}
+          onClose={() => setDeletingRide(null)}
+          onDeleted={(key, holders) => {
+            setDeletingRide(null);
+            toast.success(
+              holders > 0
+                ? `Ride “${key}” retired; ${holders} member${holders === 1 ? '' : 's'} keep their receipt and stop playing it.`
+                : `Ride “${key}” retired.`,
+            );
+            refresh();
+          }}
+        />
+      )}
+
+      {holdersRide !== null && <RideHoldersModal ride={holdersRide} onClose={() => setHoldersRide(null)} />}
     </div>
   );
 }
@@ -578,12 +712,31 @@ function FrameArt({ frame }: { frame: ProfileFrame }) {
   );
 }
 
-function PriceBadge({ forSale, priceDiamonds, periodDays }: { forSale: boolean; priceDiamonds: number; periodDays: number | null }) {
-  if (!forSale) return <Badge tone="slate">free</Badge>;
+function PriceBadge({
+  forSale,
+  priceDiamonds,
+  periodDays,
+  minVipLevel,
+  recommended,
+}: {
+  forSale: boolean;
+  priceDiamonds: number;
+  periodDays: number | null;
+  minVipLevel: number;
+  recommended: boolean;
+}) {
   return (
-    <Badge tone="amber">
-      {formatDiamonds(priceDiamonds)} · {periodDays === null ? 'forever' : `${periodDays}d`}
-    </Badge>
+    <>
+      {recommended && <Badge tone="violet">recommended</Badge>}
+      {minVipLevel > 0 && <Badge tone="fuchsia">vip {minVipLevel}</Badge>}
+      {forSale ? (
+        <Badge tone="amber">
+          {formatDiamonds(priceDiamonds)} · {periodDays === null ? 'forever' : `${periodDays}d`}
+        </Badge>
+      ) : (
+        <Badge tone="slate">free</Badge>
+      )}
+    </>
   );
 }
 
@@ -607,6 +760,8 @@ interface ThemeForm {
   forSale: boolean;
   priceDiamonds: string;
   periodDays: string;
+  minVipLevel: string;
+  recommended: boolean;
 }
 
 /**
@@ -634,6 +789,17 @@ function validatePricing(forSale: boolean, priceRaw: string, daysRaw: string): {
   return errors;
 }
 
+/**
+ * The `min_vip_level` CHECK in `0024_store_vip_and_recommended.sql`: an integer rung from 0 (open to
+ * everybody) to 20. The server re-reads it with the same bounds; this only says so before the round trip.
+ */
+function validateVipLevel(raw: string): string | undefined {
+  const value = raw.trim();
+  if (!/^\d+$/.test(value)) return 'Whole number between 0 and 20.';
+  if (Number.parseInt(value, 10) > 20) return 'Between 0 and 20.';
+  return undefined;
+}
+
 function validateTheme(form: ThemeForm, isNew: boolean, existingSlugs: string[]): Partial<Record<keyof ThemeForm, string>> {
   const errors: Partial<Record<keyof ThemeForm, string>> = {};
   if (!SLUG_PATTERN.test(form.slug.trim())) {
@@ -652,6 +818,8 @@ function validateTheme(form: ThemeForm, isNew: boolean, existingSlugs: string[])
   const pricing = validatePricing(form.forSale, form.priceDiamonds, form.periodDays);
   if (pricing.price !== undefined) errors.priceDiamonds = pricing.price;
   if (pricing.days !== undefined) errors.periodDays = pricing.days;
+  const vip = validateVipLevel(form.minVipLevel);
+  if (vip !== undefined) errors.minVipLevel = vip;
   return errors;
 }
 
@@ -659,7 +827,7 @@ function ThemeFormModal({ theme, existingSlugs, onClose, onSaved }: ThemeFormMod
   const isNew = theme === null;
   const [form, setForm] = useState<ThemeForm>(() =>
     theme === null
-      ? { slug: '', name: '', accent: '#3ddc97', wallpaperUrl: '', isDefault: false, sortOrder: '0', forSale: false, priceDiamonds: '0', periodDays: '' }
+      ? { slug: '', name: '', accent: '#3ddc97', wallpaperUrl: '', isDefault: false, sortOrder: '0', forSale: false, priceDiamonds: '0', periodDays: '', minVipLevel: '0', recommended: false }
       : {
           slug: theme.slug,
           name: theme.name,
@@ -670,6 +838,8 @@ function ThemeFormModal({ theme, existingSlugs, onClose, onSaved }: ThemeFormMod
           forSale: theme.forSale,
           priceDiamonds: String(theme.priceDiamonds),
           periodDays: theme.periodDays === null ? '' : String(theme.periodDays),
+          minVipLevel: String(theme.minVipLevel),
+          recommended: theme.recommended,
         },
   );
   const [submitting, setSubmitting] = useState(false);
@@ -694,6 +864,8 @@ function ThemeFormModal({ theme, existingSlugs, onClose, onSaved }: ThemeFormMod
       forSale: form.forSale,
       priceDiamonds: Number.parseInt(form.priceDiamonds.trim() || '0', 10),
       periodDays: form.periodDays.trim() === '' ? null : Number.parseInt(form.periodDays.trim(), 10),
+      minVipLevel: Number.parseInt(form.minVipLevel.trim(), 10),
+      recommended: form.recommended,
     };
     if (isNew) input.slug = form.slug.trim();
     try {
@@ -838,6 +1010,21 @@ function ThemeFormModal({ theme, existingSlugs, onClose, onSaved }: ThemeFormMod
             error={errors.periodDays}
             hint="Empty sells it once and forever."
           />
+          <Input
+            label="VIP level required to buy"
+            inputMode="numeric"
+            value={form.minVipLevel}
+            onChange={(event) => setField('minVipLevel', event.target.value)}
+            error={errors.minVipLevel}
+            hint="0 opens the buy to every member; N means only VIP N and above."
+          />
+          <label className="flex items-center gap-3 rounded-lg border border-edge/60 bg-elevated/40 px-3 py-2.5">
+            <Switch checked={form.recommended} onChange={(next) => setField('recommended', next)} label="Recommend this theme" />
+            <span className="text-xs">
+              <span className="font-medium text-ink">Recommended</span>{' '}
+              <span className="text-faint">— shown first in the member's store.</span>
+            </span>
+          </label>
         </div>
 
         <div className="flex items-center gap-3 rounded-xl border border-edge/60 bg-elevated/40 p-3">
@@ -853,6 +1040,8 @@ function ThemeFormModal({ theme, existingSlugs, onClose, onSaved }: ThemeFormMod
               priceDiamonds: 0,
               forSale: form.forSale,
               periodDays: null,
+              minVipLevel: Number.parseInt(form.minVipLevel, 10) || 0,
+              recommended: form.recommended,
             }}
           />
           <p className="text-[11px] leading-relaxed text-faint">
@@ -962,6 +1151,8 @@ interface EffectForm {
   forSale: boolean;
   priceDiamonds: string;
   periodDays: string;
+  minVipLevel: string;
+  recommended: boolean;
 }
 
 function validateEffect(form: EffectForm, isNew: boolean, existingKeys: string[]): Partial<Record<keyof EffectForm, string>> {
@@ -984,6 +1175,8 @@ function validateEffect(form: EffectForm, isNew: boolean, existingKeys: string[]
   const pricing = validatePricing(form.kind === 'WELCOME' && form.forSale, form.priceDiamonds, form.periodDays);
   if (pricing.price !== undefined) errors.priceDiamonds = pricing.price;
   if (pricing.days !== undefined) errors.periodDays = pricing.days;
+  const vip = validateVipLevel(form.minVipLevel);
+  if (vip !== undefined) errors.minVipLevel = vip;
   return errors;
 }
 
@@ -991,7 +1184,7 @@ function EffectFormModal({ effect, existingKeys, defaultKind, onClose, onSaved }
   const isNew = effect === null;
   const [form, setForm] = useState<EffectForm>(() =>
     effect === null
-      ? { key: '', kind: defaultKind, name: '', url: '', sortOrder: '0', forSale: false, priceDiamonds: '0', periodDays: '' }
+      ? { key: '', kind: defaultKind, name: '', url: '', sortOrder: '0', forSale: false, priceDiamonds: '0', periodDays: '', minVipLevel: '0', recommended: false }
       : {
           key: effect.key,
           kind: effect.kind,
@@ -1001,6 +1194,8 @@ function EffectFormModal({ effect, existingKeys, defaultKind, onClose, onSaved }
           forSale: effect.forSale,
           priceDiamonds: String(effect.priceDiamonds),
           periodDays: effect.periodDays === null ? '' : String(effect.periodDays),
+          minVipLevel: String(effect.minVipLevel),
+          recommended: effect.recommended,
         },
   );
   const [submitting, setSubmitting] = useState(false);
@@ -1021,16 +1216,21 @@ function EffectFormModal({ effect, existingKeys, defaultKind, onClose, onSaved }
       url: form.url.trim(),
       sortOrder: Number.parseInt(form.sortOrder.trim(), 10),
     };
-    // An ambient loop plays behind every room in its category, so it has no buyer and no price.
-    // Sending zero here instead of the form's values keeps a kind change from carrying a price over.
+    // An ambient loop plays behind every room in its category, so it has no buyer and no price —
+    // and with no buyer the VIP gate and the store "recommended" listing are moot. Sending zero here
+    // instead of the form's values keeps a kind change from carrying a price over.
     if (form.kind === 'WELCOME') {
       input.forSale = form.forSale;
       input.priceDiamonds = form.forSale ? Number.parseInt(form.priceDiamonds.trim() || '0', 10) : 0;
       input.periodDays = form.periodDays.trim() === '' ? null : Number.parseInt(form.periodDays.trim(), 10);
+      input.minVipLevel = Number.parseInt(form.minVipLevel.trim(), 10);
+      input.recommended = form.recommended;
     } else {
       input.forSale = false;
       input.priceDiamonds = 0;
       input.periodDays = null;
+      input.minVipLevel = 0;
+      input.recommended = false;
     }
     if (isNew) {
       input.key = form.key.trim();
@@ -1091,10 +1291,12 @@ function EffectFormModal({ effect, existingKeys, defaultKind, onClose, onSaved }
             onChange={(event) => {
               const kind = event.target.value as VisualEffectKind;
               setField('kind', kind);
-              // Switching away from WELCOME disables both boxes; clear them in the same breath.
+              // Switching away from WELCOME disables the whole pricing block; clear it in the same breath.
               if (kind !== 'WELCOME') {
                 setField('forSale', false);
                 setField('priceDiamonds', '0');
+                setField('minVipLevel', '0');
+                setField('recommended', false);
               }
             }}
           >
@@ -1152,6 +1354,27 @@ function EffectFormModal({ effect, existingKeys, defaultKind, onClose, onSaved }
             disabled={form.kind !== 'WELCOME'}
             hint="Empty sells it once and forever."
           />
+          <Input
+            label="VIP level required to buy"
+            inputMode="numeric"
+            value={form.minVipLevel}
+            onChange={(event) => setField('minVipLevel', event.target.value)}
+            error={errors.minVipLevel}
+            disabled={form.kind !== 'WELCOME'}
+            hint="0 opens the buy to every member; N means only VIP N and above."
+          />
+          <label className="flex items-center gap-3 rounded-lg border border-edge/60 bg-elevated/40 px-3 py-2.5">
+            <Switch
+              checked={form.kind === 'WELCOME' && form.recommended}
+              onChange={(next) => setField('recommended', next)}
+              disabled={form.kind !== 'WELCOME'}
+              label="Recommend this flourish"
+            />
+            <span className="text-xs">
+              <span className="font-medium text-ink">Recommended</span>{' '}
+              <span className="text-faint">— shown first in the member's store.</span>
+            </span>
+          </label>
         </div>
 
         <ArtField
@@ -1278,6 +1501,8 @@ interface FrameForm {
   forSale: boolean;
   priceDiamonds: string;
   periodDays: string;
+  minVipLevel: string;
+  recommended: boolean;
 }
 
 function validateFrame(form: FrameForm, isNew: boolean, existingKeys: string[]): Partial<Record<keyof FrameForm, string>> {
@@ -1298,6 +1523,8 @@ function validateFrame(form: FrameForm, isNew: boolean, existingKeys: string[]):
   const pricing = validatePricing(form.forSale, form.priceDiamonds, form.periodDays);
   if (pricing.price !== undefined) errors.priceDiamonds = pricing.price;
   if (pricing.days !== undefined) errors.periodDays = pricing.days;
+  const vip = validateVipLevel(form.minVipLevel);
+  if (vip !== undefined) errors.minVipLevel = vip;
   return errors;
 }
 
@@ -1305,7 +1532,7 @@ function FrameFormModal({ frame, existingKeys, onClose, onSaved }: FrameFormModa
   const isNew = frame === null;
   const [form, setForm] = useState<FrameForm>(() =>
     frame === null
-      ? { key: '', name: '', artUrl: '', accent: '#c98a6b', sortOrder: '0', forSale: true, priceDiamonds: '300', periodDays: '30' }
+      ? { key: '', name: '', artUrl: '', accent: '#c98a6b', sortOrder: '0', forSale: true, priceDiamonds: '300', periodDays: '30', minVipLevel: '0', recommended: false }
       : {
           key: frame.key,
           name: frame.name,
@@ -1315,6 +1542,8 @@ function FrameFormModal({ frame, existingKeys, onClose, onSaved }: FrameFormModa
           forSale: frame.forSale,
           priceDiamonds: String(frame.priceDiamonds),
           periodDays: frame.periodDays === null ? '' : String(frame.periodDays),
+          minVipLevel: String(frame.minVipLevel),
+          recommended: frame.recommended,
         },
   );
   const [submitting, setSubmitting] = useState(false);
@@ -1338,6 +1567,8 @@ function FrameFormModal({ frame, existingKeys, onClose, onSaved }: FrameFormModa
       forSale: form.forSale,
       priceDiamonds: Number.parseInt(form.priceDiamonds.trim() || '0', 10),
       periodDays: form.periodDays.trim() === '' ? null : Number.parseInt(form.periodDays.trim(), 10),
+      minVipLevel: Number.parseInt(form.minVipLevel.trim(), 10),
+      recommended: form.recommended,
     };
     if (isNew) input.key = form.key.trim();
     try {
@@ -1471,6 +1702,21 @@ function FrameFormModal({ frame, existingKeys, onClose, onSaved }: FrameFormModa
             error={errors.periodDays}
             hint="Empty sells it once and forever."
           />
+          <Input
+            label="VIP level required to buy"
+            inputMode="numeric"
+            value={form.minVipLevel}
+            onChange={(event) => setField('minVipLevel', event.target.value)}
+            error={errors.minVipLevel}
+            hint="0 opens the buy to every member; N means only VIP N and above."
+          />
+          <label className="flex items-center gap-3 rounded-lg border border-edge/60 bg-elevated/40 px-3 py-2.5">
+            <Switch checked={form.recommended} onChange={(next) => setField('recommended', next)} label="Recommend this frame" />
+            <span className="text-xs">
+              <span className="font-medium text-ink">Recommended</span>{' '}
+              <span className="text-faint">— shown first in the member's store.</span>
+            </span>
+          </label>
         </div>
 
         <div className="flex items-center gap-3 rounded-xl border border-edge/60 bg-elevated/40 p-3">
@@ -1484,6 +1730,8 @@ function FrameFormModal({ frame, existingKeys, onClose, onSaved }: FrameFormModa
               priceDiamonds: 0,
               forSale: form.forSale,
               periodDays: null,
+              minVipLevel: Number.parseInt(form.minVipLevel, 10) || 0,
+              recommended: form.recommended,
               holders: 0,
             }}
           />
@@ -1607,6 +1855,476 @@ function FrameHoldersModal({ frame, onClose }: { frame: ProfileFrame; onClose: (
       ) : holders.length === 0 ? (
         <EmptyState
           title="Nobody holds this ring"
+          message="No receipt names this key. The row is still sellable."
+          icon={<IconUsers className="h-6 w-6" />}
+        />
+      ) : (
+        <ul className="divide-y divide-edge/50">
+          {holders.map((holder) => (
+            <li key={holder.userId} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+              <span className="font-medium text-ink">{holder.username}</span>
+              <span className="flex items-center gap-2 text-[11px] text-muted">
+                <Badge tone={holder.acquiredVia === 'PURCHASE' ? 'green' : 'sky'}>
+                  {holder.acquiredVia === 'PURCHASE' ? 'bought' : 'granted'}
+                </Badge>
+                <span className="tabular-nums">
+                  {holder.expiresAt === null ? 'permanent' : `until ${holder.expiresAt.slice(0, 10)}`}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Ride create / edit (migration 0026).
+//
+// Sold and worn like a frame, so the pricing block is the frames' own rules; what a frame does not
+// have is the two columns that decide the entrance itself. `format` names the renderer the phone
+// hands the URL to, and `durationMs` is the room's attention budget — 0 being a value ("play the file
+// for its own length"), which is why the gap between 1 and 249 is refused rather than rounded.
+// ---------------------------------------------------------------------------
+
+/**
+ * The asset as an operator reads it. Only Lottie plays inside the panel — SVGA and MP4 belong to the
+ * phone's renderers — so an unplayable container says so instead of showing a broken preview.
+ */
+function RideArt({ ride }: { ride: Pick<ProfileRide, 'url' | 'format'> }) {
+  const resolved = assetUrl(ride.url);
+  if (ride.format === 'MP4') {
+    return resolved === undefined ? (
+      <span className="grid h-[56px] w-[100px] shrink-0 place-items-center rounded-xl border border-dashed border-white/10 text-[10px] text-muted">
+        no file
+      </span>
+    ) : (
+      <video
+        src={resolved}
+        controls
+        muted
+        playsInline
+        preload="metadata"
+        className="h-[56px] w-[100px] shrink-0 rounded-xl border border-edge/60 bg-elevated object-cover"
+      />
+    );
+  }
+  if (ride.format === 'SVGA') {
+    return (
+      <span className="grid h-[56px] w-[56px] shrink-0 place-items-center rounded-xl border border-edge/60 bg-elevated text-[10px] uppercase text-faint">
+        svga
+      </span>
+    );
+  }
+  return (
+    <LottiePreview
+      src={ride.url}
+      size={56}
+      loop={false}
+      className="shrink-0 rounded-xl border border-edge/60 bg-elevated"
+      fallback="no file"
+    />
+  );
+}
+
+interface RideFormModalProps {
+  ride: ProfileRide | null;
+  existingKeys: string[];
+  onClose: () => void;
+  onSaved: (ride: ProfileRide, isNew: boolean) => void;
+}
+
+interface RideForm {
+  key: string;
+  name: string;
+  url: string;
+  format: ProfileRideFormat;
+  durationMs: string;
+  sortOrder: string;
+  forSale: boolean;
+  priceDiamonds: string;
+  periodDays: string;
+  minVipLevel: string;
+  recommended: boolean;
+}
+
+function validateRide(form: RideForm, isNew: boolean, existingKeys: string[]): Partial<Record<keyof RideForm, string>> {
+  const errors: Partial<Record<keyof RideForm, string>> = {};
+  if (!SLUG_PATTERN.test(form.key.trim())) {
+    errors.key = 'Lower-case letters, digits and single dashes, 2–39 characters, starting with a letter or digit.';
+  } else if (isNew && existingKeys.includes(form.key.trim())) {
+    errors.key = 'A ride with that key already exists.';
+  }
+  const name = form.name.trim();
+  if (name.length === 0) errors.name = 'Name is required.';
+  else if (name.length > 60) errors.name = 'Name is limited to 60 characters.';
+  const url = form.url.trim();
+  if (url.length === 0) errors.url = 'A ride file is required.';
+  else if (!URL_PATTERN.test(url)) errors.url = 'Start the path with / or use https://.';
+  if (!RIDE_FORMATS.includes(form.format)) errors.format = 'Choose the renderer the app opens this file with.';
+  const duration = form.durationMs.trim();
+  if (!/^\d+$/.test(duration)) {
+    errors.durationMs = 'Whole milliseconds — 0 plays the asset for its own length.';
+  } else {
+    const ms = Number.parseInt(duration, 10);
+    if (ms > 0 && ms < 250) errors.durationMs = 'Use 0 for the asset length, or at least 250 ms.';
+    else if (ms > 30_000) errors.durationMs = 'At most 30000 ms: a room is not handed over for longer.';
+  }
+  if (!/^-?\d+$/.test(form.sortOrder.trim())) errors.sortOrder = 'Must be a whole number.';
+  else {
+    const order = Number.parseInt(form.sortOrder.trim(), 10);
+    if (order < -9999 || order > 9999) errors.sortOrder = 'Between -9999 and 9999.';
+  }
+  const pricing = validatePricing(form.forSale, form.priceDiamonds, form.periodDays);
+  if (pricing.price !== undefined) errors.priceDiamonds = pricing.price;
+  if (pricing.days !== undefined) errors.periodDays = pricing.days;
+  const vip = validateVipLevel(form.minVipLevel);
+  if (vip !== undefined) errors.minVipLevel = vip;
+  return errors;
+}
+
+function RideFormModal({ ride, existingKeys, onClose, onSaved }: RideFormModalProps) {
+  const isNew = ride === null;
+  const [form, setForm] = useState<RideForm>(() =>
+    ride === null
+      ? {
+          key: '',
+          name: '',
+          url: '',
+          format: 'LOTTIE',
+          durationMs: '4000',
+          sortOrder: '0',
+          forSale: true,
+          priceDiamonds: '2500',
+          periodDays: '30',
+          minVipLevel: '0',
+          recommended: false,
+        }
+      : {
+          key: ride.key,
+          name: ride.name,
+          url: ride.url,
+          format: ride.format,
+          durationMs: String(ride.durationMs),
+          sortOrder: String(ride.sortOrder),
+          forSale: ride.forSale,
+          priceDiamonds: String(ride.priceDiamonds),
+          periodDays: ride.periodDays === null ? '' : String(ride.periodDays),
+          minVipLevel: String(ride.minVipLevel),
+          recommended: ride.recommended,
+        },
+  );
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  const errors = validateRide(form, isNew, existingKeys);
+  const hasErrors = Object.keys(errors).length > 0;
+  const setField = <K extends keyof RideForm>(key: K, value: RideForm[K]) =>
+    setForm((current) => ({ ...current, [key]: value }));
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (hasErrors || submitting) return;
+    setSubmitting(true);
+    setServerError(null);
+    const input: RideInput = {
+      name: form.name.trim(),
+      url: form.url.trim(),
+      format: form.format,
+      durationMs: Number.parseInt(form.durationMs.trim(), 10),
+      sortOrder: Number.parseInt(form.sortOrder.trim(), 10),
+      forSale: form.forSale,
+      priceDiamonds: Number.parseInt(form.priceDiamonds.trim() || '0', 10),
+      periodDays: form.periodDays.trim() === '' ? null : Number.parseInt(form.periodDays.trim(), 10),
+      minVipLevel: Number.parseInt(form.minVipLevel.trim(), 10),
+      recommended: form.recommended,
+    };
+    // `key` is the identity a receipt stores. The server refuses a second value on an update
+    // (`ride_key_immutable`), so an edit sends the path segment and no key in the body at all.
+    if (isNew) input.key = form.key.trim();
+    try {
+      const result = isNew ? await api.createRide(input) : await api.updateRide(form.key, input);
+      onSaved(result.ride, isNew);
+    } catch (err) {
+      setServerError(err instanceof ApiError ? err.message : 'Saving the ride failed.');
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="lg"
+      title={isNew ? 'Create ride' : `Edit “${ride.name}”`}
+      subtitle={
+        isNew
+          ? 'The key is what a receipt stores, so it cannot change later — add a new ride instead.'
+          : 'The key stays; members who already bought it keep it.'
+      }
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" type="submit" form="ride-form" loading={submitting} disabled={hasErrors}>
+            {isNew ? 'Create ride' : 'Save changes'}
+          </Button>
+        </>
+      }
+    >
+      <form id="ride-form" onSubmit={submit} className="space-y-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input
+            label="Key"
+            value={form.key}
+            onChange={(event) => setField('key', event.target.value)}
+            error={errors.key}
+            placeholder="ride-confetti"
+            disabled={!isNew}
+            hint={isNew ? 'Used on receipts and in the store API.' : 'Immutable — receipts name this value.'}
+            maxLength={39}
+          />
+          <Input
+            label="Display name"
+            value={form.name}
+            onChange={(event) => setField('name', event.target.value)}
+            error={errors.name}
+            placeholder="Confetti Arrival"
+            maxLength={60}
+          />
+        </div>
+
+        <ArtField
+          kind="RIDE"
+          label="Ride file"
+          value={form.url}
+          error={errors.url}
+          placeholder="/uploads/<uuid>.mp4 or https://cdn…"
+          hint="The asset every device in the room plays full-screen while this member arrives."
+          onChange={(url) => setField('url', url)}
+          onError={setServerError}
+        />
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Select
+            label="Renderer"
+            value={form.format}
+            onChange={(event) => setField('format', event.target.value as ProfileRideFormat)}
+            error={errors.format}
+          >
+            <option value="LOTTIE">LOTTIE — plays in the panel and on phones</option>
+            <option value="SVGA">SVGA — phone renderer only</option>
+            <option value="MP4">MP4 — video</option>
+          </Select>
+          <Input
+            label="Screen budget (ms)"
+            inputMode="numeric"
+            value={form.durationMs}
+            onChange={(event) => setField('durationMs', event.target.value)}
+            error={errors.durationMs}
+            hint={`0 = the asset's own length; otherwise 250–30000 ms. This reads as ${formatDurationMs(
+              /^\d+$/.test(form.durationMs.trim()) ? Number.parseInt(form.durationMs.trim(), 10) : 0,
+            )}.`}
+          />
+        </div>
+
+        <p className="text-[11px] leading-relaxed text-faint">
+          The renderer has to match the file you uploaded, or a phone hands the bytes to the wrong
+          player and the room waits out the whole budget on a black screen. A budget of{' '}
+          <span className="font-mono text-muted">0</span> is a real choice, not an empty field: the
+          client stops when the asset says it is done — safe for a Lottie scene, and a video that never
+          reports a length will keep the{' '}
+          <span className="font-mono text-muted">0</span>.
+        </p>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input
+            label="Sort order"
+            inputMode="numeric"
+            value={form.sortOrder}
+            onChange={(event) => setField('sortOrder', event.target.value)}
+            error={errors.sortOrder}
+            hint="Rides are published in this order."
+          />
+          <div className="flex items-end">
+            <label className="flex w-full items-center gap-3 rounded-lg border border-edge/60 bg-elevated/40 px-3 py-2.5">
+              <Switch
+                checked={form.forSale}
+                onChange={(next) => {
+                  setField('forSale', next);
+                  // "Not for sale" requires price 0 in the row's CHECK, and the price box is
+                  // disabled then — the switch has to clear it or the form is stuck.
+                  if (!next) setField('priceDiamonds', '0');
+                }}
+                label="Sell this ride"
+              />
+              <span className="text-xs">
+                <span className="font-medium text-ink">For sale</span>{' '}
+                <span className="text-faint">— off keeps it a grant-only entrance.</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input
+            label="Price (diamonds)"
+            inputMode="numeric"
+            value={form.priceDiamonds}
+            onChange={(event) => setField('priceDiamonds', event.target.value)}
+            error={errors.priceDiamonds}
+            disabled={!form.forSale}
+            hint="Read from the row at purchase time."
+          />
+          <Input
+            label="Rent for (days)"
+            inputMode="numeric"
+            value={form.periodDays}
+            onChange={(event) => setField('periodDays', event.target.value)}
+            error={errors.periodDays}
+            hint="Empty sells it once and forever."
+          />
+          <Input
+            label="VIP level required to buy"
+            inputMode="numeric"
+            value={form.minVipLevel}
+            onChange={(event) => setField('minVipLevel', event.target.value)}
+            error={errors.minVipLevel}
+            hint="0 opens the buy to every member; N means only VIP N and above."
+          />
+          <label className="flex items-center gap-3 rounded-lg border border-edge/60 bg-elevated/40 px-3 py-2.5">
+            <Switch checked={form.recommended} onChange={(next) => setField('recommended', next)} label="Recommend this ride" />
+            <span className="text-xs">
+              <span className="font-medium text-ink">Recommended</span>{' '}
+              <span className="text-faint">— shown first in the member's store.</span>
+            </span>
+          </label>
+        </div>
+
+        <div className="flex items-center gap-3 rounded-xl border border-edge/60 bg-elevated/40 p-3">
+          <RideArt ride={{ url: form.url.trim(), format: form.format }} />
+          <p className="text-[11px] leading-relaxed text-faint">
+            The asset at the size the room will hand it over — a Lottie that fails to load here would
+            leave every member entering with nothing but a black screen for{' '}
+            {formatDurationMs(/^\d+$/.test(form.durationMs.trim()) ? Number.parseInt(form.durationMs.trim(), 10) : 0)}.
+            An SVGA file has no renderer in the browser, so it can only be named here, not watched.
+          </p>
+        </div>
+
+        {serverError !== null && (
+          <div className="flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 py-2 text-xs text-rose-200">
+            <IconAlert className="h-4 w-4 shrink-0" />
+            {serverError}
+          </div>
+        )}
+      </form>
+    </Modal>
+  );
+}
+
+function DeleteRideModal({
+  ride,
+  onClose,
+  onDeleted,
+}: {
+  ride: ProfileRide;
+  onClose: () => void;
+  onDeleted: (key: string, holders: number) => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  const confirm = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setServerError(null);
+    try {
+      const result = await api.deleteRide(ride.key);
+      onDeleted(result.key, result.membersStillHolding);
+    } catch (err) {
+      setServerError(err instanceof ApiError ? err.message : 'Delete failed.');
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="sm"
+      title={`Retire “${ride.name}”?`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="danger" onClick={() => void confirm()} loading={submitting}>
+            Retire ride
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3 text-sm text-muted">
+        <p>
+          The shop stops selling the entrance and the room stops playing it.{' '}
+          {ride.holders === 0 ? (
+            'Nobody holds this key, so no member loses anything.'
+          ) : (
+            <span>
+              <span className="font-semibold text-ink">
+                {ride.holders} member{ride.holders === 1 ? '' : 's'}
+              </span>{' '}
+              keep their receipt — the proof they paid — and simply arrive with the plain entry banner
+              until the key is added back.
+            </span>
+          )}
+        </p>
+        <p className="text-xs text-faint">
+          The uploaded file stays in the media library, where it can be deleted. Removing ownership rows
+          is not offered: a receipt is history, not a setting.
+        </p>
+        {serverError !== null && (
+          <div className="flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 py-2 text-xs text-rose-200">
+            <IconAlert className="h-4 w-4 shrink-0" />
+            {serverError}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function RideHoldersModal({ ride, onClose }: { ride: ProfileRide; onClose: () => void }) {
+  const [holders, setHolders] = useState<RideHolder[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .rideHolders(ride.key)
+      .then((result) => {
+        if (!cancelled) setHolders(result.holders);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof ApiError ? err.message : 'Could not load the holders.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ride.key]);
+
+  return (
+    <Modal open onClose={onClose} size="md" title={`Who holds “${ride.name}”`} footer={<Button onClick={onClose}>Close</Button>}>
+      {error !== null ? (
+        <div className="flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 py-2 text-xs text-rose-200">
+          <IconAlert className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      ) : holders === null ? (
+        <div className="grid h-32 place-items-center text-violet-300">
+          <Spinner className="h-6 w-6" />
+        </div>
+      ) : holders.length === 0 ? (
+        <EmptyState
+          title="Nobody holds this ride"
           message="No receipt names this key. The row is still sellable."
           icon={<IconUsers className="h-6 w-6" />}
         />

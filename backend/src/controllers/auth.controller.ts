@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { env } from '../config/env';
 import { one, query } from '../config/db';
+import { rateLimit } from '../config/redis';
 import { AdminRow, UserRow } from '../types/db';
 import { hashSecret, verifySecret } from '../utils/crypto';
 import { asyncHandler, normalizePhone, optionalString, requireString, ApiError } from '../utils/http';
@@ -68,6 +69,11 @@ async function ensureBootstrapAdmin(): Promise<AdminRow> {
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const username = requireString(req.body?.username, 'username', { max: 40 });
   const password = requireString(req.body?.password, 'password', { max: 200 });
+
+  // An operator password is long-lived, so unlike a phone OTP it has no short code expiry to blunt
+  // a guess. Bucket on IP *and* account: one busy office NAT must not lock out every operator there.
+  const allowed = await rateLimit(`admin-login:${req.ip}:${username}`, 10, 60);
+  if (allowed === -1) throw ApiError.tooManyRequests('Too many sign-in attempts. Try again in a minute.');
 
   const admin = await findAdminByUsername(username);
   if (!admin || !verifySecret(password, admin.password_hash)) {

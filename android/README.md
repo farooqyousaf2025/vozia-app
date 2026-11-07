@@ -60,6 +60,20 @@ will never lose** — generate it once, back it up offline.
   `VOIZA_LIVEKIT_URL=wss://livekit.voiza.example.com`. Put it in
   `~/.gradle/gradle.properties` or export it in the shell.
 
+**The emulator defaults apply to the debug variant only, and a release build refuses to
+guess.** `assembleRelease` (or `assemble` / `build`) fails at configuration time unless
+both properties are supplied — `-PVOIZA_API_BASE_URL=… -PVOIZA_LIVEKIT_URL=…` — because a
+signed APK that quietly dials `10.0.2.2` ships as a working-looking app that reaches
+nothing. `assembleDebug` still needs no flags, so the emulator walk is unaffected.
+
+### The code that comes back from `/request-otp`
+
+With `SMS_PROVIDER=mock` the backend echoes the OTP as `devCode` so a tester can skip the
+inbox. `AuthViewModel` fills it into the code field **only when `BuildConfig.DEBUG`**, and
+drops it to null in a release build even against a dev backend that still hands one out:
+the convenience is the one thing in the flow that would let a shipped client bypass SMS
+verification entirely.
+
 ### Cleartext traffic
 
 `android:usesCleartextTraffic` is **not** set. The manifest points at
@@ -102,18 +116,43 @@ valid cert, or `adb reverse` for local testing).
   fall back on — a missing `seatCapacity` lands as 0 and the harness fails loudly.
   `SeatGrid` lays out whatever the room actually has: 3 per row up to nine seats, then 4
   narrower cells per row, so a 21-seat room shows all 21 instead of hiding thirteen.
-- **Gift/room animation.** `animationUrl` (.json served from `/gifts/*.json`)
-  plays as a Lottie through `com.airbnb.android:lottie-compose`, fetched from
-  the API origin at runtime — no animation ships in the APK. `GiftEffectOverlay`
-  falls back to the pure-Compose treatment (icon float-up + particle burst)
-  whenever a gift has no animation or the URL fails, and a 6 s watchdog pops the
-  queue slot either way so a dead URL cannot stall the gift queue.
+- **Gift animation is routed by the server's format, not a file name.**
+  `ui/screens/room/gifts/GiftRenderer.kt` is the one door: `gifts.animation_format` — what
+  `media.service.ts` sniffed out of the uploaded bytes and wrote on the catalogue row — picks the
+  player. `LOTTIE` plays through `com.airbnb.android:lottie-compose`, `MP4` through `MediaPlayer` +
+  `SurfaceView` in `gifts/VideoArtLayer.kt`, and `SVGA` through the decoder vendored under
+  `gifts/svga/` (`SvgaWire` reads the protobuf wire, `SvgaParser` turns an exported `.svga` ZIP into
+  a `SvgaMovie`, `SvgaPlayer` answers "what does tick *n* look like", and `gifts/SvgaArtLayer.kt`
+  drives it onto a `Canvas`). No SVGA library is a dependency; the model and the wire reader are
+  plain Kotlin and are unit-tested on the JVM (`SvgaWireTest`, `SvgaParserTest`). Everything is
+  fetched from the API origin at runtime — no animation ships in the APK.
+  A gift with no animation file plays the pure-Compose burst (`BurstGiftRenderer`), and so does an
+  SVGA whose bytes will not open: the money was paid and the room still has to see the gift. A dead
+  Lottie or MP4 URL is not swapped for a burst — the overlay still names sender, gift and value, and
+  the slot closes on its own clock. That clock is `animationSlotMs(declaredMs, fallbackMs)`: the
+  operator's `gifts.duration_ms` when it is a usable 250–30 000, otherwise the container's ceiling
+  (6 s Lottie, 6 s SVGA, 8 s MP4). `0` is an answer, not a gap — "play it for its own length" — so
+  it takes the ceiling rather than a short default that would cut a long scene in half.
   `RoomVisuals.kt` adds the matching theme wallpaper, a once-per-join welcome
   flourish and a quiet ambient loop. All three are **URLs the API named** —
   `room.themeWallpaper`, the catalogue's `welcome` and `room.ambientEffect` —
   never a path built from a slug, because an operator's wallpaper lives at
   `/uploads/<uuid>.png`. A room whose payload carries no wallpaper just shows the
   gradient underneath.
+- **The ride a member arrives with is a file, not a badge.** Migration 0026 put `entryRide`
+  (`url`, `format`, `durationMs`, `name`) on the joiner's `MiniUser` inside `room:user_joined`, and
+  `PartyRoomViewModel` keeps that arrival as `state.entryRide` — deliberately *not* the local user's
+  own ride, for the same reason their own entry banner is not replayed to them. `EntryRideOverlay`
+  draws it over the room and `RideArtLayer` opens the file in the renderer its format names, using
+  the same `animationSlotMs` rule and the same per-container ceilings as a gift, so an operator who
+  uploads one file twice — as a gift and as a ride — has it cut off at the same beat either way.
+  Two differences are on purpose: an SVGA ride that will not open hands the screen back instead of
+  playing a burst (a ride is a decoration bought for oneself, and the line at the foot of the
+  overlay already says who arrived), and the overlay is drawn in the room's own layer, *under*
+  `GiftEffectOverlay`'s `Dialog`, so an arrival colliding with a fullscreen gift waits rather than
+  covering it. The shop sells rides under the *Arrivals* tab and previews them through the same
+  `RideArtLayer`, in a `Dialog` because the detail sheet is a `ModalBottomSheet` — its own window,
+  which would sit on top of anything drawn in the screen's `Box`.
 - **Gift sound.** `gifts.sound_url` is served from the backend's generated asset
   set (`chime.wav` / `whoosh.wav` / `fanfare.wav`) and played by
   `ui/components/GiftSoundPlayer.kt`, which the overlay remembers per dialog and
@@ -124,7 +163,7 @@ valid cert, or `adb reverse` for local testing).
   never looks like a failed purchase.
 - **Room effects are Compose, counted by the server.** Nothing here comes from a
   vendor UI kit: `ui/screens/room/GiftTickerColumn.kt`, `HeartLayer.kt`,
-  `EntryBanner.kt` and `GiftRankingSheet.kt` are hand-written Compose, and the
+  `QuickReactions.kt`, `EntryBanner.kt` and `GiftRankingSheet.kt` are hand-written Compose, and the
   queue policy they follow lives in one place, `domain/usecase/RoomEffects.kt`
   (pure Kotlin, unit-tested). `RoomEffects` decides that a `TICKER` gift scrolls a
   3-row column that dismisses itself after 3 s, that `FULLSCREEN` gifts
@@ -139,6 +178,17 @@ valid cert, or `adb reverse` for local testing).
   entry banner is tiered by `user_joined.user.vipLevel`, and the heart sprites are
   a `Canvas` bezier path, not a Lottie, so a hundred concurrent hearts cost one
   recomposition of one layer.
+- **A quick reaction sends a name and animates the server's picture.** `ReactionStrip` sits above
+  the action bar and offers the first six rows of `GET /api/emoji` in the picker order the operator
+  set, so what a viewer can fly is exactly what the panel published. A tap emits only that emoji's
+  `key` on `room:reaction`; `reactionByKey` in the backend looks it up, ignores a key with no row,
+  rate-limits the sender, and broadcasts the `key`, `code`, `label` and `url` it found. The device
+  never receives — and never builds — a URL it was not given, which is why a hand-written key cannot
+  make a room animate arbitrary art. `ReactionLayer` flies the result along `HeartLayer`'s tracks so
+  a puff of emoji and a puff of hearts read as one language, and because the broadcast includes the
+  sender, the ViewModel drops its own echo: the burst you played at the moment of the tap is the
+  same one the room saw. Nothing is stored behind any of this — a reaction moves no coins and writes
+  no row, so it is the one effect that may be played optimistically.
 - **A member's level is painted, never computed.** `UserRank` is the rung the
   server resolved from `users.xp` against `rank_levels`, and it arrives already
   shaped: `rank.name`, `rank.badge` (a URL, so an operator's upload at
@@ -162,6 +212,17 @@ valid cert, or `adb reverse` for local testing).
   pager cannot resize while the second tap lands): first tap selects, second sends.
   The title row carries a **Ranking** chip that swaps the gift sheet for
   `GiftRankingSheet` — both are separate windows, so opening one closes the other.
+- **A lucky box is drawn by the server and only reported by the app.** Migration 0027 turned a box
+  into an ordinary `gifts` row with `is_lucky_box` plus a prize table, so sending one is the same
+  `POST /api/gifts/send` with the same price, the same idempotency key and the same ledger row. The
+  tile prints `chanceBps` — the prize's weight against the box's total, divided where the weights
+  were written — and never a weight or an `odds` field it invented (`luckyOddsLabel` shows
+  `LUCKY <best prize> 1 in N`, or says `LUCKY BOX` when no chance was disclosed). The animation's
+  value line prints the server's `lucky.headline` above the diamonds-spent → r-coins-credited pair. Every number
+  about that money — `receiverRCoins`, `grossRCoins`, `platformTaxRCoins`, `receiverShareBps` — is
+  read off the event, which is the same object the ledger stored in `meta.lucky`; nothing here
+  re-derives a payout from the prize table, because a client that computes a payout is a client that
+  can be wrong in a way that looks like the platform's bookkeeping.
 - **Moderation traffic is room-scoped.** `room:kicked` and the operator's
   `room:warning` arrive on the private `user:<id>` channel, so both are filtered
   by `roomId` in `PartyRoomViewModel` before they touch the UI; a warning shows
@@ -171,6 +232,24 @@ valid cert, or `adb reverse` for local testing).
   every Coil load goes through `ui/components/AssetUrls.kt` (`asAssetUrl()`),
   which prefixes the scheme+authority of `BuildConfig.VOIZA_API_BASE_URL`.
   Absolute URLs (a CDN) pass through untouched.
+- **Animated art moves because `VoizaApp` installs an `ImageLoaderFactory`.** Coil's default loader
+  decodes a GIF or an animated WebP to a single static frame, which is fine until a banner — or an
+  avatar — is one. `VoizaApp` implements `ImageLoaderFactory` and registers `ImageDecoderDecoder`
+  on API 28+ and `GifDecoder` below it (both from `io.coil-kt:coil-gif`), so one `AsyncImage` call
+  site animates everywhere in the app rather than only where a surface opts in. The other three
+  banner formats do not need it: Lottie, SVGA and MP4 already have renderers — lottie-compose,
+  `ui/screens/room/gifts/SvgaArtLayer.kt` and `ui/screens/room/gifts/VideoArtLayer.kt` — which
+  `ui/components/banner/BannerArt.kt` routes to by the row's declared `format`.
+- **Banners are fetched once and navigated through two CompositionLocals.** `BannersStore`
+  (`domain/usecase`) is the only caller of `GET /api/banners`, and it calls it without a
+  `placement`, because the splash, the home strip, the gift panel and the game desk are one
+  question with four answers. A failure leaves its list empty, which draws nothing — an unloaded
+  campaign is not an error a member can act on, and it looks exactly like a platform with none.
+  A tap goes through `LocalBannerNavigator` (provided by `MainActivity` over its own
+  `NavController`) rather than a `navController` prop on four screens, so no composable reaches
+  for `ServiceLocator` and no screen has to know what a banner is allowed to point at: INTERNAL
+  is one of four routes, ROOM is `Routes.room(id)`, URL is an `ACTION_VIEW` intent, NONE is inert.
+  Impressions dedupe per banner id per session; taps always count.
 - **Wire-shape harness.** `scripts/run-dto-harness.sh` deserialises captured
   live payloads (`node ../backend/scripts/capture-wire-fixtures.cjs` and
   `capture-game-wire.cjs`, which writes `scripts/fixtures/wire-games.json`) with the
@@ -204,12 +283,63 @@ valid cert, or `adb reverse` for local testing).
 - **Socket auth** connects with `auth: { token }` (Socket.IO v5 handshake
   auth), path `/socket.io`, same host as the REST API; it re-dials
   automatically when the token changes (login/logout).
+- **A reconnect re-subscribes the room, and the room screen re-takes the seat.**
+  The server sees a reconnect as a brand-new connection and has already dropped the old
+  one from `room:<id>`, so `VoizaSocketClient` remembers the last room it was asked to
+  join and re-emits `room:join` on `EVENT_CONNECT`; the id is cleared by `leaveRoom` and
+  by `disconnect`, neither of which is a temporary drop. That alone is not enough after a
+  real network blip: LiveKit reports the member gone, the webhook stamps
+  `room_participants.left_at`, and the server's membership gate then rightly refuses the
+  socket's own re-join. So `PartyRoomViewModel.observeSocketRecovery()` watches the
+  connection edge and re-runs `JoinRoomUseCase`, which re-claims presence and re-emits the
+  socket join, then applies the returned snapshot without touching the LiveKit session —
+  LiveKit reconnects itself, and only publish rights may have moved with the seat. The
+  room is process-wide state, so leaving a screen unsubscribes the shared socket rather
+  than closing it, and `MainActivity.onDestroy` calls `disconnect()`, never the old
+  `destroy()`: the singleton is never rebuilt, and cancelling its scope would take voice
+  with it for the next `MainActivity`.
 - **The hand-raise queue needs the detail endpoint, not just the socket.**
   `room:hand_raise` is a room broadcast (`emitToRoom`, sender included), but a
   host who opens the room later never sees raises that happened before
   connecting — and the join response has no `handRaises` key. So
   `PartyRoomViewModel.loadChatHistory()` seeds the queue from
-  `GET /api/rooms/:id`, and the live event only maintains it.
+  `GET /api/rooms/:id`, and the live event only maintains it. With the microphone
+  gate on, a member's own pending ask is *not* in that payload (the queue is host-only), so a
+  rejoin shows the button un-pressed; tapping it again is `POST /seat` a second time, and the
+  server's pending-request index answers with the row it already had rather than a second one.
+- **The microphone gate is the host's switch, and the server decides what the tap means.**
+  `PATCH /api/rooms/:id` is the only writer of `speakerApprovalRequired` — there is no route for it —
+  so `CreateRoomScreen` puts that switch on the edit form and nowhere else. With the switch on, an
+  audience tap on an empty seat gets **202 `{requested, request}`** instead of a seat, which is why
+  `TakeSeatUseCase` returns `SeatTakeResult.Seated | Queued` rather than a seat list: the branch is
+  read off the response, never assumed. The host's queue comes from
+  `GET /api/rooms/:id/speaker-requests` (403 for anyone else) and is drawn in the server's
+  `created_at` order — `AudienceListSheet` does not re-sort it, because a queue a phone reorders is a
+  queue where the loudest newcomer speaks first. `room:speaker_request` and
+  `room:speaker_request_updated` both collapse into one instruction: re-read the list. Patching the
+  local copy drifts the moment an emit is missed.
+- **An invitation seats a member; it does not turn their microphone on.**
+  `POST /api/rooms/:id/seat/:index/invite` is immediate — the server seats, grants publish and clears
+  any pending request for them — so the invitee's consent is necessarily local:
+  `PartyRoomViewModel` shows an accept/decline dialog and holds `canPublish` off (in `applySeats` and
+  `it_publishCan`) until they answer, because the seat snapshot that follows would otherwise publish
+  audio nobody agreed to. Declining is the existing leave-seat call, and accepting asks nothing of the
+  server. The publisher token a later reconnect dials with is the one carried privately on
+  `room:seat_invited`, not the audience copy from the join.
+- **The pinned notice has two writers and one renderer.** `POST /api/rooms/:id/announcement` (300
+  characters; blank clears) is what the host's composer calls, and `room:announcement` is how everyone
+  else updates — including an operator's override. `room:profile_updated` carries the same fields, and
+  there the difference between null and absent matters: a broadcast from a server that predates the
+  notice omits it, and omission must not be painted as "the host cleared it".
+- **The member card asks the server before it answers anything.** `MemberSheet` opens from a roster
+  row or a chat author and its first act is `GET /api/users/:id/relationship`; the four flags it
+  paints come from that response, not from a local tally, and unblocking re-reads it before the card
+  is drawn again. Follow and block post the verb and then draw the boolean the 200 carries
+  (`{following}` / `{blocked}`), so a refused ask leaves the row in the server's state rather than
+  the tapped one. A block closes the card, because the room must not offer a follow it just made
+  impossible in both directions, and the report form is worded as a review and not a removal —
+  which is exactly what `user_reports` does: it queues a row for a person, and an open duplicate
+  comes back 409 with the form left open and the member's text intact.
 - **A profile edit is a full replacement, not a patch.** `room:profile_updated` carries the
   room as it now stands, so a `null` language or rules line means the host cleared it and
   the client must blank what it was showing — not keep the previous value.
@@ -234,19 +364,25 @@ valid cert, or `adb reverse` for local testing).
   hides the sort chips because that endpoint has its own fixed order; **Quick Join** takes
   `GET /api/rooms/quick-join`'s id and navigates, so "the busiest room I can enter" is the
   server's judgement), responsive room grid (cover, host,
-  listener badge, gift-value flame, PRIVATE lock), pull-to-refresh, empty
+  listener badge, gift-value flame, PRIVATE lock), pull-to-refresh (which re-reads the banner wall
+  on the same gesture, so a campaign switched on mid-scroll arrives with the rooms), empty
   state, FAB → `createRoom` (title/category/language/region/rules/public-private+password/capacity, the range
   and default of which come from `GET /api/rooms/capacity`). The same screen is the edit
   screen (`editRoom/{id}`, reached from the host's pencil icon): it prefills from
   `GET /api/rooms/:id` rather than the lobby row it was launched from, hides the access,
-  password and capacity fields the `PATCH` refuses, and shows the server's own 403/409
-  text when a change or a delete is refused instead of guessing client-side.
+  password and capacity fields the `PATCH` refuses, adds the one switch that route does accept —
+  `speakerApprovalRequired`, the microphone gate, which has no endpoint of its own — and shows the
+  server's own 403/409 text when a change or a delete is refused instead of guessing client-side.
 - `ui/screens/room` — seat grid (3 across, or 4 narrower cells once the room has more
-  than nine seats) with speaking rings, mute/lock overlays,
-  host emphasis ring; danmaku (barrage) layer over the seats (`BarrageOverlay`,
+  than nine seats) with speaking rings, mute/lock overlays, host emphasis ring and a `HOST`
+  pill on the occupied host seat; danmaku (barrage) layer over the seats (`BarrageOverlay`,
   only messages that arrive while you watch, toggle in the strip); audience
-  strip with a live hand-raise badge that opens `AudienceListSheet` (on the mic
-  / waiting to speak / pure listeners); auto-scrolling chat overlay (gift lines
+  strip with a live hand-raise badge that opens `AudienceListSheet` (on the mic / requests to
+  speak, in the server's queue order with Seat and Decline for the host / waiting to speak /
+  pure listeners; a host can also invite any listener straight onto the first free speaker seat).
+  Any row with an account behind it — here, or the author's face or name on a chat line — opens
+  `MemberSheet`, that member's own card: follow or unfollow, report to the team, block or unblock;
+  auto-scrolling chat overlay (gift lines
   highlighted, plus the SYSTEM `"<name> entered the room"` notices). The overlay's smiley
   icon opens an emoji strip loaded from `GET /api/emoji`: tapping a tile inserts the token
   (`[smile]`) rather than a picture, because the token is what the message stores and what
@@ -255,16 +391,27 @@ valid cert, or `adb reverse` for local testing).
   renders the row with `BasicText(inlineContent = …)`, since Material 3's `Text` has no
   inline-content parameter and would show the raw token. A code with no row (retired, or
   typed by hand) is left exactly as written, and `BarrageOverlay` flies the same rendering; action bar
-  (mic / raise-hand / like / gifts / leave) where the like button reports a
+  (mic / raise-hand / like / gifts / leave — the raise-hand button is the same tap in both room modes,
+  and which endpoint it calls is the host's switch, not this client's guess) where the like button reports a
   debounced total and paints hearts from the server's `room:liked` batch in a
-  corner `HeartLayer`; small gifts scroll in a right-edge `GiftTickerColumn`,
+  corner `HeartLayer`; directly above that bar a `ReactionStrip` of the operator's own emoji sends
+  `room:reaction` on a tap and `ReactionLayer` flies the art the server answered with, for every
+  member in the room; small gifts scroll in a right-edge `GiftTickerColumn`,
   big gifts take the screen through the 3-deep queue, and every joiner above the
-  VIP thresholds gets an `EntryBanner`; host per-seat sheet (`HostControlsSheet`:
+  VIP thresholds gets an `EntryBanner` — a joiner who wears a paid ride also gets
+  `EntryRideOverlay`, which opens that file in the renderer its format names and prints
+  "`<name>` arrives in `<ride>`" at the foot of the screen; host per-seat sheet (`HostControlsSheet`:
   lock, mute, kick as icon rows); a Games chip in the top bar opens the room's match
-  desk; the host's pencil icon opens the edit screen; below the top bar a
-  `RulesBanner` shows the room's `rules` line (expandable, collapsed to two lines) and the
-  top bar prints `language · region` next to the room number when the host stated them;
-  `room:profile_updated` swaps all of that live, and `room:closed` kicks you back home.
+  desk; the host's pencil icon opens the edit screen; below the top bar an
+  `AnnouncementBanner` shows the notice the host pinned (the host taps it to open
+  `AnnouncementEditorDialog`, which writes `POST /api/rooms/:id/announcement` — blank clears — and
+  everyone repaints from `room:announcement`), and a `RulesBanner` shows the room's `rules` line
+  (expandable, collapsed to two lines). A `RoomNoticePill` names the single thing that just happened
+  to *you* — the request is with the host, the host declined, the notice is saved — and dismisses
+  itself; an unanswered seat invitation is a dialog instead of a pill, because that one needs an
+  answer before the microphone moves. The top bar prints `language · region` next to the room number
+  when the host stated them; `room:profile_updated` swaps all of that live, and `room:closed` kicks
+  you back home.
 - `ui/screens/game` — `GameLobbyScreen` (the room's desk: what the server offers and
   at which pinned rules version, open tables, live tables, your recent matches) and
   `GameScreen` (one board per driver: Tic-Tac-Toe grid, Quiz Battle round with the
@@ -274,16 +421,41 @@ valid cert, or `adb reverse` for local testing).
   phantom piece; the settlement card reads only pool figures the engine wrote. Opening
   the desk keeps the room entry on the back stack, so the LiveKit voice connection owned
   by `PartyRoomViewModel` survives the visit.
-- `ui/screens/gift` — catalogue behind `CategoryTabs` (All + the categories the
-  catalogue actually returns), a paged 4×2 tile panel sent with two taps,
+- `ui/screens/gift` — catalogue behind `CategoryTabs` (All + the shelves an operator maintains on
+  the panel, from `GET /api/gifts`'s `categories` array; `giftCategoryTabs` keeps the server's own
+  order, drops a shelf no gift sits under, and — on a backend that ships no shelf list — reproduces
+  the old behaviour of one tab per distinct category string), a paged 4×2 tile panel sent with two taps,
   selected-gift summary bar, price in diamonds, quantity presets (1/5/10/20/Max) +
   stepper, speaker target chips (host default), insufficient-balance state, and a
   **Ranking** chip that opens `GiftRankingSheet` — Gifters (`role=senders`,
   diamonds spent) or Hosts (`role=receivers`, r-coins earned) over day/week/month.
+  A lucky box is one of these tiles: it buys through the same send, and its only difference on
+  screen is the disclosed-odds line under the price.
   Gifts with a `minVipLevel` above your `vipLevel` show a gold `VIP n` chip instead of a price and stay previewable, but
   the send CTA is replaced by the reason (`selectedGiftLocked`): the tier is
   operator-assigned and the backend enforces it with `403 vip_required` before it
   ever looks at your balance.
+- `ui/components/banner` — the four surfaces a promotional campaign is drawn on, all reading the
+  same `BannersStore` list and all taking their tap target from the server's `ctaType`/`ctaValue`
+  pair rather than a client-side guess. `PromoBannerStrip(placement)` auto-advances between an
+  operator's rows on its own dwell (the row's `durationMs` when it set one), prints dots, and is a
+  no-op that reserves no height when the placement has nothing live;
+  `SplashBannerOverlay()` sits above the nav graph in `MainActivity` for the length of the first
+  SPLASH row and can be skipped. `BannerArt` picks the renderer from `format`, `BannerHost` counts
+  one impression per row per session and every tap. Inserted at: `HOME` under Home's discovery row,
+  `GIFT` above the gift panel's pages (a shorter card — the Send button owns the bottom of that
+  dialog), `GAME` under the desk's error line, `SPLASH` over cold start.
+- `ui/screens/store` — one chip per kind (*Rings*, *Themes*, *Flourishes*, *Arrivals*) over a grid
+  of server rows, nothing cached: the catalogue, the caller's holdings and the balance are re-read on
+  `ON_RESUME`, and a purchase re-reads them rather than patching the tile. Price, rental period
+  (`priceLine`) and expiry (`ownedLine`, "Yours until <date>" or "Yours permanently") are all the
+  row's own fields, so a period is an operator's number and not a client constant. A row whose
+  `minVipLevel` is above your tier is still readable, and the buy/renew button states the reason
+  (`vipLocked` is display courtesy only — `POST /api/store/purchase` answers `403 vip_required`);
+  wearing an already-owned row is never tier-gated, so a support grant stays wearable.
+  `recommended` only badges the tile — the server already sorts those rows first. A flourish and a
+  ride are playable from the detail sheet ("Tap to play"); a ring and a theme are still pictures.
+  Rows an operator retired but the member still paid for list apart, with their own expiry.
 - `ui/screens/wallet` — diamond hero card, R-coin earnings, preset recharge,
   withdrawal sheet, +/- coloured ledger. Balances stay live: the private
   `wallet:update` event is folded into the cached session by

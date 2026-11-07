@@ -26,6 +26,11 @@ import com.voiza.app.domain.model.LudoSeat;
 import com.voiza.app.domain.model.QuizBoard;
 import com.voiza.app.domain.model.TicTacToeBoard;
 import com.voiza.app.domain.model.GiftEffectKind;
+import com.voiza.app.domain.model.EntryRide;
+import com.voiza.app.domain.model.Gift;
+import com.voiza.app.domain.model.GiftAnimationFormat;
+import com.voiza.app.domain.model.GiftCatalogue;
+import com.voiza.app.domain.model.GiftCategoryOption;
 import com.voiza.app.domain.model.Leaderboard;
 import com.voiza.app.domain.model.ModelsKt;
 import com.voiza.app.domain.model.MiniUser;
@@ -137,6 +142,37 @@ public class DtosGsonHarness {
         }
     }
 
+    /**
+     * The ride an account arrives with, as the room will actually receive it.
+     *
+     * `url` and `format` are this object's key names — the shop row spells the same two facts `art`
+     * and `animationFormat` — so a mapper that reused the shop shape would hand every device a
+     * null URL and the room would silently stop playing arrivals. A negative hold is impossible at
+     * the schema, so it is a mapping bug; 0 is a legal answer and must stay 0.
+     */
+    static void checkRide(com.voiza.app.domain.model.EntryRide ride, String where) {
+        if (ride.getKey().isEmpty()) throw new IllegalStateException(where + " carried a ride with no key");
+        if (ride.getName().isEmpty()) throw new IllegalStateException(where + " carried a ride with no name");
+        String url = ride.getUrl();
+        if (!url.startsWith("/") && !url.startsWith("https://")) {
+            throw new IllegalStateException(where + " ride url is not an asset URL: " + url);
+        }
+        if (ride.getFormat() == null) {
+            throw new IllegalStateException(where + " ride named no renderer: " + url);
+        }
+        if (ride.getDurationMs() < 0) {
+            throw new IllegalStateException(where + " ride holds the screen for " + ride.getDurationMs() + " ms");
+        }
+    }
+
+    /** A shop row the assertions below need by name rather than by index: the capture's order is the server's. */
+    static StoreItem rideByKey(StoreSnapshot shop, String key) {
+        for (StoreItem item : shop.getItems()) {
+            if (item.getKind() == StoreItemKind.RIDE && item.getKey().equals(key)) return item;
+        }
+        throw new IllegalStateException("the capture sold no ride named " + key);
+    }
+
     public static void main(String[] args) throws Exception {
         String restPath = args.length > 0 ? args[0] : "fixtures/wire-rest.json";
         String sockPath = args.length > 1 ? args[1] : "fixtures/wire-socket.json";
@@ -228,6 +264,118 @@ public class DtosGsonHarness {
             for (GiftDto gd : gr.getGifts()) MappersKt.toDomain(gd);
         });
 
+        // The categories array (backend migration 0025) is what the gift panel's tabs are now built
+        // from. The two cases below are the whole risk surface of the change: a payload that carries
+        // shelves, and one that does not — and the second is the Gson-Unsafe trap the project rule
+        // exists for, so it is asserted on the absent key rather than on an explicit null.
+        t("catalogue WITH categories decodes into shelves with key/name/sortOrder", () -> {
+            GiftsResponse gr = G.fromJson("{\"gifts\":[],"
+                    + "\"categories\":["
+                    + "{\"key\":\"ROSE\",\"name\":\"Roses\",\"sortOrder\":10,\"gifts\":1},"
+                    + "{\"key\":\"SPECIAL\",\"name\":\"Special\",\"sortOrder\":20,\"gifts\":8}]}",
+                    GiftsResponse.class);
+            if (gr.getCategories() == null || gr.getCategories().size() != 2) {
+                throw new IllegalStateException("categories array did not decode into 2 shelves");
+            }
+            GiftCatalogue cat = MappersKt.toDomain(gr);
+            java.util.List<GiftCategoryOption> shelves = cat.getCategories();
+            if (shelves.size() != 2) throw new IllegalStateException("expected 2 domain shelves, got " + shelves.size());
+            if (!"ROSE".equals(shelves.get(0).getKey())) {
+                throw new IllegalStateException("first shelf key is " + shelves.get(0).getKey());
+            }
+            if (!"Roses".equals(shelves.get(0).getName())) {
+                throw new IllegalStateException("the operator's label did not survive: " + shelves.get(0).getName());
+            }
+            if (shelves.get(0).getSortOrder() != 10 || shelves.get(1).getSortOrder() != 20) {
+                throw new IllegalStateException("sortOrder did not survive the mapper");
+            }
+            if (!"SPECIAL".equals(shelves.get(1).getKey())) {
+                throw new IllegalStateException("second shelf key is " + shelves.get(1).getKey());
+            }
+            // A shelf row with no key cannot match a gift or label a tab, so it is dropped, not guessed.
+            GiftCategoryOption nameless = MappersKt.toDomain(
+                    G.fromJson("{\"key\":\"\",\"name\":\"Nobody\"}", GiftCategoryDto.class));
+            if (nameless != null) throw new IllegalStateException("a shelf with no key must map to null");
+            GiftCategoryOption unnamed = MappersKt.toDomain(
+                    G.fromJson("{\"key\":\"LUXURY_BOX\"}", GiftCategoryDto.class));
+            if (unnamed == null || !"Luxury box".equals(unnamed.getName())) {
+                throw new IllegalStateException("a named-less shelf should read as the old cosmetic label");
+            }
+        });
+
+        t("catalogue WITHOUT categories key decodes null and falls back to derived tabs", () -> {
+            GiftsResponse gr = G.fromJson("{\"gifts\":["
+                    + "{\"id\":\"1\",\"name\":\"Rose\",\"iconUrl\":\"/i.png\",\"diamondPrice\":1,\"rCoinValue\":1,\"category\":\"ROSE\"},"
+                    + "{\"id\":\"2\",\"name\":\"Car\",\"iconUrl\":\"/i.png\",\"diamondPrice\":50,\"rCoinValue\":50,\"category\":\"SPECIAL\"}]}",
+                    GiftsResponse.class);
+            if (gr.getCategories() != null) {
+                throw new IllegalStateException("an absent categories key must stay null, not take the Kotlin default");
+            }
+            GiftCatalogue cat = MappersKt.toDomain(gr);
+            if (!cat.getCategories().isEmpty()) {
+                throw new IllegalStateException("no shelves from the server must map to an empty shelf list");
+            }
+            java.util.List<GiftCategoryOption> tabs = ModelsKt.giftCategoryTabs(cat.getCategories(), cat.getGifts());
+            if (tabs.size() != 2) {
+                throw new IllegalStateException("the fallback should derive one tab per category, got " + tabs.size());
+            }
+            if (!"ROSE".equals(tabs.get(0).getKey()) || !"SPECIAL".equals(tabs.get(1).getKey())) {
+                throw new IllegalStateException("the fallback lost the catalogue's first-appearance order");
+            }
+            // The fallback labels exactly as the panel always did — derived from the raw string.
+            if (!"Rose".equals(tabs.get(0).getName())) {
+                throw new IllegalStateException("fallback tab label is " + tabs.get(0).getName());
+            }
+            // And the key is what filtering uses, so the existing giftCategory state still selects rows.
+            if (cat.getGifts().stream().noneMatch(g -> "ROSE".equals(g.getCategory()))) {
+                throw new IllegalStateException("tab keys no longer match any gift's category");
+            }
+        });
+
+        t("tabs follow server shelves: empty shelf dropped, order kept, unmatched gift still visible", () -> {
+            GiftsResponse gr = G.fromJson("{\"gifts\":["
+                    + "{\"id\":\"1\",\"name\":\"Rose\",\"iconUrl\":\"/i.png\",\"diamondPrice\":1,\"rCoinValue\":1,\"category\":\"ROSE\"},"
+                    + "{\"id\":\"2\",\"name\":\"Mystery\",\"iconUrl\":\"/i.png\",\"diamondPrice\":9,\"rCoinValue\":9,\"category\":\"MYSTERY\"}],"
+                    + "\"categories\":["
+                    + "{\"key\":\"ROSE\",\"name\":\"Roses\",\"sortOrder\":10,\"gifts\":1},"
+                    + "{\"key\":\"SPECIAL\",\"name\":\"Special\",\"sortOrder\":20,\"gifts\":0},"
+                    + "{\"key\":\"EVENT\",\"name\":\"Events\",\"sortOrder\":30,\"gifts\":1}]}",
+                    GiftsResponse.class);
+            GiftCatalogue cat = MappersKt.toDomain(gr);
+            java.util.List<GiftCategoryOption> tabs = ModelsKt.giftCategoryTabs(cat.getCategories(), cat.getGifts());
+            if (tabs.size() != 1 || !"ROSE".equals(tabs.get(0).getKey())) {
+                throw new IllegalStateException("only the shelf with a loaded gift may render a tab");
+            }
+            // The gift filed under a key no shelf ships is NOT dropped — it stays for "All".
+            if (cat.getGifts().size() != 2) {
+                throw new IllegalStateException("a gift outside the shelf list was dropped from the catalogue");
+            }
+            // A tab the server shipped but that is empty renders nothing; its gifts would have been
+            // unreachable, so the strip keeping it out is the whole point of the filter.
+            if (cat.getCategories().size() != 3) {
+                throw new IllegalStateException("the shelf list itself must not be filtered at mapping time");
+            }
+        });
+
+        t("the captured /api/gifts fixture still parses through the shelf-aware path", () -> {
+            GiftsResponse gr = G.fromJson(body(rest, "gifts"), GiftsResponse.class);
+            GiftCatalogue cat = MappersKt.toDomain(gr);
+            java.util.List<GiftCategoryOption> tabs = ModelsKt.giftCategoryTabs(cat.getCategories(), cat.getGifts());
+            if (gr.getCategories() == null && !cat.getCategories().isEmpty()) {
+                throw new IllegalStateException("absent shelves must map to an empty list");
+            }
+            // Whatever shape this capture has, a catalogue with rows must never end up with no way
+            // to reach them: either the server's shelves or the derived fallback fills the strip.
+            if (!cat.getGifts().isEmpty() && tabs.isEmpty()) {
+                throw new IllegalStateException("a non-empty catalogue lost every tab");
+            }
+            for (GiftCategoryOption tab : tabs) {
+                if (tab.getKey().isEmpty() || tab.getName().isEmpty()) {
+                    throw new IllegalStateException("a tab reached the panel with no key or no label");
+                }
+            }
+        });
+
         t("GET withdrawals       -> WithdrawalDto.toDomain", () -> {
             JsonObject el = body(rest, "withdrawals");
             JsonArray arr = el.has("withdrawals") ? el.getAsJsonArray("withdrawals") : new JsonArray();
@@ -285,6 +433,112 @@ public class DtosGsonHarness {
             for (com.voiza.app.domain.model.OwnedStoreItem owned : shop.getOwned()) {
                 if (owned.getKey().isEmpty()) throw new IllegalStateException("a holding lost its key");
             }
+            // A ride row says two things no other catalogue does, and the shop's Arrivals tab has
+            // to route on exactly those: which renderer opens the file, and how long the room hands
+            // it the screen. Neither may be re-derived from the file extension.
+            StoreItem lottie = rideByKey(shop, "ride-confetti");
+            if (lottie.getAnimationFormat() != GiftAnimationFormat.LOTTIE) {
+                throw new IllegalStateException("ride-confetti lost its declared LOTTIE format: " + lottie.getAnimationFormat());
+            }
+            if (lottie.getDurationMs() != 4000) {
+                throw new IllegalStateException("ride-confetti lost its 4000 ms hold: " + lottie.getDurationMs());
+            }
+            // The capture wears this one, so the tab is reading its own highlighted row off the same
+            // list — an `equipped` flag the server never sends would leave the shop unable to say
+            // "you are arriving with this".
+            if (!lottie.getEquipped()) {
+                throw new IllegalStateException("the capture equipped a ride the shop then reported as unworn");
+            }
+            // An MP4 with a hold of 0 is the operator's answer "play the clip for its own length", and
+            // the shipped seeds are all Lottie, so this shape is built here rather than hoped for in a
+            // capture: 0 has to survive mapping as 0. Reading it as "nothing declared" and substituting
+            // a short default would cut a full-screen video in half; reading it as "never ends" would
+            // strand the room.
+            StoreItemDto videoDto = G.fromJson("{\"kind\":\"RIDE\",\"key\":\"ride-video\",\"name\":\"Curtain Call\","
+                    + "\"art\":\"/rides/curtain.mp4\",\"priceDiamonds\":3000,\"periodDays\":30,"
+                    + "\"animationFormat\":\"MP4\",\"durationMs\":0,"
+                    + "\"owned\":false,\"expiresAt\":null,\"equipped\":false}", StoreItemDto.class);
+            StoreItem video = MappersKt.toDomainOrNull(videoDto);
+            if (video == null) throw new IllegalStateException("a ride row with art and a price mapped away");
+            if (video.getAnimationFormat() != GiftAnimationFormat.MP4) {
+                throw new IllegalStateException("a declared MP4 ride mapped as " + video.getAnimationFormat());
+            }
+            if (video.getDurationMs() != 0) {
+                throw new IllegalStateException("a declared 0 ms hold became " + video.getDurationMs());
+            }
+            // And the row a backend predating migration 0026 sends: neither key at all, so Gson leaves
+            // both null through Unsafe and the mapper's fallbacks are what the tab routes on.
+            StoreItem bare = MappersKt.toDomainOrNull(G.fromJson(
+                    "{\"kind\":\"RIDE\",\"key\":\"ride-bare\",\"name\":\"Old Arrival\","
+                            + "\"art\":\"/rides/old.json\",\"priceDiamonds\":1000,\"periodDays\":30}",
+                    StoreItemDto.class));
+            if (bare == null) throw new IllegalStateException("a ride row with art and a price mapped away");
+            if (bare.getAnimationFormat() != GiftAnimationFormat.LOTTIE) {
+                throw new IllegalStateException("an absent format did not fall back to LOTTIE: " + bare.getAnimationFormat());
+            }
+            if (bare.getDurationMs() != 0) {
+                throw new IllegalStateException("an absent duration did not fall back to 0: " + bare.getDurationMs());
+            }
+        });
+
+        t("ride store row WITHOUT animationFormat/durationMs decodes null on the DTO, not a default", () -> {
+            // The regression this guards: a non-nullable Int/String for a key only one of the four
+            // catalogues sends would crash every frame, theme and effect row on an older backend —
+            // and a Kotlin `= 0` default would silently never run, because Gson builds via Unsafe.
+            StoreItemDto dto = G.fromJson("{\"kind\":\"RIDE\",\"key\":\"ride-old\",\"name\":\"Old Arrival\","
+                    + "\"art\":\"/rides/old.json\",\"priceDiamonds\":1000,\"periodDays\":30,"
+                    + "\"owned\":false,\"expiresAt\":null,\"equipped\":false}", StoreItemDto.class);
+            if (dto.getAnimationFormat() != null) throw new IllegalStateException("absent format was not null");
+            if (dto.getDurationMs() != null) throw new IllegalStateException("absent durationMs was not null");
+            StoreItem item = MappersKt.toDomainOrNull(dto);
+            if (item.getKind() != StoreItemKind.RIDE) {
+                throw new IllegalStateException("a RIDE row was dropped or mis-sorted: " + item.getKind());
+            }
+            if (item.getAnimationFormat() != GiftAnimationFormat.LOTTIE || item.getDurationMs() != 0) {
+                throw new IllegalStateException("the mapper did not apply the ride fallbacks: "
+                        + item.getAnimationFormat() + " / " + item.getDurationMs());
+            }
+        });
+
+        t("a ride row with no art is dropped, not sold as an empty cinematic", () -> {
+            // Key, name and art are what both the card and the buy call need; a ride nobody can
+            // open is worse than no row at all, because buying it would appear to succeed.
+            StoreItemDto dto = G.fromJson("{\"kind\":\"RIDE\",\"key\":\"ride-hollow\",\"name\":\"Hollow\","
+                    + "\"priceDiamonds\":1000,\"animationFormat\":\"SVGA\",\"durationMs\":3000}", StoreItemDto.class);
+            if (MappersKt.toDomainOrNull(dto) != null) {
+                throw new IllegalStateException("a ride without a file still reached the shelf");
+            }
+        });
+
+        t("store item WITH minVipLevel + recommended decodes both through DTO and mapper", () -> {
+            StoreItemDto dto = G.fromJson("{\"kind\":\"FRAME\",\"key\":\"vip-ring\",\"name\":\"VIP Ring\","
+                    + "\"art\":\"/frames/trace/frame-9.png\",\"priceDiamonds\":12000,"
+                    + "\"minVipLevel\":5,\"recommended\":true}", StoreItemDto.class);
+            if (dto.getMinVipLevel() == null || dto.getMinVipLevel() != 5) {
+                throw new IllegalStateException("present minVipLevel did not decode as 5: " + dto.getMinVipLevel());
+            }
+            if (dto.getRecommended() == null || !dto.getRecommended()) {
+                throw new IllegalStateException("present recommended did not decode as true: " + dto.getRecommended());
+            }
+            StoreItem item = MappersKt.toDomainOrNull(dto);
+            if (item.getMinVipLevel() != 5 || !item.getRecommended()) {
+                throw new IllegalStateException("the new fields did not survive the mapper");
+            }
+        });
+
+        t("store item WITHOUT minVipLevel/recommended falls back to 0/false (the Unsafe rule)", () -> {
+            // Gson builds via Unsafe, so an absent key is null on the DTO, not the Kotlin default.
+            // The regression this guards: a non-nullable Int would crash; a non-nullable Boolean or
+            // a mapper that skipped `?: 0` would silently read a pre-0024 backend as gated.
+            StoreItemDto dto = G.fromJson("{\"kind\":\"FRAME\",\"key\":\"old-ring\",\"name\":\"Old Ring\","
+                    + "\"art\":\"/frames/trace/frame-1.png\",\"priceDiamonds\":300}", StoreItemDto.class);
+            if (dto.getMinVipLevel() != null) throw new IllegalStateException("absent minVipLevel was not null");
+            if (dto.getRecommended() != null) throw new IllegalStateException("absent recommended was not null");
+            StoreItem item = MappersKt.toDomainOrNull(dto);
+            if (item.getMinVipLevel() != 0) {
+                throw new IllegalStateException("absent minVipLevel did not fall back to 0: " + item.getMinVipLevel());
+            }
+            if (item.getRecommended()) throw new IllegalStateException("absent recommended did not fall back to false");
         });
 
         t("POST /api/store/purchase -> the row is owned and the envelope names the wallet that paid", () -> {
@@ -308,6 +562,33 @@ public class DtosGsonHarness {
                 throw new IllegalStateException("equip returned an account wearing nothing");
             }
             checkFrame(user.getProfileFrame(), "POST /api/store/equip");
+            // Equipping one kind never rewrites another, and this capture buys and wears a ride
+            // before the frame call, so the echo has to still name that same ride. Null is only
+            // allowed when the account itself wears none — the app must not guess a ride from the
+            // catalogue for a member who bought nothing.
+            com.voiza.app.domain.model.User account = MappersKt.toDomain(
+                    G.fromJson(body(rest, "me"), UserEnvelope.class).getUser());
+            if (user.getEntryRide() == null) {
+                if (account.getEntryRide() != null) {
+                    throw new IllegalStateException("an equip echo dropped the ride the account wears");
+                }
+            } else {
+                checkRide(user.getEntryRide(), "POST /api/store/equip");
+                if (!user.getEntryRide().equals(account.getEntryRide())) {
+                    throw new IllegalStateException("a ring equip rewrote the ride the account wears: "
+                            + user.getEntryRide());
+                }
+            }
+        });
+
+        t("POST /api/store/equip for a RIDE kind sends exactly kind+key and never a price", () -> {
+            // The body the shop builds for a ride must be the same two fields the frame call uses;
+            // the diamond amount is read by the server inside the transaction, not echoed by us.
+            StoreItemBody body = new StoreItemBody(StoreItemKind.RIDE.name(), "ride-confetti");
+            String json = G.toJson(body);
+            if (!json.contains("\"RIDE\"")) throw new IllegalStateException("ride kind not sent: " + json);
+            if (json.contains("rice")) throw new IllegalStateException("a price travelled to the server: " + json);
+            if (!json.contains("ride-confetti")) throw new IllegalStateException("ride key missing: " + json);
         });
 
         t("GET /api/auth/me     -> the account ships the worn ring and the paid flourish", () -> {
@@ -321,6 +602,55 @@ public class DtosGsonHarness {
             if (!me.getEntryEffect().startsWith("/") && !me.getEntryEffect().startsWith("https://")) {
                 throw new IllegalStateException("flourish is not an asset URL: " + me.getEntryEffect());
             }
+            // The account is where the app reads what its own member arrives with; the room gets the
+            // same object on `room:user_joined`. Both spell the fields url/format, not art/kind.
+            if (me.getEntryRide() == null) throw new IllegalStateException("account lost its worn ride");
+            checkRide(me.getEntryRide(), "GET /api/auth/me");
+            // Which renderer and how long are the seed's business, not the harness's — the check is
+            // that the mapper repeats what this capture's own JSON says, field for field, because
+            // those two fields are what picks the ride's player and when the room gets its screen back.
+            JsonElement worn = body(rest, "me").get("user").getAsJsonObject().get("entryRide");
+            if (worn == null || worn.isJsonNull()) {
+                throw new IllegalStateException("the wire wore no ride but the account mapped one");
+            }
+            JsonObject written = worn.getAsJsonObject();
+            if (!me.getEntryRide().getKey().equals(written.get("key").getAsString())) {
+                throw new IllegalStateException("a ride's key was rewritten in mapping");
+            }
+            if (!me.getEntryRide().getUrl().equals(written.get("url").getAsString())) {
+                throw new IllegalStateException("a ride's art was rewritten in mapping");
+            }
+            if (me.getEntryRide().getFormat() != GiftAnimationFormat.valueOf(written.get("format").getAsString())) {
+                throw new IllegalStateException("a ride's declared renderer was rewritten: "
+                        + me.getEntryRide().getFormat() + " vs the wire's " + written.get("format"));
+            }
+            if (me.getEntryRide().getDurationMs() != written.get("durationMs").getAsInt()) {
+                throw new IllegalStateException("a ride's declared hold became " + me.getEntryRide().getDurationMs());
+            }
+        });
+
+        t("account WITHOUT an entryRide reads as walking in quietly, never as a free default", () -> {
+            // There is no free ride row and no fallback art in this app: a member who bought nothing,
+            // whose copy lapsed or whose row was retired arrives as null. A client that invented a
+            // ride here would play a full-screen takeover for someone who never paid for one.
+            com.voiza.app.domain.model.User bareRide = MappersKt.toDomain(
+                    G.fromJson("{\"user\":{\"id\":\"u1\",\"phone\":\"+15005550001\",\"username\":\"ana\","
+                            + "\"userType\":\"USER\",\"status\":\"ACTIVE\",\"entryRide\":null}}",
+                            UserEnvelope.class).getUser());
+            if (bareRide.getEntryRide() != null) {
+                throw new IllegalStateException("absent ride became " + bareRide.getEntryRide());
+            }
+            // A ride object that names a file nobody can open is dropped by the mapper, the same way
+            // a ring without art is: the account then reads as owning nothing rather than as broken.
+            com.voiza.app.domain.model.User hollow = MappersKt.toDomain(
+                    G.fromJson("{\"user\":{\"id\":\"u1\",\"phone\":\"+15005550001\",\"username\":\"ana\","
+                            + "\"userType\":\"USER\",\"status\":\"ACTIVE\","
+                            + "\"entryRide\":{\"key\":\"ride-hollow\",\"name\":\"Hollow\","
+                            + "\"format\":\"MP4\",\"durationMs\":5000}}}",
+                            UserEnvelope.class).getUser());
+            if (hollow.getEntryRide() != null) {
+                throw new IllegalStateException("a ride with no url reached the profile: " + hollow.getEntryRide());
+            }
         });
 
         t("equip response WITHOUT a ring reads as wearing nothing, never as a broken frame", () -> {
@@ -331,6 +661,8 @@ public class DtosGsonHarness {
                             + "\"userType\":\"USER\",\"status\":\"ACTIVE\"}}", UserEnvelope.class).getUser());
             if (bare.getProfileFrame() != null) throw new IllegalStateException("absent frame became " + bare.getProfileFrame());
             if (bare.getEntryEffect() != null) throw new IllegalStateException("absent flourish became " + bare.getEntryEffect());
+            // Absent, not the Kotlin null either: an account that never mentioned a ride owns none.
+            if (bare.getEntryRide() != null) throw new IllegalStateException("absent ride became " + bare.getEntryRide());
         });
 
         System.out.println("\n--- daily quests and the check-in (migration 0020) ---");
@@ -403,27 +735,48 @@ public class DtosGsonHarness {
                 MappersKt.toDomain(G.fromJson(last(sock, "room:gift_animated"), SocketGiftAnimatedDto.class)));
 
         t("room:user_joined      -> SocketUserJoinedDto -> UserJoinedEvent", () -> {
-            UserJoinedEvent ev = MappersKt.toDomain(
-                    G.fromJson(last(sock, "room:user_joined"), SocketUserJoinedDto.class));
-            // fetchMiniUser is the one member query that selects xp, so the joiner always
+            // fetchMiniUser is the one member query that selects xp, so a joiner always
             // arrives with a resolved rung — the entry banner has nothing to invent.
-            if (ev.getUser().getRank() == null) {
-                throw new IllegalStateException("joiner carried no rank; the ladder did not ship");
+            for (JsonElement e : sock.getAsJsonArray("room:user_joined")) {
+                UserJoinedEvent ev = MappersKt.toDomain(G.fromJson(e, SocketUserJoinedDto.class));
+                if (ev.getUser().getRank() == null) {
+                    throw new IllegalStateException("joiner carried no rank; the ladder did not ship");
+                }
+                checkRung(ev.getUser().getRank(), "room:user_joined");
+                // A member who bought nothing arrives with neither layer and the banner draws a
+                // plain avatar — which is why both are nullable. What must never happen is a
+                // half-paid entrance: a ring without art, or a flourish that is not a URL.
+                if (ev.getUser().getProfileFrame() != null) {
+                    checkFrame(ev.getUser().getProfileFrame(), "room:user_joined");
+                }
+                if (ev.getUser().getEntryEffect() != null) {
+                    String flourish = ev.getUser().getEntryEffect();
+                    if (!flourish.startsWith("/") && !flourish.startsWith("https://")) {
+                        throw new IllegalStateException("flourish is not an asset URL: " + flourish);
+                    }
+                }
+                // The ride on the join event is what every other device in the room plays, so a
+                // half-formed one (a file with no renderer named, or a negative hold) is checked
+                // here rather than at the overlay. A joiner who bought nothing stays null.
+                if (ev.getUser().getEntryRide() != null) {
+                    checkRide(ev.getUser().getEntryRide(), "room:user_joined");
+                }
             }
-            checkRung(ev.getUser().getRank(), "room:user_joined");
-            // The capture equips a ring and a flourish before its socket joins, so the entry
-            // banner's two paid layers have to arrive on the event itself — the room never
-            // queries a second endpoint to find out what a new member bought.
-            if (ev.getUser().getProfileFrame() == null) {
-                throw new IllegalStateException("joiner carried no ring; the banner would draw a plain avatar");
+            // The capture equips a ring and a flourish on one account before its socket joins, so
+            // the paid layers have to reach the room on the event itself — the room never queries a
+            // second endpoint to find out what a new member bought. Which of the two joiners is
+            // that account is the capture's business, so the check is over the page, not the last row.
+            boolean seesRing = false;
+            boolean seesFlourish = false;
+            for (JsonElement e : sock.getAsJsonArray("room:user_joined")) {
+                JsonObject user = e.getAsJsonObject().getAsJsonObject("user");
+                if (user != null && user.get("profileFrame") != null) seesRing = true;
+                if (user != null && user.get("entryEffect") != null && !user.get("entryEffect").isJsonNull()) {
+                    seesFlourish = true;
+                }
             }
-            checkFrame(ev.getUser().getProfileFrame(), "room:user_joined");
-            if (ev.getUser().getEntryEffect() == null) {
-                throw new IllegalStateException("joiner carried no flourish; the paid entrance would not play");
-            }
-            if (!ev.getUser().getEntryEffect().startsWith("/") && !ev.getUser().getEntryEffect().startsWith("https://")) {
-                throw new IllegalStateException("flourish is not an asset URL: " + ev.getUser().getEntryEffect());
-            }
+            if (!seesRing) throw new IllegalStateException("no join in the capture carried a ring");
+            if (!seesFlourish) throw new IllegalStateException("no join in the capture carried a flourish");
         });
 
         t("MiniUserDto WITHOUT rank leaves the level absent, never zero", () -> {
@@ -433,6 +786,29 @@ public class DtosGsonHarness {
             MiniUser lean = MappersKt.toDomain(
                     G.fromJson("{\"id\":\"u1\",\"username\":\"ana\"}", MiniUserDto.class));
             if (lean.getRank() != null) throw new IllegalStateException("absent rank became " + lean.getRank());
+        });
+
+        t("a joiner's entryRide maps through url/format, never the shop row's art/animationFormat", () -> {
+            // The two shapes carry the same purchase under different key names, and this is the
+            // assertion that keeps them apart: read from the shop spelling, every joiner would
+            // arrive with a null URL and the room would play nothing for a ride that was paid for.
+            MiniUser rider = MappersKt.toDomain(
+                    G.fromJson("{\"id\":\"u1\",\"username\":\"ana\",\"entryRide\":{"
+                            + "\"key\":\"ride-confetti\",\"name\":\"Confetti Arrival\","
+                            + "\"url\":\"/effects/room-confetti.json\",\"format\":\"SVGA\",\"durationMs\":4000}}",
+                            MiniUserDto.class));
+            if (rider.getEntryRide() == null) throw new IllegalStateException("the joiner's ride was dropped");
+            checkRide(rider.getEntryRide(), "room:user_joined");
+            if (rider.getEntryRide().getFormat() != GiftAnimationFormat.SVGA) {
+                throw new IllegalStateException("the joiner's renderer was rewritten: " + rider.getEntryRide().getFormat());
+            }
+            if (rider.getEntryRide().getDurationMs() != 4000) {
+                throw new IllegalStateException("the joiner's hold was lost: " + rider.getEntryRide().getDurationMs());
+            }
+            // A lean roster that never read the ride column stays null — absent means "not shipped",
+            // and the room must not announce a ride it was not told about.
+            MiniUser noRide = MappersKt.toDomain(G.fromJson("{\"id\":\"u2\",\"username\":\"bo\"}", MiniUserDto.class));
+            if (noRide.getEntryRide() != null) throw new IllegalStateException("lean roster carried " + noRide.getEntryRide());
         });
 
         t("a rung with no name is dropped, art alone is not a level", () -> {
@@ -711,6 +1087,171 @@ public class DtosGsonHarness {
                         == null) {
                     throw new IllegalStateException("effectKind did not survive the mapper");
                 }
+            }
+        });
+
+        t("gift WITHOUT playback fields plays as the Lottie that has always shipped", () -> {
+            GiftDto dto = G.fromJson("{\"id\":\"g\",\"name\":\"Rose\",\"iconUrl\":\"/i.png\","
+                    + "\"diamondPrice\":99,\"rCoinValue\":50,\"category\":\"SPECIAL\"}", GiftDto.class);
+            if (dto.getAnimationFormat() != null || dto.getDurationMs() != null) {
+                throw new IllegalStateException("expected absent playback keys to stay null under Gson");
+            }
+            com.voiza.app.domain.model.Gift gift = MappersKt.toDomain(dto);
+            if (gift.getAnimationFormat() != com.voiza.app.domain.model.GiftAnimationFormat.LOTTIE) {
+                throw new IllegalStateException("a row from before migration 0023 must read as the only player that existed");
+            }
+            if (gift.getDurationMs() != 0 || gift.getDisplayPriority() != 0 || gift.getComboEnabled()) {
+                throw new IllegalStateException("playback fields must fall back to the renderer's own clock, no priority, no combo");
+            }
+            if (gift.getComboWindowMs() != 5000) throw new IllegalStateException("combo window should default, not read as zero");
+        });
+
+        t("live gift payloads carry the ids the queue dedupes on", () -> {
+            for (JsonElement e : sock.getAsJsonArray("room:gift_animated")) {
+                JsonObject obj = e.getAsJsonObject();
+                if (obj.get("eventId") == null || obj.get("eventId").isJsonNull()) {
+                    throw new IllegalStateException("a paid gift reached the client with no way to recognise it twice");
+                }
+                com.voiza.app.domain.model.GiftAnimatedEvent ev =
+                        MappersKt.toDomain(G.fromJson(e, SocketGiftAnimatedDto.class));
+                if (ev.getEventId() == null || ev.getComboId() == null) {
+                    throw new IllegalStateException("eventId/comboId did not survive the mapper");
+                }
+                if (ev.getComboCount() < 1) throw new IllegalStateException("the server's tally must never read as zero");
+                if (ev.getGift().getAnimationFormat() == null) {
+                    throw new IllegalStateException("animationFormat did not survive the mapper");
+                }
+            }
+        });
+
+        t("box: a live send repeats the roll the ledger paid", () -> {
+            int boxes = 0;
+            for (JsonElement e : sock.getAsJsonArray("room:gift_animated")) {
+                JsonObject obj = e.getAsJsonObject();
+                com.voiza.app.domain.model.GiftAnimatedEvent ev =
+                        MappersKt.toDomain(G.fromJson(e, SocketGiftAnimatedDto.class));
+                com.voiza.app.domain.model.LuckyRoll roll = ev.getLucky();
+                if (roll == null) {
+                    // A flat gift's event either omits the key or writes it null; both mean "nothing
+                    // was drawn", and the overlay must not invent a prize for it.
+                    if (obj.has("lucky") && !obj.get("lucky").isJsonNull()) {
+                        throw new IllegalStateException("a lucky payload mapped to no roll");
+                    }
+                    if (ev.getGift().isLuckyBox()) {
+                        throw new IllegalStateException("a box send reached the room with no prize to show");
+                    }
+                    continue;
+                }
+                boxes += 1;
+                if (!ev.getGift().isLuckyBox()) {
+                    throw new IllegalStateException("a roll arrived on a gift the catalogue does not call a box");
+                }
+                // The three money fields are the ledger's own, and the credit the room banks is the
+                // event's totalRCoins — a client that re-derived any of them would be arguing with a
+                // receipt, and the operator can edit the prize table after the send.
+                if (roll.getReceiverRCoins() != ev.getTotalRCoins()) {
+                    throw new IllegalStateException("the roll paid " + roll.getReceiverRCoins()
+                            + " but the event credited " + ev.getTotalRCoins());
+                }
+                if (roll.getGrossRCoins() != roll.getReceiverRCoins() + roll.getPlatformTaxRCoins()) {
+                    throw new IllegalStateException("the tax is not the remainder of the pool the roll won");
+                }
+                if (roll.getPrizes().isEmpty() || roll.getHeadline() == null) {
+                    throw new IllegalStateException("a rolled box named no prize");
+                }
+                if (roll.getPrizes().get(0).getMultiplierBps() < roll.getHeadline().getMultiplierBps()) {
+                    throw new IllegalStateException("the prize list is not ordered best first");
+                }
+                long counted = 0;
+                for (com.voiza.app.domain.model.LuckyPrize prize : roll.getPrizes()) counted += prize.getCount();
+                if (counted != ev.getQuantity()) {
+                    throw new IllegalStateException("the draw tallied " + counted + " prizes for "
+                            + ev.getQuantity() + " boxes");
+                }
+            }
+            if (boxes == 0) {
+                throw new IllegalStateException("this capture sent no lucky box, so the roll shape is unproven");
+            }
+        });
+
+        t("box: the catalogue's box rows publish odds a phone can print", () -> {
+            GiftsResponse gr = G.fromJson(body(rest, "gifts"), GiftsResponse.class);
+            int boxes = 0;
+            for (GiftDto dto : gr.getGifts()) {
+                com.voiza.app.domain.model.Gift gift = MappersKt.toDomain(dto);
+                if (!gift.isLuckyBox()) {
+                    if (gift.getReceiverShareBps() != null) {
+                        throw new IllegalStateException("a flat gift carried a share dial nothing pays: " + gift.getName());
+                    }
+                    if (!gift.getBoxOutcomes().isEmpty()) {
+                        throw new IllegalStateException("a flat gift carried an odds table: " + gift.getName());
+                    }
+                    continue;
+                }
+                boxes += 1;
+                if (gift.getReceiverShareBps() == null) {
+                    throw new IllegalStateException("a box reached the phone with no receiver share: " + gift.getName());
+                }
+                if (gift.getBoxOutcomes().isEmpty()) {
+                    // Not a crash and not a refusal — a loader that did not attach the table. The tile
+                    // then states the box without odds, so the flag has to survive on its own.
+                    continue;
+                }
+                int odds = 0;
+                for (com.voiza.app.domain.model.GiftBoxOutcome outcome : gift.getBoxOutcomes()) {
+                    if (outcome.getLabel().isEmpty()) throw new IllegalStateException("a prize had no name to show");
+                    if (outcome.getMultiplierBps() <= 0) throw new IllegalStateException("a prize multiplies by nothing");
+                    if (outcome.getChanceBps() < 0) throw new IllegalStateException("a prize published negative odds");
+                    odds += outcome.getChanceBps();
+                }
+                // chanceBps is floored per row, so the table can read a little under whole; it may not
+                // read for far less, which is what a mis-scaled odds list would look like.
+                if (odds < 9_000) {
+                    throw new IllegalStateException(gift.getName() + "'s prizes add up to " + odds + " bps of the box");
+                }
+            }
+            if (boxes == 0) throw new IllegalStateException("this catalogue shipped no lucky box");
+        });
+
+        t("a gift_history row and the live event for it are the same gift", () -> {
+            // The catch-up tail is emitted from the ledger, the live event from the send. Same paid
+            // gift, so the device's dedupe key and the renderer's inputs have to agree field by field.
+            JsonObject live = sock.getAsJsonArray("room:gift_animated").get(0).getAsJsonObject();
+            JsonObject tail = new JsonObject();
+            tail.addProperty("roomId", live.get("roomId").getAsString());
+            JsonArray gifts = new JsonArray();
+            JsonObject row = new JsonObject();
+            row.add("eventId", live.get("eventId"));
+            row.add("gift", live.get("gift"));
+            row.add("sender", live.get("sender"));
+            row.add("receiver", live.get("receiver"));
+            row.add("seatIndex", live.get("seatIndex"));
+            row.add("quantity", live.get("quantity"));
+            row.add("totalDiamonds", live.get("totalDiamonds"));
+            row.add("totalRCoins", live.get("totalRCoins"));
+            row.add("createdAt", live.get("createdAt"));
+            gifts.add(row);
+            tail.add("gifts", gifts);
+
+            SocketGiftAnimatedDto liveDto = G.fromJson(live, SocketGiftAnimatedDto.class);
+            com.voiza.app.domain.model.GiftAnimatedEvent caught =
+                    MappersKt.toDomain(G.fromJson(tail, SocketGiftHistoryDto.class)).get(0);
+            com.voiza.app.domain.model.GiftAnimatedEvent seen = MappersKt.toDomain(liveDto);
+            if (!caught.getEventId().equals(seen.getEventId())) {
+                throw new IllegalStateException("the tail row would animate a gift the room already watched");
+            }
+            if (caught.getQuantity() != seen.getQuantity()
+                    || caught.getTotalDiamonds() != seen.getTotalDiamonds()
+                    || caught.getTotalRCoins() != seen.getTotalRCoins()
+                    || !caught.getGift().getId().equals(seen.getGift().getId())) {
+                throw new IllegalStateException("a replayed gift is described worse than the live one");
+            }
+            // A tail is history, so it carries no live combo; and it still says which player opens it.
+            if (caught.getComboId() != null || caught.getComboCount() != 1) {
+                throw new IllegalStateException("a closed combo window must not read as a running one");
+            }
+            if (caught.getAnimationUrl() == null && seen.getAnimationUrl() != null) {
+                throw new IllegalStateException("the tail row lost the animation the live event had");
             }
         });
 

@@ -49,6 +49,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -70,6 +72,7 @@ import com.voiza.app.ui.components.VoizaSecondaryButton
 import com.voiza.app.ui.components.VoizaSheet
 import com.voiza.app.ui.components.VoizaTextButton
 import com.voiza.app.ui.components.asAssetUrl
+import com.voiza.app.ui.screens.room.RideArtLayer
 import com.voiza.app.ui.screens.room.WelcomeEffect
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.DangerRed
@@ -84,7 +87,8 @@ import com.voiza.app.viewmodel.StoreViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
 
 /**
- * The cosmetic shop: rings a member wears, themes a room wears, and entry flourishes.
+ * The cosmetic shop: rings a member wears, themes a room wears, entry flourishes and the ride a
+ * member arrives with.
  *
  * Everything a card can do is a server call — the price is a label, the "owned" and "worn" marks are
  * the caller's own rows, and after a purchase the catalogue is re-read rather than patched. A row an
@@ -105,7 +109,9 @@ fun StoreScreen(
     // Only the id is held: a reload after a purchase replaces the row, and the sheet must show the
     // server's new expiry rather than the copy that was on screen when it opened.
     var openItemId by remember { mutableStateOf<String?>(null) }
-    var previewUrl by remember { mutableStateOf<String?>(null) }
+    // The preview needs the whole row — a ride plays in the renderer its own format names — and it
+    // is dismissed by a tap or by the animation's own end, so nothing outlives the sheet it came from.
+    var previewItem by remember { mutableStateOf<StoreItem?>(null) }
 
     val detail = openItemId?.let { id -> state.snapshot?.items?.firstOrNull { it.id == id } }
 
@@ -157,7 +163,7 @@ fun StoreScreen(
                     state.user == null && state.snapshot == null -> EmptyState(
                         icon = Icons.Default.ShoppingCart,
                         title = "Log in to open the store",
-                        subtitle = "Rings, themes and flourishes belong to your account. " +
+                        subtitle = "Rings, themes, flourishes and arrivals belong to your account. " +
                             "Your session has ended \u2014 reopen the app to sign in again.",
                         action = {
                             VoizaButton(
@@ -239,8 +245,8 @@ fun StoreScreen(
             }
         }
 
-        if (previewUrl != null) {
-            EffectPreview(url = previewUrl, onClose = { previewUrl = null })
+        previewItem?.let { item ->
+            EffectPreview(item = item, onClose = { previewItem = null })
         }
     }
 
@@ -256,7 +262,7 @@ fun StoreScreen(
                 openItemId = null
                 onOpenWallet()
             },
-            onPreview = { previewUrl = item.art },
+            onPreview = { previewItem = item },
             onLoadRooms = viewModel::loadMyRooms,
             onApplyTheme = { room -> viewModel.applyTheme(room, item) },
             onCloseRoomPicker = viewModel::closeRoomPicker,
@@ -271,6 +277,8 @@ private fun StoreCard(
     busy: Boolean,
     onClick: () -> Unit,
 ) {
+    // Display courtesy; the server still refuses a below-tier purchase with 403 vip_required.
+    val locked = vipLocked(item, user)
     VoizaCard(
         modifier = Modifier.fillMaxWidth().clickable(enabled = !busy, onClick = onClick),
         backgroundColor = VoizaSurfaceHigh,
@@ -291,6 +299,21 @@ private fun StoreCard(
                     modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
                 )
             }
+            // The server already lists recommended rows first; this only badges them.
+            if (item.recommended) {
+                StatusPill(
+                    text = "Recommended",
+                    color = DiamondGold,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
+                )
+            }
+            if (locked) {
+                StatusPill(
+                    text = "VIP ${item.minVipLevel}",
+                    color = DangerRed,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp),
+                )
+            }
         }
         Column(modifier = Modifier.padding(10.dp)) {
             Text(
@@ -302,12 +325,21 @@ private fun StoreCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(3.dp))
-            Text(
-                text = priceLine(item),
-                color = DiamondGold,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
+            if (locked && !item.owned) {
+                Text(
+                    text = "VIP ${item.minVipLevel} required",
+                    color = DangerRed,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            } else {
+                Text(
+                    text = priceLine(item),
+                    color = DiamondGold,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
             if (item.owned) {
                 Spacer(Modifier.height(3.dp))
                 Text(
@@ -371,6 +403,33 @@ private fun ItemArt(item: StoreItem, user: User?, size: Dp) {
                 modifier = Modifier.size(28.dp),
             )
         }
+
+        // A ride is a file, not a still: the row ships no poster frame, so the tile says which
+        // renderer will open it. That string comes from the server's sniffer — printing it lets a
+        // member see why an MP4 arrival behaves differently from a Lottie one, and the mapper's
+        // Lottie fallback keeps this honest when an older catalogue names no format at all.
+        StoreItemKind.RIDE -> Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(size, size * 0.7f)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0x33000000)),
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = item.name,
+                    tint = OnDarkHigh,
+                    modifier = Modifier.size(22.dp),
+                )
+                Text(
+                    text = item.animationFormat.name,
+                    color = OnDarkMedium,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
     }
 }
 
@@ -420,10 +479,16 @@ private fun StoreDetailSheet(
 ) {
     val busy = state.busyId != null
     val affordable = state.canAfford(item)
+    // Buying and renewing spend diamonds, so both are gated by tier; wearing an already-owned
+    // row is not (a support grant can be worn below the tier). The server is still authoritative.
+    val locked = state.vipLocked(item)
     val renews = item.periodDays != null
     // A retired row cannot be re-worn, and a permanent one has nothing to renew — only these cases
     // can spend diamonds from this sheet.
     val canSpend = !item.owned || renews
+    // The flourish and the ride are bought sight-unless-previewed: their art is a file that moves,
+    // and the row's format says which player opens it. A ring and a theme are still pictures.
+    val playable = item.kind == StoreItemKind.EFFECT || item.kind == StoreItemKind.RIDE
 
     VoizaSheet(
         visible = true,
@@ -439,11 +504,11 @@ private fun StoreDetailSheet(
                 .clip(RoundedCornerShape(14.dp))
                 .background(Brush.verticalGradient(listOf(Color(0xFF2A2459), Color(0xFF1B1740))))
                 .then(
-                    if (item.kind == StoreItemKind.EFFECT) Modifier.clickable(onClick = onPreview) else Modifier,
+                    if (playable) Modifier.clickable(onClick = onPreview) else Modifier,
                 ),
         ) {
             ItemArt(item = item, user = state.user, size = 96.dp)
-            if (item.kind == StoreItemKind.EFFECT) {
+            if (playable) {
                 StatusPill(
                     text = "Tap to play",
                     color = OnDarkHigh,
@@ -473,6 +538,22 @@ private fun StoreDetailSheet(
             }
         }
 
+        // The operator's ceiling on how long the room hands the screen to this arrival, printed in
+        // the units the row is stored in. 0 is an answer rather than a gap — "the clip's own
+        // length" — and dropping it would render a ride that looks like it never ends.
+        if (item.kind == StoreItemKind.RIDE) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = if (item.durationMs > 0) {
+                    "Holds the room's screen for ${item.durationMs} ms"
+                } else {
+                    "Holds the room's screen for the clip's own length"
+                },
+                color = OnDarkMedium,
+                fontSize = 11.sp,
+            )
+        }
+
         if (item.owned) {
             Spacer(Modifier.height(8.dp))
             Text(
@@ -480,6 +561,15 @@ private fun StoreDetailSheet(
                 color = Mint,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
+            )
+        }
+
+        if (locked && !item.owned) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Requires VIP ${item.minVipLevel} \u2014 you are VIP ${state.user?.vipLevel ?: 0}.",
+                color = DangerRed,
+                fontSize = 11.sp,
             )
         }
 
@@ -497,7 +587,7 @@ private fun StoreDetailSheet(
             !item.owned -> VoizaButton(
                 text = if (busy) "Buying\u2026" else "Buy for ${item.priceDiamonds} \u2756",
                 onClick = onBuy,
-                enabled = !busy && affordable,
+                enabled = !busy && affordable && !locked,
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -524,7 +614,7 @@ private fun StoreDetailSheet(
                     VoizaSecondaryButton(
                         text = if (busy) "Renewing\u2026" else "Renew ${item.periodDays} days \u00B7 ${item.priceDiamonds} \u2756",
                         onClick = onBuy,
-                        enabled = !busy && affordable,
+                        enabled = !busy && affordable && !locked,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -604,23 +694,42 @@ private fun StoreDetailSheet(
     }
 }
 
-/** The paid flourish is a Lottie scene, so a preview is the scene itself, once, over the shop. */
+/**
+ * The scene a row buys, played once over the shop so a member is not paying for an unknown.
+ *
+ * It is a [Dialog] because the detail sheet that opens it is a `ModalBottomSheet` — its own window,
+ * which would sit on top of anything drawn in the screen's `Box`. The flourish keeps its Lottie
+ * player; a ride goes through the same table the room overlay uses, so the preview cannot promise a
+ * rendering the arrival will not deliver.
+ */
 @Composable
-private fun EffectPreview(url: String?, onClose: () -> Unit) {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xF00B0A1F))
-            .clickable(onClick = onClose),
-    ) {
-        WelcomeEffect(welcomeUrl = url, onFinished = onClose)
-        Text(
-            text = "Tap anywhere to close",
-            color = OnDarkMedium,
-            fontSize = 11.sp,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp),
-        )
+private fun EffectPreview(item: StoreItem, onClose: () -> Unit) {
+    val rideUrl = if (item.kind == StoreItemKind.RIDE) item.art.asAssetUrl() else null
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xF00B0A1F))
+                .clickable(onClick = onClose),
+        ) {
+            if (rideUrl != null) {
+                RideArtLayer(
+                    format = item.animationFormat,
+                    url = rideUrl,
+                    durationMs = item.durationMs,
+                    onFinished = onClose,
+                )
+            } else {
+                WelcomeEffect(welcomeUrl = item.art, onFinished = onClose)
+            }
+            Text(
+                text = "Tap anywhere to close",
+                color = OnDarkMedium,
+                fontSize = 11.sp,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp),
+            )
+        }
     }
 }
 
@@ -654,16 +763,22 @@ private fun priceLine(item: StoreItem): String =
 private fun ownedLine(item: StoreItem): String =
     if (item.expiresAt != null) "Yours until ${item.expiresAt.take(10)}" else "Yours permanently"
 
+/** Display courtesy mirroring the ViewModel: the server remains authoritative on the buy gate. */
+private fun vipLocked(item: StoreItem, user: User?): Boolean =
+    item.minVipLevel > 0 && (user?.vipLevel ?: 0) < item.minVipLevel
+
 private fun StoreItem.asFrame() = ProfileFrame(key = key, name = name, art = art, accent = accent)
 
 private fun StoreItemKind.tabLabel(): String = when (this) {
     StoreItemKind.FRAME -> "Rings"
     StoreItemKind.THEME -> "Themes"
     StoreItemKind.EFFECT -> "Flourishes"
+    StoreItemKind.RIDE -> "Arrivals"
 }
 
 private fun StoreItemKind.kindLabel(): String = when (this) {
     StoreItemKind.FRAME -> "Profile ring"
     StoreItemKind.THEME -> "Room theme"
     StoreItemKind.EFFECT -> "Entry flourish"
+    StoreItemKind.RIDE -> "Entrance ride"
 }

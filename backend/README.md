@@ -134,7 +134,7 @@ existing row with `duplicate: true` and writes no second copy.
 | Kind             | Accepted            | Cap    |
 | ---------------- | ------------------- | ------ |
 | `GIFT_ICON`      | PNG, GIF, WebP, JPEG | 2 MB   |
-| `GIFT_ANIMATION` | Lottie JSON         | 2 MB   |
+| `GIFT_ANIMATION` | Lottie JSON 2 MB · SVGA 8 MB · MP4 8 MB | per format |
 | `GIFT_SOUND`     | WAV, MP3, M4A       | 2 MB   |
 | `EFFECT`         | Lottie JSON         | 3 MB   |
 | `BADGE`          | PNG, GIF, WebP      | 512 KB |
@@ -279,6 +279,49 @@ that still holds the room open needs the same signal it gets when the host close
 Deleting is refused rather than cascaded: the ledger keeps every posted entry, and a
 room that money moved through is history, not a row to remove.
 
+## Social graph and room community (migration 0022)
+
+Migration `0022_social_and_room_community.sql` adds the edges a party platform needs
+before it is a community: follows, symmetric blocks, a report queue, saved rooms, a
+pinned notice, a per-room microphone-approval queue, seat invitations and room
+ownership transfer. None of it is a counter column — every count is read from the
+edge table, because a block has to delete the follow edges between the pair in the
+same breath and a counter would drift.
+
+| Route | Who | What |
+| --- | --- | --- |
+| `GET /api/users/:id/followers`, `GET /api/users/:id/following` | signed in | a page of the directed follow graph; the public profile only carries the counts |
+| `GET /api/users/:id/relationship` | signed in | `{ following, blockedByMe, blockedByThem, interactionBlocked }` for the caller |
+| `POST|DELETE /api/users/:id/follow` | signed in | add/remove a follow; refused with `403 interaction_blocked` if either side blocked the other |
+| `GET /api/users/blocked`, `POST|DELETE /api/users/:id/block` | signed in | the caller's own block list and the toggle. One row is enough: the block is read in both directions and deletes follows both ways |
+| `POST /api/users/:id/report` | signed in | writes a `PENDING` report. A second open report against the same member is `409 report_already_open`; the target is never notified |
+| `GET|POST|DELETE /api/rooms/:id/favorite`, `GET /api/rooms/favorites` | signed in | the bookmark flag and the caller's saved rooms, newest first |
+| `POST /api/rooms/:id/announcement` | host (or an operator) | pin/clear the notice above the seats (`300` chars); emits `room:announcement` |
+| `POST /api/rooms/:id/seat/:index/invite` | host | seat a member already in the audience; emits `room:seat_invited` with a fresh LiveKit token |
+| `GET /api/rooms/:id/speaker-requests` | host | the pending microphone queue |
+| `POST /api/rooms/:id/speaker-requests/cancel` | requester | withdraw the caller's own request |
+| `POST /api/rooms/:id/speaker-requests/:requestId/{approve,reject}` | host | decide one request under row locks; approval seats the member and returns the token through `room:speaker_decision` |
+| `POST /api/rooms/:id/transfer` | host | hand ownership to a member present in the room; writes `room_ownership_transfers` and moves both LiveKit grants |
+| `GET /api/admin/reports`, `POST /api/admin/reports/:id/review` | operator (`user:read` / `user:moderate`) | the work queue and the decision. `banUser` is a separate flag and is refused together with `DISMISSED` |
+| `GET /api/admin/users/:id/social` | operator (`user:read`) | followers, follows, blocks and both directions of reports around one account |
+| `POST /api/admin/rooms/:id/announcement` | operator (`room:moderate`) | the override for a notice the host will not take down |
+
+Speaker approval is opt-in per room (`rooms.speaker_approval_required`, default
+`false`), so an older client keeps taking a seat immediately. When it is on, `POST
+/api/rooms/:id/seat` answers `202 { requested: true, request }` instead of seating the
+caller, a partial unique index allows one `PENDING` request per member per room, and
+disabling approval cancels the queue rather than leaving requests nobody can decide.
+A block is symmetric at the point of use, not at the point of writing: gifts and
+follows call `assertInteractionAllowed` and cannot be sidestepped by being the first
+to tap. A report is never an automatic ban — filing one writes `PENDING`; only the
+operator queue moves it. Filing is the one interaction a block does *not* stop: the
+member who was blocked is usually the one who needs the queue, so `createReport`
+deliberately leaves the moderation channel open.
+`npm run test:social:e2e` drives all of the above against a running stack — 51 checks,
+including that a zero-balance gift across a block answers `403 interaction_blocked`
+rather than `402 insufficient_balance`, which is the proof the guard runs inside the
+ledger transaction.
+
 ## Room effects are the server's call
 
 Nothing in this section needs a third-party UI kit: every payload below is a URL
@@ -302,6 +345,15 @@ window and `total` is Redis-backed, so a fast tapper produces one broadcast for 
 room instead of ten, and no client ever trusts — or sums — its own taps. Postgres
 `rooms.like_count` is the durable copy the room payload serves after a restart.
 
+Reactions are socket-only and store nothing: `room:reaction { roomId, key }` asks
+`emoji.service.ts` to resolve the key against the operator's `emoji_characters` rows — a 15-second
+in-process cache, invalidated by every admin write, so a burst of taps is not a query per tap — and
+broadcasts `room:reaction { roomId, userId, key, code, url, label }` to the room. A key with no row
+is dropped without a word, an emit is refused from anyone who is not a member of the room it names,
+and `rateLimit('reaction:<userId>', 20, 5)` caps how often one member may fire. The client sends a
+name and the server answers with the picture, which is what stops a device from animating arbitrary
+art in somebody else's room; the worst a stale cache can allow is a code retired seconds ago.
+
 Joining a room writes one SYSTEM chat row, `"<name> entered the room"`, deduped to
 once a minute per member so a reconnect storm cannot push the conversation off the
 screen; the visual banner is the client's `room:user_joined`, sized by VIP level.
@@ -312,6 +364,224 @@ ranks who spent diamonds (the gift-panel ranking sheet). The response carries
 `window`, `role` and `unit` so a client never has to guess which money it is
 looking at, and a role the server does not know falls back to `receivers` — the one
 that cannot expose a spender's name to the room.
+
+## The gift engine (migration 0023)
+
+The catalogue, the ledger and the socket are the ones that shipped with the app; what 0023 adds is
+the information an *animation* needs, and the identity a *paid* gift needs so it can be delivered
+twice without buying twice.
+
+| Column | Answers | Read by |
+| --- | --- | --- |
+| `gifts.animation_format` (`LOTTIE`/`SVGA`/`MP4`) | which player opens `animation_url` | the app's renderer routing |
+| `gifts.duration_ms` (0–30 000) | how long the room hands the screen to this gift | the takeover slot and its watchdog |
+| `gifts.display_priority` (0–1000) | which waiting gift is displaced | the takeover queue |
+| `gifts.combo_enabled`, `combo_window_ms` (1 000–15 000) | whether repeats add up, and inside what window | the combo counter |
+
+The format is never taken from a file name or from what the uploader declared: `media.service.ts`
+sniffs the bytes (ISO-BMFF `ftyp` brand for MP4/M4A, ZIP-and-protobuf or `%SVGAFORMAT%` for SVGA)
+and the admin panel refuses a row whose renderer cannot open the file attached to it. A row created
+before 0023 reads `LOTTIE`, `0`, `0`, `false` — every pre-existing gift keeps playing exactly as it
+did, because those are the defaults the clients already assumed.
+
+**Idempotency.** `POST /api/gifts/send` accepts an optional `idempotencyKey` (8–80 `[\w.-]`). It is
+claimed in `gift_requests` *before* either account lock is taken, so a replay cannot queue behind
+the transaction it is replaying; the row stores `request_hash = sha256(giftId|receiverId|quantity)`
+and a second body under one key answers `409 idempotency_key_reused` instead of silently answering
+a different gift. A replay returns the original transaction with `replayed: true` and publishes
+nothing new — no second ledger row, no second broadcast, no second notification.
+
+**Room scoping.** A gift that names a `roomId` is broadcast there and raises that room's
+`total_gift_value`, so inside the two account locks the ledger requires a live
+`room_participants` row (`left_at IS NULL`) for *both* halves of the pair — otherwise
+`403 not_in_room` / `403 receiver_not_in_room`. Without it any client could point an animation at a
+strangers' room and score a room nobody was in. A gift with no `roomId` (profile and DM gifts) is
+unaffected, and the app only ever sends from the room screen it is standing in.
+
+**Identity.** The transaction id is broadcast as the event's `eventId`, on `room:gift_animated` and
+in every gift-history page, which is what lets a device that saw a gift live drop the same gift when
+a reconnect hands it the room's tail. `createdAt` rides the live payload too, so the two paths
+describe a gift with the same fields rather than one worse than the other.
+
+**Combos.** `comboId = sha256(room|sender|receiver|gift|windowIndex).slice(0,16)` over a window
+aligned to the server clock, counted in Redis (`gift:combo:<id>`, TTL twice the window). The client
+sends no counter and receives one, so a tap-storm cannot stretch a window and a reconnect mid-combo
+reads the room's number. Each send inside a combo is still its own paid transaction; `combo_enabled
+= false` reports `count: 1` forever.
+
+**Catch-up.** `room:join` answers, then emits `room:gift_history { roomId, gifts[] }` to *that
+socket alone* — the last 12 gift events, from the ledger, not awaited so a member is never held up
+by a history page. The same rows are readable over REST: `GET /api/rooms/:id/gifts?limit=` (≤40,
+newest first) and the member's own receipts at `GET /api/gifts/history?limit=&before=&receiverId=`
+(keyset cursor on `(created_at, id)`, refused with 403 if the cursor belongs to somebody else).
+
+`npm run test:gift:e2e` (66 live checks) covers the money path under concurrency, idempotency and
+replay, the combo window's edges, the catch-up tail against the live event it must match, and the
+upload policy's per-format caps and container sniffing.
+
+## What a store row asks for, and what a shelf is (migrations 0024, 0025)
+
+`profile_frames`, `room_themes` and `visual_effects` each gained `min_vip_level SMALLINT` (0–20, the
+same bounds as `users.vip_level`) and `recommended BOOLEAN`. The gate is a *spend* gate, not a display
+hint: `store.purchase` compares it against the buyer's account rank inside the same locks that read
+the balance, and answers `403 vip_required` with `required`, `current` and the item's name in
+`details` — so two members with identical wallets get different stores. Browsing is deliberately not
+rank-gated: a cosmetic a member cannot afford yet is still a reason to keep playing. `recommended`
+decides only what the grid shows first (`store.service.ts` sorts `recommended` before `sortOrder`),
+which is why it has no CHECK and defaults to false everywhere: an operator's editorial voice, not a
+ranking algorithm.
+
+Migration 0025 turned `gifts.category` from a comment into `gift_categories (key, name, sort_order)`,
+with `key ~ '^[A-Z0-9][A-Z0-9_]{1,23}$'` and a **RESTRICT** foreign key from `gifts`. The key is what
+every gift row and every historical transaction refers to, so a rename is an edit to `name` and
+`category_key_immutable` refuses the other; deleting a shelf that still holds gifts is refused with
+`category_in_use` and the names in the way, because silently re-filing them is what an operator would
+have to unpick by hand. The seed inserts the four names the schema comment listed and then adopts every
+distinct value the catalogue already carries, so a category invented in raw SQL survives the switch
+instead of breaking the key. `GET /api/gifts` now answers `{ gifts, categories }` in the operator's
+order, and the panel edits the same table at `/api/admin/gift-categories` (`gift:manage`).
+
+## What a member arrives with (migration 0026)
+
+A **ride** is the cinematic that takes the whole screen while a member walks in — separate from the
+WELCOME flourish, which plays *behind* the room. It is its own catalogue (`profile_rides`) rather than
+a third `visual_effects.kind`, because `kind` is a hard split in code: an AMBIENT loop is chosen by
+room category and can never be sold (`effect_kind_not_sellable`), and a ride is a file with a declared
+renderer and a hard ceiling on the room's attention — the shape 0023 already settled for gifts.
+
+| Column | Answers |
+| --- | --- |
+| `url` (`^(/|https://)`) | the file handed to every device in the room |
+| `format` (`LOTTIE`/`SVGA`/`MP4`) | which renderer opens it; the `RIDE` media policy accepts all three |
+| `duration_ms` (0, or 250–30 000) | how long the room stops for it; 0 defers to the asset's own length |
+| `price_diamonds` / `for_sale` / `period_days` / `min_vip_level` / `recommended` | sold and worn exactly like a frame |
+
+Ownership rides the existing `user_items` (member, kind, item_key) with `'RIDE'` added to its CHECK, so
+renewal and the expiry sweep carry on unchanged; `users.profile_ride_key` plus the denormalised
+`profile_ride_expires_at` are what keep `toMiniUser()` synchronous on the join path. `wornRide()`
+resolves those two columns and returns **null** for an account that owns nothing, bought nothing, let
+its copy lapse, or wears a key an operator retired — there is no free ride and no fallback art, so a
+member with nothing simply walks in. The result publishes as `entryRide` on the account DTO
+(`GET /api/auth/me`, and `GET /api/users/:id` as the preview the profile screen shows) and on the
+`MiniUser` inside `room:user_joined`, which is what the room plays it from.
+
+Operators maintain it at `/api/admin/rides` (POST/PUT/DELETE, `config:manage`) with
+`/api/admin/rides/:key/holders` (`user:read`) answering "who stops playing this if I retire it" — the
+receipts survive; the cinematic does not. Writes are refused with `ride_format_invalid`,
+`ride_duration_invalid`, `ride_fields_missing`, `ride_exists` and `ride_key_immutable`. The three
+seeded rides reuse the already-shipped `public/effects` Lottie scenes (MIT © 2023 Matula José Alberto,
+see `THIRD_PARTY_LICENSES/trace-assets/PROVENANCE.md`) rather than naming files a device would 404 on,
+and no `recommended` row is seeded — a migration that picked a favourite is the catalogue deciding.
+
+## Lucky gift boxes (migration 0027)
+
+A box is a `gifts` row with `is_lucky_box = true` and `receiver_share_bps`, not a new catalogue: a box
+is *sent* — same combo window, same VIP tier, same idempotency key, same `GIFT_SENT` row, all of it
+still inside `ledger.sendGift`, because the fastest way to lose one of those guards is to write a
+second send path beside it.
+
+The arithmetic, in one transaction and one order:
+
+```
+sender pays        diamond_price × quantity          (unchanged from a flat gift)
+reward pool        r_coin_value × quantity
+per unit           floor(pool_per_unit × multiplier_bps / 10000)   one weighted draw each
+receiver banks     floor(gross × receiver_share_bps / 10000)
+platform keeps     gross − receiver banks            the residual, never a second dial
+```
+
+Storing one dial and deriving the other is the whole point: the obvious `tax_bps` + `receiver_share_bps`
+pair lets an operator set 60% and 60% and conjure 20% out of nowhere. `gift_box_outcomes` holds
+`label`, `multiplier_bps` (100–1 000 000, so 0.01x to 100x of the pool) and `weight`, and `weight` is a
+count rather than a percentage so "1 in 100" is 1 against 99 and no column has to add up to 100.
+
+What the write refuses: `lucky_box_needs_outcomes`, `lucky_box_needs_reward_pool` and
+`lucky_box_payout_unbounded` — the last one when `floor(expected_multiplier × receiver_share_bps /
+10000) > 10000`, i.e. a box that pays out more than the pool it sells for, with the ratio it computed
+in `details.payoutRatioBps`. Also `lucky_box_outcomes_invalid`, `lucky_box_too_many_outcomes`,
+`lucky_box_outcomes_without_box` and `lucky_box_not_configured` for a box an operator somehow left with
+no prizes, plus `category_*` and the gift price rules that already applied to every row.
+
+Nothing about the send's money identity changes: XP, quests, agency commission and
+`rooms.total_gift_value` all read the same `totalRCoins` the roll produced, and the outcomes are
+written into that transaction's `meta`, so an idempotent replay answers the gift it already bought with
+the numbers the ledger wrote instead of drawing a second time. The live event carries them as
+`lucky { outcomes[], headline, grossRCoins, receiverRCoins, platformTaxRCoins, receiverShareBps }`, and
+`GET /api/gifts` publishes `chanceBps` per outcome — the derived chance, never the `weight` — so a
+phone can print the odds without reimplementing the draw. See *Gift engine* above for the client's side.
+
+## Promotional banners (migration 0028)
+
+A **banner** is operator-run art at one of four fixed surfaces — the splash screen, the home grid, the
+top of the gift panel, the game desk. It is one table with a `placement` column instead of four
+catalogues, because the four surfaces draw the same shape and differ only in where they hang.
+
+| Column | Answers |
+| --- | --- |
+| `placement` (`SPLASH`/`HOME`/`GIFT`/`GAME`) | which screen draws it; a client asks for one and never renders a row for another |
+| `url` (`^(/|https://)`) + `format` (`PNG`/`GIF`/`WEBP`/`JPEG`/`LOTTIE`/`SVGA`/`MP4`) | the file and which renderer opens it; the `BANNER` media slot accepts all seven and its sniffer refuses a mismatch |
+| `duration_ms` (0, or 250–30 000) | how long the surface holds it — a still splash has no length of its own, so somebody has to say when it goes away |
+| `cta_type` + `cta_value` | the *verb* the app runs with the target, not a route guessed from a string |
+| `starts_at` / `ends_at` | the window a campaign may appear in; a banner that outlived its own date is the failure mode this prevents |
+| `is_active` | retire ≠ delete. Switching off keeps `impressions`/`taps` readable; deleting destroys them |
+
+`cta_type` is one of `NONE`, `INTERNAL` (only `HOME`/`STORE`/`WALLET`/`PROFILE` — the four screens a
+phone has a route for without naming a resource; a gift panel or game desk belongs to a room, which is
+what `ROOM` is for), `ROOM` (a room id) or `URL` (a full `https://` link). The pair's *shape* is a
+database CHECK, not a service convention: a row saying `ROOM` and holding a sentence would be a 500 on
+every device that asked for it.
+
+`GET /api/banners?placement=` is public — a splash has to draw before the app knows who is signed in —
+and returns only live rows: `is_active`, inside the window, and capped at
+`MAX_BANNERS_PER_PLACEMENT = 10` per placement via `row_number() OVER (PARTITION BY placement …)`, so a
+crowded HOME cannot starve the SPLASH. The `ROOM` clause is the part worth reading twice: a banner
+pointing at a room that has closed is dropped from the member list entirely rather than shipped as a
+broken navigation, and because rooms close every minute that is a join at read time, not a rule an
+operator could have honoured when they wrote the campaign. `POST /api/banners/track` takes `{ id,
+event: 'IMPRESSION' | 'TAP' }` behind `requireAuth` — anonymous traffic cannot inflate a count — and
+updates only a row that is live this second, else `404 banner_not_live`. Both columns are advisory:
+nothing else in the schema reads them and no payout depends on them.
+
+Operators maintain it at `/api/admin/banners` (GET `dashboard:read`; POST/PUT/DELETE `config:manage`)
+and the panel screen at `/banners` proves each row is published by re-reading the public list after
+every write. Writes are refused with `banner_key_invalid`, `banner_url_invalid`, `banner_format_invalid`,
+`banner_duration_invalid`, `banner_window_invalid`, `banner_exists`, `banner_key_immutable`,
+`banner_not_found` and, for the tap target, `banner_cta_missing`, `banner_cta_shape`,
+`banner_cta_target_invalid`, `banner_cta_url_invalid`, `banner_cta_room_invalid` and
+`banner_cta_room_missing` — the last one refuses at the write what the read path would otherwise only
+silently hide. The `BANNER` upload kind is registered in `media.service`'s `REFERENCE_SITES`, so
+deleting a file a banner still points at answers `409 upload_in_use`.
+
+Seeds: none. A banner is marketing copy over artwork somebody has to hold the rights to, and unlike the
+rides and badges there is no art in this repository that would honestly fill a splash screen. An empty
+table means every surface shows nothing, which is what a platform with no live campaign should look
+like.
+
+## The socket speaks for a member, and a password is guessed slowly
+
+`joinRoom` is the moderation gate: it refuses a closed room, a banned account and a
+removed member. Until now the socket had its own door — `room:join`, `room:chat` and
+`room:like` trusted whatever the connection claimed — so a user the host had just
+removed could stay in the party by never making the REST call again, and could keep
+broadcasting lines into a room they were kicked out of. `assertMayAttendRoom()`
+(`room.service.ts`) is the same three questions without the LiveKit token and seat
+snapshot, and `socket.service.ts` now asks it before attaching a socket to a room and
+before storing a chat line. A refusal arrives as an ack, not a disconnect:
+`not_a_member` ("Join this room before following it") and `room_banned`.
+
+Two deliberate edges:
+
+* On `room:join` the gate runs *before* the previous room is dropped, so a refused hop
+  cannot cost a member the room they are already standing in.
+* `room:like` checks participation only when the payload names a room other than the one
+  the socket was accepted into — a like burst is 40 emits per 10s and the validated room
+  needs no re-reading. Chat pays four queries per message and is capped at 15 per 10s.
+
+An operator password, unlike a phone OTP, has no short-lived code to blunt a guess. Both
+`POST /api/auth/login` and `POST /api/business/login` are now throttled through the
+existing `rateLimit()` bucket helper at **10 attempts per minute per IP and account**,
+returning `429` when exceeded. Bucketing on the pair as well as the address is what keeps
+one busy office NAT from locking out every operator behind it.
 
 ## External providers
 
@@ -346,7 +616,7 @@ Two behaviours worth knowing before pointing a test account at this:
 ## Tests
 
 `npm run test:e2e` drives a *running* stack (PostgreSQL + Redis + LiveKit + this API)
-through 154 checks: OTP auth, wallet ledger double-spend under concurrency, seat
+through 398 checks: OTP auth, wallet ledger double-spend under concurrency, seat
 row-lock contention, the seat policy (the published default, a room created with no
 capacity, a refused over-the-max request, an admin rewrite that lands in `admin_audit`,
 seats beyond the old hardcoded nine taken and refused, and a 64-seat room accepted by
@@ -362,7 +632,16 @@ path (signature rejection, idempotent credit, replayed delivery) and the media s
 accepted PNG read back off `/uploads/` byte-for-byte, a script renamed `.png` refused by its
 magic bytes, an oversized file refused, identical bytes deduplicated instead of copied, a
 traversal-shaped file name stored as text only, a member token refused, and a delete refused
-until no gift row points at the file). It exits non-zero on
+until no gift row points at the file), then the four catalogues that became data in 0024–0027: the
+shelves a gift can be filed under (key immutable, `category_in_use` naming what sits on a shelf, the
+public list shipped beside the gifts), the operator's gift revenue window (summed from the ledger, not
+from the page, unattributed rows counted separately, a member refused the view), a cosmetic's rank gate
+and recommended flag, entrance rides (container refused unless the sniffer agreed, the 250 ms–30 s
+budget enforced, bought through the same ledger primitive as a ring, the worn key resolving again the
+moment it is put back, every write audited), and lucky boxes — the write that refuses odds paying more
+than the box sells for, twenty boxes costing exactly twenty prices, the roll floored per unit and
+written into the receipt, a replay answering the roll it already bought, and the room being told the
+same numbers the ledger paid. It exits non-zero on
 any failure.
 
 `npm run test:games` (67) and `npm run test:business` (87) run against the same stack:

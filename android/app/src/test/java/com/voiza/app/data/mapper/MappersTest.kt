@@ -1,18 +1,29 @@
 package com.voiza.app.data.mapper
 
 import com.google.gson.Gson
+import com.voiza.app.data.remote.dto.ApproveSpeakerRequestResponse
 import com.voiza.app.data.remote.dto.EmojiCatalogueDto
 import com.voiza.app.data.remote.dto.GiftDto
+import com.voiza.app.data.remote.dto.GiftsResponse
 import com.voiza.app.data.remote.dto.LeaderboardResponse
 import com.voiza.app.data.remote.dto.MiniUserDto
+import com.voiza.app.data.remote.dto.RelationshipDto
 import com.voiza.app.data.remote.dto.RoomDto
 import com.voiza.app.data.remote.dto.SeatDto
 import com.voiza.app.data.remote.dto.SeatPolicyResponse
+import com.voiza.app.data.remote.dto.SocketAnnouncementDto
 import com.voiza.app.data.remote.dto.SocketGiftAnimatedDto
 import com.voiza.app.data.remote.dto.SocketHandRaiseDto
 import com.voiza.app.data.remote.dto.SocketLikeDto
+import com.voiza.app.data.remote.dto.SocketReactionDto
 import com.voiza.app.data.remote.dto.SocketRoomProfileDto
+import com.voiza.app.data.remote.dto.SocketSeatInvitedDto
+import com.voiza.app.data.remote.dto.SocketSpeakerDecisionDto
 import com.voiza.app.data.remote.dto.SocketWalletUpdateDto
+import com.voiza.app.data.remote.dto.SpeakerRequestDto
+import com.voiza.app.data.remote.dto.SpeakerRequestsResponse
+import com.voiza.app.data.remote.dto.TakeSeatResponse
+import com.voiza.app.data.remote.dto.StoreItemDto
 import com.voiza.app.data.remote.dto.StorePurchaseResponse
 import com.voiza.app.data.remote.dto.StoreResponse
 import com.voiza.app.data.remote.dto.ThemeCatalogueDto
@@ -20,18 +31,24 @@ import com.voiza.app.data.remote.dto.UserDto
 import com.voiza.app.domain.model.DEFAULT_AMBIENT_EFFECT
 import com.voiza.app.domain.model.DEFAULT_ROOM_THEME
 import com.voiza.app.domain.model.FALLBACK_EMOJI_CODE_PATTERN
+import com.voiza.app.domain.model.giftCategoryTabs
+import com.voiza.app.domain.model.GiftAnimationFormat
 import com.voiza.app.domain.model.GiftEffectKind
 import com.voiza.app.domain.model.RankBoard
+import com.voiza.app.domain.model.ReportReason
 import com.voiza.app.domain.model.RoomCategory
 import com.voiza.app.domain.model.RoomStatus
 import com.voiza.app.domain.model.RoomSort
 import com.voiza.app.domain.model.RoomType
 import com.voiza.app.domain.model.SeatPolicy
 import com.voiza.app.domain.model.SeatStatus
+import com.voiza.app.domain.model.SeatTakeResult
+import com.voiza.app.domain.model.SpeakerRequestStatus
 import com.voiza.app.domain.model.StoreItemKind
 import com.voiza.app.domain.model.UserRank
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -205,9 +222,200 @@ class MappersTest {
         assertEquals(GiftEffectKind.TICKER, misspelled.effectKind)
     }
 
+    // ------------------------------------------------------------------ lucky gift boxes (migration 0027)
+
     @Test
-    fun `a room carries the ambient loop and like count the server chose`() {
-        val room = gson.fromJson(
+    fun `a lucky box keeps the odds it published and the share the operator set`() {
+        // The member catalogue's box shape, trimmed from the seeded Lucky Pouch: `chanceBps` and no
+        // `weight`, because the draw's raw weights are the operator's own unit.
+        val box = gson.fromJson(
+            """{"id":"b1","name":"Lucky Pouch","iconUrl":"/gifts/fireworks.png",
+               "diamondPrice":100,"rCoinValue":90,"category":"SPECIAL","isLuckyBox":true,
+               "receiverShareBps":6000,
+               "boxOutcomes":[{"label":"0.5x","multiplierBps":5000,"chanceBps":4000},
+                              {"label":"5x","multiplierBps":50000,"chanceBps":200}]}""",
+            GiftDto::class.java,
+        ).toDomain()
+
+        assertTrue(box.isLuckyBox)
+        assertEquals(6000, box.receiverShareBps)
+        assertEquals(2, box.boxOutcomes.size)
+        assertEquals(5000, box.boxOutcomes[0].multiplierBps)
+        assertEquals(4000, box.boxOutcomes[0].chanceBps)
+        assertEquals("5x", box.boxOutcomes[1].label)
+        // The tile discloses the best prize, straight off the table the server published.
+        assertEquals(50000, box.boxOutcomes.maxOf { it.multiplierBps })
+    }
+
+    @Test
+    fun `a flat gift carries neither the share dial nor a prize table`() {
+        val flat = gson.fromJson(
+            """{"id":"g1","name":"Rose","iconUrl":"/gifts/rose.png","diamondPrice":10,
+               "rCoinValue":9,"category":"ROSE"}""",
+            GiftDto::class.java,
+        ).toDomain()
+
+        // Gson leaves an absent key null rather than the declared default, so what the domain holds is
+        // the mapper's answer: a gift that is not a box must not pick up odds nothing draws or a dial
+        // nothing pays.
+        assertFalse(flat.isLuckyBox)
+        assertTrue(flat.boxOutcomes.isEmpty())
+        assertNull(flat.receiverShareBps)
+    }
+
+    @Test
+    fun `a box whose odds the server did not attach is still a box`() {
+        // The prize table is attached by a loader rather than read off the gift row, so a box can
+        // arrive without it. The tile then names the box and drops only the "1 in n" half of the line.
+        val box = gson.fromJson(
+            """{"id":"b1","name":"Lucky Pouch","iconUrl":"/gifts/fireworks.png","diamondPrice":100,
+               "rCoinValue":90,"category":"SPECIAL","isLuckyBox":true,"receiverShareBps":6000}""",
+            GiftDto::class.java,
+        ).toDomain()
+
+        assertTrue(box.isLuckyBox)
+        assertEquals(6000, box.receiverShareBps)
+        assertTrue(box.boxOutcomes.isEmpty())
+    }
+
+    @Test
+    fun `an animated event repeats the roll the ledger wrote`() {
+        // Every number below is the server's, the tax and the share included: a phone that derived a
+        // payout from the catalogue would be reading a table the operator can edit after the send.
+        val event = gson.fromJson(
+            """{"roomId":"r1","quantity":3,"totalDiamonds":300,"totalRCoins":162,"seatIndex":0,
+               "eventId":"t1","comboId":"c1","comboCount":1,
+               "gift":{"id":"b1","name":"Lucky Pouch","iconUrl":"/gifts/fireworks.png",
+                        "diamondPrice":100,"rCoinValue":90,"category":"SPECIAL","isLuckyBox":true},
+               "sender":{"id":"u1","username":"sender"},
+               "receiver":{"id":"u2","username":"receiver"},
+               "lucky":{"outcomes":[{"label":"2x","multiplierBps":20000,"chanceBps":2500,"count":2},
+                                    {"label":"0.5x","multiplierBps":5000,"chanceBps":5000,"count":1}],
+                        "headline":{"label":"2x","multiplierBps":20000,"chanceBps":2500},
+                        "grossRCoins":270,"receiverRCoins":162,"platformTaxRCoins":108,
+                        "receiverShareBps":6000}}""",
+            SocketGiftAnimatedDto::class.java,
+        ).toDomain()
+
+        assertNotNull(event.lucky)
+        val roll = event.lucky!!
+        assertEquals(2, roll.prizes.size)
+        assertEquals(2, roll.prizes[0].count)
+        assertEquals(2500, roll.prizes[0].chanceBps)
+        assertEquals("2x", roll.headline?.label)
+        // A headline is named, not tallied: the wire gives it odds but no count.
+        assertEquals(0, roll.headline?.count)
+        assertEquals(270L, roll.grossRCoins)
+        assertEquals(162L, roll.receiverRCoins)
+        assertEquals(108L, roll.platformTaxRCoins)
+        assertEquals(6000, roll.receiverShareBps)
+        // The credit on screen is the event's own `totalRCoins`, and it is the roll's receiver figure.
+        assertEquals(event.totalRCoins, roll.receiverRCoins)
+    }
+
+    @Test
+    fun `a flat gift's event has no roll to show`() {
+        val base = """{"roomId":"r1","quantity":1,"totalDiamonds":10,"totalRCoins":9,
+               "gift":{"id":"g1","name":"Rose","iconUrl":"/gifts/rose.png","diamondPrice":10,
+                        "rCoinValue":9,"category":"ROSE"},
+               "sender":{"id":"u1","username":"sender"},
+               "receiver":{"id":"u2","username":"receiver"}"""
+
+        // Two shapes, one answer: a backend without boxes never writes the key, and a current one
+        // writes null for a flat send.
+        val absent = gson.fromJson("$base}", SocketGiftAnimatedDto::class.java).toDomain()
+        val explicitNull = gson.fromJson("$base,\"lucky\":null}", SocketGiftAnimatedDto::class.java).toDomain()
+
+        assertNull(absent.lucky)
+        assertNull(explicitNull.lucky)
+    }
+
+    @Test
+    fun `a roll that arrives without its money keys reports zero, never a guess`() {
+        val event = gson.fromJson(
+            """{"roomId":"r1","quantity":1,"totalDiamonds":100,"totalRCoins":0,
+               "gift":{"id":"b1","name":"Lucky Pouch","iconUrl":"/gifts/fireworks.png",
+                        "diamondPrice":100,"rCoinValue":90,"category":"SPECIAL","isLuckyBox":true},
+               "sender":{"id":"u1","username":"sender"},
+               "receiver":{"id":"u2","username":"receiver"},
+               "lucky":{"outcomes":[{"label":"5x","multiplierBps":50000}]}}""",
+            SocketGiftAnimatedDto::class.java,
+        ).toDomain()
+
+        assertNotNull(event.lucky)
+        val roll = event.lucky!!
+        assertEquals(0L, roll.grossRCoins)
+        assertEquals(0L, roll.receiverRCoins)
+        assertEquals(0, roll.receiverShareBps)
+        assertEquals(0, roll.prizes[0].chanceBps)
+        assertEquals(0, roll.prizes[0].count)
+    }
+
+    @Test
+    fun `catalogue categories become the tabs in the order the operator set`() {
+        val catalogue = gson.fromJson(
+            """{"gifts":[{"id":"g1","name":"Rose","iconUrl":"/gifts/rose.png","diamondPrice":1,
+               "rCoinValue":1,"category":"ROSE"},
+               {"id":"g2","name":"Car","iconUrl":"/gifts/car.png","diamondPrice":50,"rCoinValue":50,
+               "category":"SPECIAL"}],
+               "categories":[{"key":"SPECIAL","name":"Big Ones","sortOrder":10,"gifts":8},
+               {"key":"ROSE","name":"Roses","sortOrder":20,"gifts":1}]}""",
+            GiftsResponse::class.java,
+        ).toDomain()
+
+        assertEquals(2, catalogue.categories.size)
+        // The label is the operator's, shown as written — even where it says nothing like the key.
+        assertEquals("Big Ones", catalogue.categories.first().name)
+        assertEquals(listOf("SPECIAL", "ROSE"), giftCategoryTabs(catalogue.categories, catalogue.gifts).map { it.key })
+    }
+
+    @Test
+    fun `catalogue WITHOUT a categories key keeps today's derived tabs`() {
+        // The regression the Unsafe rule guards against: an older server omits the key entirely,
+        // so Gson leaves it null rather than running the Kotlin default, and the panel must still
+        // have the tabs it had before this change.
+        val response = gson.fromJson(
+            """{"gifts":[{"id":"g1","name":"Rose","iconUrl":"/gifts/rose.png","diamondPrice":1,
+               "rCoinValue":1,"category":"ROSE"},
+               {"id":"g3","name":"Box","iconUrl":"/gifts/box.png","diamondPrice":9,"rCoinValue":9,
+               "category":"MYSTERY_BOX"}]}""",
+            GiftsResponse::class.java,
+        )
+        assertNull(response.categories)
+
+        val catalogue = response.toDomain()
+        assertTrue(catalogue.categories.isEmpty())
+
+        val tabs = giftCategoryTabs(catalogue.categories, catalogue.gifts)
+        assertEquals(listOf("ROSE", "MYSTERY_BOX"), tabs.map { it.key })
+        // Labelled the way the panel always labelled it, not with the raw key.
+        assertEquals(listOf("Rose", "Mystery box"), tabs.map { it.name })
+    }
+
+    @Test
+    fun `an empty shelf renders no tab and a gift with no shelf is still visible`() {
+        val catalogue = gson.fromJson(
+            """{"gifts":[{"id":"g1","name":"Rose","iconUrl":"/gifts/rose.png","diamondPrice":1,
+               "rCoinValue":1,"category":"ROSE"},
+               {"id":"g4","name":"Orb","iconUrl":"/gifts/orb.png","diamondPrice":7,"rCoinValue":7,
+               "category":"ORBIT"}],
+               "categories":[{"key":"ROSE","name":"Roses","sortOrder":10,"gifts":1},
+               {"key":"SPECIAL","name":"Special","sortOrder":20,"gifts":0},
+               {"key":"","name":"Broken","sortOrder":30,"gifts":1}]}""",
+            GiftsResponse::class.java,
+        ).toDomain()
+
+        // The shelf with no key cannot match anything, so it is dropped at mapping time.
+        assertEquals(listOf("ROSE", "SPECIAL"), catalogue.categories.map { it.key })
+        // SPECIAL has no gift in the loaded catalogue, so it gets no tab; ORBIT has no shelf at all,
+        // so it gets no tab either — but its gift stays in the catalogue and is reachable under "All".
+        assertEquals(listOf("ROSE"), giftCategoryTabs(catalogue.categories, catalogue.gifts).map { it.key })
+        assertEquals(2, catalogue.gifts.size)
+        assertEquals("ORBIT", catalogue.gifts.last().category)
+    }
+
+    @Test
+    fun `a room carries the ambient loop and like count the server chose`() {        val room = gson.fromJson(
             """{"id":"r1","roomNumber":7,"title":"T","host":$host,
                "category":"PARTY","type":"PUBLIC","status":"ACTIVE",
                "ambientEffect":"/effects/room-confetti.json","likeCount":420}""",
@@ -708,5 +916,350 @@ class MappersTest {
 
         assertNull(purchase.item)
         assertEquals(500, purchase.user?.diamondBalance)
+    }
+
+    @Test
+    fun `a ride row keeps the renderer and the hold the server declared`() {
+        val store = gson.fromJson(
+            """{"items":[
+                 {"kind":"RIDE","key":"ride-confetti","name":"Confetti Arrival",
+                  "art":"/effects/room-confetti.json","accent":null,"priceDiamonds":2500,
+                  "periodDays":30,"minVipLevel":0,"recommended":false,
+                  "animationFormat":"LOTTIE","durationMs":4000,"owned":false,"expiresAt":null,
+                  "equipped":false},
+                 {"kind":"RIDE","key":"ride-gate","name":"Neon Gate",
+                  "art":"/rides/gate.svga","priceDiamonds":6000,"periodDays":null,
+                  "animationFormat":"SVGA","durationMs":0,"owned":true,"expiresAt":null,
+                  "equipped":true}]}""",
+            StoreResponse::class.java,
+        ).toDomain()
+
+        val rides = store.itemsOf(StoreItemKind.RIDE)
+        assertEquals(2, rides.size)
+
+        // The shop row's own art field carries a ride's file: there is no `url` key on a store item.
+        assertEquals("/effects/room-confetti.json", rides.first().art)
+        assertEquals(GiftAnimationFormat.LOTTIE, rides.first().animationFormat)
+        assertEquals(4000, rides.first().durationMs)
+
+        // SVGA is a routing decision, not a label — a device that guessed from the file name
+        // would open this container in the Lottie player and show a still frame.
+        assertEquals(GiftAnimationFormat.SVGA, rides.last().animationFormat)
+
+        // 0 is the operator's answer "play it for its own length", so it stays 0 rather than
+        // becoming null, and rather than being read as "no duration declared" downstream.
+        assertEquals(0, rides.last().durationMs)
+
+        // Bought, owned, worn and permanent behave exactly as they do for a frame.
+        val owned = rides.last()
+        assertTrue(owned.owned)
+        assertTrue(owned.equipped)
+        assertNull(owned.periodDays)
+        assertTrue(owned.wearable)
+    }
+
+    @Test
+    fun `a ride row from a backend that ships neither playback field still maps`() {
+        val dto = gson.fromJson(
+            """{"kind":"RIDE","key":"ride-old","name":"Old Arrival",
+               "art":"/rides/old.json","priceDiamonds":1000,"periodDays":30,
+               "owned":false,"expiresAt":null,"equipped":false}""",
+            StoreItemDto::class.java,
+        )
+        // Gson builds through Unsafe: an absent key is null on the DTO, never the Kotlin default.
+        // A non-nullable field here would have thrown on every frame, theme and effect row too.
+        assertNull(dto.animationFormat)
+        assertNull(dto.durationMs)
+
+        val item = dto.toDomainOrNull()
+        assertEquals(StoreItemKind.RIDE, item?.kind)
+        // The mapper owns the fallbacks: Lottie is the renderer every build has had, and a missing
+        // hold reads the same as a declared 0 — "the clip decides", with the app's own ceiling.
+        assertEquals(GiftAnimationFormat.LOTTIE, item?.animationFormat)
+        assertEquals(0, item?.durationMs)
+    }
+
+    @Test
+    fun `a ride row with no art is dropped rather than sold as an empty screen`() {
+        // Buying a row the phone cannot open would still debit the wallet, so the card never shows.
+        val store = gson.fromJson(
+            """{"items":[
+                 {"kind":"RIDE","key":"ride-hollow","name":"Hollow","priceDiamonds":900,
+                  "animationFormat":"MP4","durationMs":5000}]}""",
+            StoreResponse::class.java,
+        ).toDomain()
+
+        assertTrue(store.items.isEmpty())
+    }
+
+    @Test
+    fun `the account ships the ride it arrives with`() {
+        val account = gson.fromJson(
+            """{"id":"u1","phone":"+1","username":"ana","diamondBalance":10,"rCoinBalance":0,
+               "totalGiftsSent":0,"totalGiftsReceived":0,"userType":"USER","status":"ACTIVE",
+               "isVerified":false,"vipLevel":0,
+               "entryRide":{"key":"ride-confetti","name":"Confetti Arrival",
+                            "url":"/effects/room-confetti.json","format":"LOTTIE","durationMs":4000}}""",
+            UserDto::class.java,
+        ).toDomain()
+
+        // The account object spells these `url` and `format`; the shop row spells them `art` and
+        // `animationFormat`. A mapper that reused one shape would read nulls from the other.
+        val ride = account.entryRide ?: error("the account's ride was dropped")
+        assertEquals("ride-confetti", ride.key)
+        assertEquals("Confetti Arrival", ride.name)
+        assertEquals("/effects/room-confetti.json", ride.url)
+        assertEquals(GiftAnimationFormat.LOTTIE, ride.format)
+        assertEquals(4000, ride.durationMs)
+    }
+
+    @Test
+    fun `an account with no entryRide owns nothing, and a half-formed ride is dropped`() {
+        // There is no free default ride and no fallback art in this app, so "the key was not in
+        // the response" and "the copy lapsed" both have to read as null rather than as some
+        // cinematic the client picked on the member's behalf.
+        val nobody = gson.fromJson(
+            """{"id":"u1","phone":"+1","username":"ana","userType":"USER","status":"ACTIVE",
+               "entryRide":null}""",
+            UserDto::class.java,
+        ).toDomain()
+        assertNull(nobody.entryRide)
+
+        val absent = gson.fromJson(
+            """{"id":"u1","phone":"+1","username":"ana","userType":"USER","status":"ACTIVE"}""",
+            UserDto::class.java,
+        ).toDomain()
+        assertNull(absent.entryRide)
+
+        // A ride that names no file cannot be opened, so it is dropped exactly like a ring with
+        // no art; an unnamed one keeps the key, which is what the shop would show anyway.
+        val hollow = gson.fromJson(
+            """{"id":"u1","phone":"+1","username":"ana","userType":"USER","status":"ACTIVE",
+               "entryRide":{"key":"ride-hollow","format":"MP4","durationMs":5000}}""",
+            UserDto::class.java,
+        ).toDomain()
+        assertNull(hollow.entryRide)
+
+        val unnamed = gson.fromJson(
+            """{"id":"u1","phone":"+1","username":"ana","userType":"USER","status":"ACTIVE",
+               "entryRide":{"key":"ride-gate","url":"/rides/gate.svga","format":"svga"}}""",
+            UserDto::class.java,
+        ).toDomain()
+        assertEquals("ride-gate", unnamed.entryRide?.name)
+        assertEquals(GiftAnimationFormat.SVGA, unnamed.entryRide?.format)
+        assertEquals(0, unnamed.entryRide?.durationMs)
+    }
+
+    @Test
+    fun `a joiner's ride rides on the mini user and a lean roster stays null`() {
+        val joiner = gson.fromJson(
+            """{"id":"u2","username":"ana","vipLevel":7,
+               "entryRide":{"key":"ride-gate","name":"Neon Gate","url":"/rides/gate.svga",
+                            "format":"SVGA","durationMs":6500}}""",
+            MiniUserDto::class.java,
+        ).toDomain()
+        assertEquals(GiftAnimationFormat.SVGA, joiner.entryRide?.format)
+        assertEquals(6500, joiner.entryRide?.durationMs)
+
+        // Seats and the audience list are the lean queries: absent means the server did not read
+        // the ride column, and the room must not play one it was never told about.
+        val lean = gson.fromJson("""{"id":"u3","username":"bo"}""", MiniUserDto::class.java).toDomain()
+        assertNull(lean.entryRide)
+    }
+
+    // ---- Speaker gate: the seat route with two answers ---------------------------------
+
+    private val livekit =
+        """{"url":"ws://lk:7880","token":"tok","roomName":"room-r1","identity":"u2","canPublish":true}"""
+
+    @Test
+    fun `a seat tap that only filed a request maps to the queue, not to a seat list`() {
+        val queued = gson.fromJson(
+            """{"requested":true,
+                 "request":{"id":"q1","roomId":"r1","seatIndex":2,"status":"PENDING",
+                            "user":{"id":"u2","username":"bo"}}}""",
+            TakeSeatResponse::class.java,
+        ).toDomain()
+
+        val request = (queued as SeatTakeResult.Queued).request
+        assertEquals("q1", request?.id)
+        assertEquals(2, request?.seatIndex)
+        assertEquals("bo", request?.user?.username)
+    }
+
+    @Test
+    fun `a seat tap that seated maps to the server list and the publisher token`() {
+        val seated = gson.fromJson(
+            """{"seats":[{"seatIndex":2,"status":"OCCUPIED","isSpeaker":true,
+                          "user":{"id":"u2","username":"bo"}}],
+                 "livekit":$livekit}""",
+            TakeSeatResponse::class.java,
+        ).toDomain() as SeatTakeResult.Seated
+
+        assertEquals(1, seated.seats.size)
+        assertEquals(SeatStatus.OCCUPIED, seated.seats[0].status)
+        assertEquals("tok", seated.livekit?.token)
+    }
+
+    @Test
+    fun `an approval response is read even when the server sent no seat list`() {
+        val dto = gson.fromJson(
+            """{"request":{"id":"q1","roomId":"r1","seatIndex":2,"status":"APPROVED"}}""",
+            ApproveSpeakerRequestResponse::class.java,
+        )
+
+        // Regression guard: `seats` must stay a nullable list. A `= emptyList()` default is not
+        // run by Gson, so the repository's orEmpty() is what keeps a host's approve from crashing.
+        assertNull(dto.seats)
+        assertEquals(SpeakerRequestStatus.APPROVED, dto.request?.toDomain()?.status)
+    }
+
+    @Test
+    fun `a queue the server omitted entirely reads as nobody waiting`() {
+        val dto = gson.fromJson("""{}""", SpeakerRequestsResponse::class.java)
+
+        assertNull(dto.requests)
+        // An unknown status is a pending line, never a dropped one: a request the host can see but
+        // cannot answer would leave the member waiting forever.
+        val odd = gson.fromJson(
+            """{"id":"q9","roomId":"r1","seatIndex":3,"status":"FORWARDED"}""",
+            SpeakerRequestDto::class.java,
+        ).toDomain()
+        assertEquals(SpeakerRequestStatus.PENDING, odd.status)
+        assertNull(odd.user)
+    }
+
+    @Test
+    fun `a decision event finds the seat through the request when the payload has no index`() {
+        val approved = gson.fromJson(
+            """{"roomId":"r1","status":"APPROVED",
+                 "request":{"id":"q1","roomId":"r1","seatIndex":4,"status":"APPROVED"},
+                 "livekit":$livekit}""",
+            SocketSpeakerDecisionDto::class.java,
+        ).toDomain()
+        assertTrue(approved.approved)
+        assertEquals(4, approved.seatIndex)
+        assertEquals("tok", approved.livekit?.token)
+
+        // A rejection seats nobody, so there is no token and often no index either.
+        val rejected = gson.fromJson(
+            """{"roomId":"r1","status":"REJECTED"}""",
+            SocketSpeakerDecisionDto::class.java,
+        ).toDomain()
+        assertFalse(rejected.approved)
+        assertNull(rejected.seatIndex)
+        assertNull(rejected.livekit)
+    }
+
+    @Test
+    fun `an invitation carries the seat and the token that came with it`() {
+        val invited = gson.fromJson(
+            """{"roomId":"r1","seatIndex":3,"livekit":$livekit}""",
+            SocketSeatInvitedDto::class.java,
+        ).toDomain()
+        assertEquals(3, invited.seatIndex)
+        assertTrue(invited.livekit?.canPublish == true)
+    }
+
+    // ---- Pinned notice ------------------------------------------------------------------
+
+    @Test
+    fun `a room from a backend without the notice keys leaves it absent and the gate off`() {
+        val room = gson.fromJson(
+            roomJson(""""category":"CHAT","type":"PUBLIC","status":"ACTIVE""""),
+            RoomDto::class.java,
+        ).toDomain()
+
+        assertNull(room.announcement)
+        assertFalse(room.speakerApprovalRequired)
+    }
+
+    @Test
+    fun `a cleared notice arrives as a null, which is not the same as an old server`() {
+        val cleared = gson.fromJson(
+            """{"roomId":"r1","updatedAt":"2026-11-06T10:00:00Z"}""",
+            SocketAnnouncementDto::class.java,
+        ).toDomain()
+        assertNull(cleared.announcement)
+
+        // The profile broadcast is the opposite case: absent keys must not read as "cleared", which
+        // is why its DTO keeps them nullable and the ViewModel falls back to what it already shows.
+        val stale = gson.fromJson(
+            """{"roomId":"r1","title":"T","category":"CHAT","type":"PUBLIC","status":"ACTIVE"}""",
+            SocketRoomProfileDto::class.java,
+        ).toDomain()
+        assertNull(stale.announcement)
+        assertNull(stale.speakerApprovalRequired)
+    }
+
+    // ---- Relationship and reporting --------------------------------------------------------
+
+    @Test
+    fun `a relationship from a server that sent no flags is no relationship`() {
+        // Gson never runs the constructor, so an absent flag is a null field, not the declared
+        // default — and "null" must not become "this person blocked me".
+        val nothing = gson.fromJson("""{}""", RelationshipDto::class.java).toDomain()
+        assertFalse(nothing.following)
+        assertFalse(nothing.blockedByMe)
+        assertFalse(nothing.blockedByThem)
+        assertFalse(nothing.interactionBlocked)
+    }
+
+    @Test
+    fun `each relationship flag is read on its own`() {
+        val blockedByThem = gson.fromJson(
+            """{"following":true,"blockedByMe":false,"blockedByThem":true,"interactionBlocked":true}""",
+            RelationshipDto::class.java,
+        ).toDomain()
+
+        assertTrue(blockedByThem.following)
+        assertFalse(blockedByThem.blockedByMe)
+        assertTrue(blockedByThem.blockedByThem)
+        assertTrue(blockedByThem.interactionBlocked)
+    }
+
+    @Test
+    fun `the reason picker only accepts the words the report queue knows`() {
+        assertEquals(ReportReason.HARASSMENT, ReportReason.fromWire("HARASSMENT"))
+        // The server's constants are the contract; its casing is not, so a stray lower-case row
+        // still lands on the right option instead of dropping the member's report.
+        assertEquals(ReportReason.UNDERAGE, ReportReason.fromWire(" underage "))
+        assertNull(ReportReason.fromWire("NAZISM"))
+        assertNull(ReportReason.fromWire(null))
+        assertEquals(
+            listOf("HARASSMENT", "SPAM", "FRAUD", "UNDERAGE", "VIOLENCE", "OTHER"),
+            ReportReason.entries.map { it.wire },
+        )
+    }
+
+    @Test
+    fun `an inbound reaction carries the art the server chose`() {
+        val reaction = gson.fromJson(
+            """{"roomId":"r1","userId":"u2","key":"smile","label":"Smile","code":"[smile]","url":"/emoji/smile.webp"}""",
+            SocketReactionDto::class.java,
+        ).toDomainOrNull()
+
+        assertEquals("r1", reaction?.roomId)
+        assertEquals("u2", reaction?.userId)
+        // The URL is the server's, and the client draws it as sent — a device that built its own
+        // path from the key would animate whatever it guessed at.
+        assertEquals("/emoji/smile.webp", reaction?.emoji?.url)
+        assertEquals("[smile]", reaction?.emoji?.code)
+    }
+
+    @Test
+    fun `a reaction with no art to draw is dropped rather than flown empty`() {
+        // Gson leaves an absent key null no matter what the DTO declares as its default, so a
+        // partial emit has to be recognised here instead of becoming a blank square in the room.
+        assertNull(gson.fromJson("""{"roomId":"r1","userId":"u2","key":"smile"}""", SocketReactionDto::class.java).toDomainOrNull())
+        assertNull(gson.fromJson("""{}""", SocketReactionDto::class.java).toDomainOrNull())
+
+        // A missing label or code is not fatal: the key alone still says which emoji this was.
+        val spare = gson.fromJson(
+            """{"roomId":"r1","userId":"u2","key":"guffaw","url":"/emoji/guffaw.webp"}""",
+            SocketReactionDto::class.java,
+        ).toDomainOrNull()
+        assertEquals("guffaw", spare?.emoji?.label)
+        assertEquals("[guffaw]", spare?.emoji?.code)
     }
 }

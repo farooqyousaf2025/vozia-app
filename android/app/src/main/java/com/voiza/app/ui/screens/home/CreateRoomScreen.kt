@@ -80,6 +80,8 @@ fun CreateRoomScreen(
     var language by remember { mutableStateOf("") }
     var region by remember { mutableStateOf("") }
     var rules by remember { mutableStateOf("") }
+    // The microphone gate, editable only while editing: `POST /api/rooms` does not accept it.
+    var speakerApproval by remember { mutableStateOf(false) }
     // Null while the host has not chosen: the room then gets the server's default capacity.
     var capacity by remember { mutableStateOf<Float?>(null) }
     val seatPolicy = state.seatPolicy
@@ -98,6 +100,7 @@ fun CreateRoomScreen(
             language = room.language.orEmpty()
             region = room.region.orEmpty()
             rules = room.rules.orEmpty()
+            speakerApproval = room.speakerApprovalRequired
         }
     }
 
@@ -302,6 +305,25 @@ fun CreateRoomScreen(
             )
         } else {
             Spacer(Modifier.height(14.dp))
+            SectionLabel("Microphone")
+            FilterChip(
+                selected = speakerApproval,
+                onClick = { speakerApproval = !speakerApproval },
+                label = { Text("Ask me before anyone takes a seat", fontSize = 13.sp) },
+                colors = voizaChipColors(),
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = if (speakerApproval) {
+                    "Tapping an empty seat files a request you answer from the roster. Turning this " +
+                        "off cancels the requests still waiting."
+                } else {
+                    "Anyone in the room can take an empty seat and speak straight away."
+                },
+                color = OnDarkMedium,
+                fontSize = 11.sp,
+            )
+            Spacer(Modifier.height(14.dp))
             Text(
                 text = "Seats, access and password are set when the room opens \u2014 editing them here is not offered, " +
                     "because the server does not accept that change.",
@@ -334,6 +356,7 @@ fun CreateRoomScreen(
                         language = language,
                         region = region,
                         rules = rules,
+                        speakerApprovalRequired = speakerApproval,
                     )
                 } else {
                     viewModel.createRoom(

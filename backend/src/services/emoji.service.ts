@@ -55,11 +55,36 @@ export async function emojiCatalogue(): Promise<EmojiCatalogue> {
   };
 }
 
+/**
+ * The reaction a member fires, resolved to the operator's own art.
+ *
+ * A reaction is a `key` from this table and nothing else — no second list to keep in step, and the
+ * panel that already edits the catalogue is the panel that configures reactions. The rows are read
+ * through a short copy because a thumb can tap ten times a second: the three writes below drop it,
+ * so the worst a stale entry can do is accept a code an operator retired a few seconds ago. That is
+ * a picture nobody meant to send, not money nobody spent.
+ */
+let cachedRows: { list: EmojiRow[]; readAt: number } | null = null;
+const CACHE_MS = 15_000;
+
+export async function reactionByKey(key: string): Promise<EmojiOption | null> {
+  if (!cachedRows || Date.now() - cachedRows.readAt > CACHE_MS) {
+    cachedRows = { list: await rows(), readAt: Date.now() };
+  }
+  const row = cachedRows.list.find((entry) => entry.key === key);
+  return row ? { key: row.key, label: row.label, code: codeFor(row.key), url: row.url } : null;
+}
+
+function forgetCachedRows(): void {
+  cachedRows = null;
+}
+
 export async function listAdminEmoji(): Promise<{ emojis: EmojiDto[] }> {
   return { emojis: (await rows()).map(toDto) };
 }
 
 async function afterWrite(key: string): Promise<EmojiDto> {
+  forgetCachedRows();
   const row = await one<EmojiRow>('SELECT * FROM emoji_characters WHERE key = $1', [key]);
   if (!row) throw ApiError.notFound('Emoji not found');
   return toDto(row);
@@ -130,6 +155,7 @@ export async function deleteEmoji(key: string): Promise<{ ok: true; key: string 
   const existing = await one<EmojiRow>('SELECT key FROM emoji_characters WHERE key = $1', [key]);
   if (!existing) throw ApiError.notFound('Emoji not found');
   await query('DELETE FROM emoji_characters WHERE key = $1', [key]);
+  forgetCachedRows();
   // No reference count and no "last one" guard: messages keep their text, so retiring a code
   // cannot break anything that was already sent.
   return { ok: true, key };

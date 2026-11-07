@@ -19,7 +19,8 @@ import {
   UserRow,
   WithdrawalRow,
 } from '../types/db';
-import { ambientEffectFor, FrameArt, themeFor, wornFrame, wornWelcome } from '../services/theme.service';
+import { ambientEffectFor, FrameArt, RideArt, themeFor, wornFrame, wornRide, wornWelcome } from '../services/theme.service';
+import { BoxOutcomeDto } from '../services/lucky-box.service';
 import { nextRankFor, rankFor, RankDto } from '../services/rank.service';
 
 export type MiniUser = {
@@ -45,6 +46,12 @@ export type MiniUser = {
    * default", never "announce nobody". Only the join path reads the columns that resolve it.
    */
   entryEffect?: string | null;
+  /**
+   * The paid cinematic that carries this member into the room, or null for "walk in quietly".
+   * Resolved server-side from the worn key plus its expiry, so a client never picks a renderer by
+   * reading a file extension.
+   */
+  entryRide?: RideArt | null;
 };
 
 export type SeatDto = {
@@ -74,6 +81,11 @@ export type RoomDto = {
   region: string | null;
   /** Host-written house rules; the client shows them, it does not enforce them. */
   rules: string | null;
+  /** Host-pinned notice above chat, or null when there is no banner. */
+  announcement: string | null;
+  announcementUpdatedAt: string | null;
+  /** When true, a member's seat tap is a request the host must approve. */
+  speakerApprovalRequired: boolean;
   /** Ambient Lottie loop the client plays behind this room — null only if the catalogue has none. */
   ambientEffect: string | null;
   type: RoomRow['type'];
@@ -99,9 +111,26 @@ export type GiftDto = {
   category: string;
   /** TICKER = one row in the gift column; FULLSCREEN = takes over the room. */
   effectKind: 'TICKER' | 'FULLSCREEN';
+  /** Which renderer owns `animationUrl`; the client never guesses from the file name. */
+  animationFormat: 'LOTTIE' | 'SVGA' | 'MP4';
+  /** Hard ceiling on the overlay in ms; 0 means "as long as the asset plays". */
+  durationMs: number;
+  /** Takeover-queue rank: with two gifts in flight the higher number plays first. */
+  displayPriority: number;
+  /** Repeat sends of this gift fold into one on-screen counter instead of replaying. */
+  comboEnabled: boolean;
+  comboWindowMs: number;
   minVipLevel: number;
   sortOrder: number;
   isActive: boolean;
+  /**
+   * true = sending this rolls `boxOutcomes` instead of paying `rCoinValue` flat. A device animates
+   * the reveal on this flag and shows the prize from the event, never from its own table of odds.
+   */
+  isLuckyBox: boolean;
+  /** The prizes and their published odds, and the receiver's share — only on a box. */
+  boxOutcomes?: BoxOutcomeDto[];
+  receiverShareBps?: number;
 };
 
 export type TransactionDto = {
@@ -157,6 +186,8 @@ export type UserDto = {
    * uses it; it is here so the profile screen can preview what others already see.
    */
   entryEffect: string | null;
+  /** The ride this member arrives with, or null. Same preview reason as `entryEffect`. */
+  entryRide: RideArt | null;
   lastSeenAt: string | null;
   createdAt: string;
 };
@@ -271,6 +302,8 @@ export function toMiniUser(row: {
   profile_frame_expires_at?: Date | null;
   welcome_effect_key?: string | null;
   welcome_effect_expires_at?: Date | null;
+  profile_ride_key?: string | null;
+  profile_ride_expires_at?: Date | null;
 }): MiniUser {
   const mini: MiniUser = { id: row.id, username: row.username, avatarUrl: row.avatar_url ?? null };
   if (row.diamond_balance !== undefined) mini.diamondBalance = row.diamond_balance;
@@ -280,6 +313,7 @@ export function toMiniUser(row: {
   // Same rule for the decoration columns: a SELECT that skipped them stays cheap.
   if (row.profile_frame_key !== undefined) mini.profileFrame = wornFrame(row);
   if (row.welcome_effect_key !== undefined) mini.entryEffect = wornWelcome(row);
+  if (row.profile_ride_key !== undefined) mini.entryRide = wornRide(row);
   return mini;
 }
 
@@ -306,6 +340,7 @@ export function toUser(row: UserRow): UserDto {
     nextRank: nextRankFor(xp),
     profileFrame: wornFrame(row),
     entryEffect: wornWelcome(row),
+    entryRide: wornRide(row),
     lastSeenAt: row.last_seen_at ? iso(row.last_seen_at) : null,
     createdAt: iso(row.created_at),
   };
@@ -343,6 +378,9 @@ export function toRoom(row: RoomRow): RoomDto {
     language: row.language ?? null,
     region: row.region ?? null,
     rules: row.rules ?? null,
+    announcement: row.announcement ?? null,
+    announcementUpdatedAt: row.announcement_updated_at ? iso(row.announcement_updated_at) : null,
+    speakerApprovalRequired: Boolean(row.speaker_approval_required),
     ambientEffect: ambientEffectFor(row.category),
     type: row.type,
     seatCapacity: row.seat_capacity,
@@ -375,9 +413,19 @@ export function toGift(row: GiftRow): GiftDto {
     rCoinValue: row.r_coin_value,
     category: row.category,
     effectKind: row.effect_kind,
+    animationFormat: row.animation_format,
+    durationMs: row.duration_ms,
+    displayPriority: row.display_priority,
+    comboEnabled: row.combo_enabled,
+    comboWindowMs: row.combo_window_ms,
     minVipLevel: row.min_vip_level,
     sortOrder: row.sort_order,
     isActive: row.is_active,
+    isLuckyBox: row.is_lucky_box,
+    // Only a box carries these: a flat gift with a `receiverShareBps` of 10,000 beside it would read
+    // like a dial that exists and does nothing, and `boxOutcomes: []` would look like a box that
+    // cannot be rolled. Loaders fill `boxOutcomes` when they have read the prize table.
+    ...(row.is_lucky_box ? { receiverShareBps: row.receiver_share_bps } : {}),
   };
 }
 

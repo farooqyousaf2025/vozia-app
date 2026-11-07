@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.voiza.app.domain.model.BannerPlacement
 import com.voiza.app.domain.model.GameDefinition
 import com.voiza.app.domain.model.GameHistoryRow
 import com.voiza.app.domain.model.GameSession
@@ -32,6 +33,7 @@ import com.voiza.app.ui.components.LoadingProgress
 import com.voiza.app.ui.components.VoizaButton
 import com.voiza.app.ui.components.VoizaCard
 import com.voiza.app.ui.components.VoizaSecondaryButton
+import com.voiza.app.ui.components.banner.PromoBannerStrip
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.DiamondGold
 import com.voiza.app.ui.theme.Mint
@@ -72,6 +74,13 @@ fun GameLobbyScreen(
         }
 
         GameErrorLine(error = state.error, onDismiss = viewModel::load)
+
+        // The desk's own campaign. A game banner points at what to play or at the room hosting it, so
+        // it sits above the list of what may be opened rather than inside one match's card.
+        PromoBannerStrip(
+            placement = BannerPlacement.GAME,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+        )
 
         LazyColumn(
             contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 20.dp),
