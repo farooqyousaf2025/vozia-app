@@ -42,6 +42,13 @@ export const PERMISSIONS = [
   // The switches that change money itself: the commission order and ceiling, the recharge
   // window, whether a webhook may credit without a human. One role holds them.
   'config:manage',
+  // The purpose-accounts book. Reading and deciding are split on purpose: an operator who can
+  // see that a BD balance does not reconcile should not thereby gain the right to freeze it,
+  // and finance needs to be able to investigate a partner account without anyone in operations
+  // having asked. Neither grants a balance change — that stays on `user:wallet`, the only
+  // manual money route in the product.
+  'account:read',
+  'account:manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -69,6 +76,9 @@ const ROLE_PERMISSIONS: Record<AdminRole, readonly Permission[]> = {
     'recharge:review',
     'commission:manage',
     'finance:read',
+    // Finance both investigates the book and decides what gets frozen in it.
+    'account:read',
+    'account:manage',
   ],
   OPERATIONS_ADMIN: [
     'dashboard:read',
@@ -83,6 +93,8 @@ const ROLE_PERMISSIONS: Record<AdminRole, readonly Permission[]> = {
     'media:manage',
     'business:manage',
     'finance:read',
+    // Reads the book to answer a support question; the holds and suspensions are finance's call.
+    'account:read',
   ],
   // Legacy rows seeded before this split existed: read-only plus the moderation tools that
   // need no financial judgement.

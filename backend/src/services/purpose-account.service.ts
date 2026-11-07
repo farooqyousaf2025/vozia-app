@@ -386,8 +386,11 @@ export async function listAccounts(filters: AccountListFilters): Promise<{ accou
   if (filters.currency) where.push(`currency = ${bind(filters.currency)}`);
   if (filters.onlyWithPosition) where.push('balance_minor <> 0');
   if (filters.search) {
-    const pattern = `%${filters.search.replace(/[\\%_]/g, '')}%`;
-    where.push(`(name ILIKE ${bind(pattern)} OR account_code ILIKE ${bind(pattern)})`);
+    // Escape the LIKE wildcards rather than deleting them. Stripping `_` looked safe and broke
+    // the one thing worth searching for: every category name in the book contains one, so
+    // "USER_DIAMOND" became "USERDIAMOND" and matched nothing.
+    const pattern = `%${filters.search.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+    where.push(`(name ILIKE ${bind(pattern)} ESCAPE '\\' OR account_code ILIKE ${bind(pattern)} ESCAPE '\\')`);
   }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const limit = Math.max(1, Math.min(filters.limit || 50, 200));
@@ -605,6 +608,12 @@ export async function createHold(input: {
   amount: number;
   reason: string;
   adminId: string;
+  /**
+   * Run inside the caller's transaction. Without it the hold and the idempotency claim that
+   * guards it commit separately, and a crash between the two leaves a hold on the book that no
+   * replay can ever answer for.
+   */
+  client?: PoolClient;
 }): Promise<AccountHoldDto> {
   const kind = input.kind as HoldKind;
   if (!HOLD_KINDS.includes(kind)) throw ApiError.badRequest('Unknown hold kind', 'bad_hold_kind');
@@ -614,7 +623,7 @@ export async function createHold(input: {
   const reason = (input.reason ?? '').trim();
   if (reason.length < 8) throw ApiError.badRequest('A hold needs a reason an operator can read later', 'reason_required');
 
-  return withTransaction(async (client) => {
+  const run = async (client: PoolClient): Promise<AccountHoldDto> => {
     // The view is not lockable, so the account row itself is locked first and the projected
     // balance is read behind that lock. Without this two concurrent freezes could each see a
     // balance the other had not yet taken into account.
@@ -663,7 +672,9 @@ export async function createHold(input: {
       [inserted.rows[0].id],
     );
     return toHoldDto(created.rows[0]);
-  });
+  };
+  if (input.client) return run(input.client);
+  return withTransaction(run);
 }
 
 /**
@@ -676,9 +687,10 @@ export async function releaseHold(
   holdId: string,
   adminId: string,
   convertTo?: string | null,
+  client?: PoolClient,
 ): Promise<{ id: string; status: string }> {
-  return withTransaction(async (client) => {
-    const existing = await client.query<{ id: string; status: string; account_code: string; amount_minor: string; currency: string }>(
+  const run = async (tx: PoolClient): Promise<{ id: string; status: string }> => {
+    const existing = await tx.query<{ id: string; status: string; account_code: string; amount_minor: string; currency: string }>(
       `SELECT id, status, account_code, amount_minor, currency FROM account_holds WHERE id = $1 FOR UPDATE`,
       [holdId],
     );
@@ -687,7 +699,7 @@ export async function releaseHold(
     if (hold.status !== 'OPEN') throw ApiError.conflict('Hold is already closed', 'hold_closed');
 
     const status = convertTo ? 'CONVERTED' : 'RELEASED';
-    await client.query(
+    await tx.query(
       `UPDATE account_holds SET status = $2::account_hold_status, released_by = $3, released_at = now(),
               converted_ref = $4
         WHERE id = $1`,
@@ -702,10 +714,12 @@ export async function releaseHold(
         summary: `${hold.account_code} ${hold.amount_minor} ${hold.currency} ${status.toLowerCase()}`,
         details: { accountCode: hold.account_code, convertedTo: convertTo ?? null },
       },
-      client,
+      tx,
     );
     return { id: holdId, status };
-  });
+  };
+  if (client) return run(client);
+  return withTransaction(run);
 }
 
 /** Activate, suspend, freeze or close an account. Section 8, and never a balance change. */

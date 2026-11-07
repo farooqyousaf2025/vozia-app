@@ -19,6 +19,7 @@
     "assets:generate": "node scripts/generate-placeholder-assets.cjs",
     "test:e2e": "node scripts/e2e-live.cjs",
     "test:business": "node scripts/business-e2e.cjs",
+    "test:accounts": "node scripts/account-e2e.cjs",
     "test:games": "node scripts/games-e2e.cjs",
     "test:sms": "tsx scripts/sms-provider-contract.ts twilio && tsx scripts/sms-provider-contract.ts vonage && tsx scripts/sms-provider-contract.ts mock",
     "test:payments": "tsx scripts/payments-provider-contract.ts stripe && tsx scripts/payments-provider-contract.ts simulated",

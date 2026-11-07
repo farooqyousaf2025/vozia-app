@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as admin from '../controllers/admin.controller';
 import * as auth from '../controllers/auth.controller';
+import * as account from '../controllers/account.controller';
 import partnerRoutes from './partner-admin.routes';
 import { requireAdminOperator, requirePermission } from '../middleware/auth';
 
@@ -164,6 +165,28 @@ router.put('/games/:key/rules', requirePermission('game:manage'), admin.setGameR
 router.get('/games/:id/events', requirePermission('game:read'), admin.gameEventLog);
 router.get('/disputes', requirePermission('game:dispute'), admin.disputes);
 router.post('/disputes/:id/review', requirePermission('game:dispute'), admin.reviewGameDispute);
+
+// ---------------------------------------------------------------------------
+// Purpose accounts (migration 0029). The book behind the back office: every balance the
+// platform owes or holds, read from the tables that already own it.
+//
+// Ordered before `/accounts/:code` deliberately. The literal paths would fail the code
+// validator anyway — a real code is `CATEGORY:owner` and contains a colon — but a route that
+// shadows another only by accident of ordering is a route that breaks the first time someone
+// renames a parameter.
+// ---------------------------------------------------------------------------
+router.get('/accounts', requirePermission('account:read'), account.overview);
+router.get('/accounts/reconcile', requirePermission('account:read'), account.reconcile);
+router.get('/accounts/holds', requirePermission('account:read'), account.holds);
+router.get('/accounts/:code', requirePermission('account:read'), account.detail);
+router.get('/accounts/:code/movements', requirePermission('account:read'), account.movements);
+router.get('/accounts/:code/holds', requirePermission('account:read'), account.holds);
+// Holds and suspensions constrain money an owner already has; they do not create any, which is
+// why there is no balance route in this file at all. `POST /users/:id/balance` stays the only
+// manual money path, so there is only one set of guards to keep honest.
+router.post('/accounts/:code/holds', requirePermission('account:manage'), account.addHold);
+router.post('/accounts/:code/status', requirePermission('account:manage'), account.status);
+router.post('/holds/:id/release', requirePermission('account:manage'), account.releaseHoldEndpoint);
 
 // §21-§23: BD accounts, coin sellers, recharge orders, commission and the book.
 router.use('/business', partnerRoutes);

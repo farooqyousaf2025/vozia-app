@@ -65,7 +65,10 @@ for (let i = 0; i < 256; i += 1) {
 
 function crc32(buffer: Buffer): number {
   let crc = 0xffffffff;
-  for (const byte of buffer) crc = (crc >>> 8) ^ CRC32_TABLE[byte & 0xff];
+  // The index is `(crc ^ byte)`, not `byte`: with the raw byte the accumulator only ever mixes in
+  // one of 256 table entries per position, so short XML parts collide and every entry in the
+  // archive carries a checksum its own content does not satisfy.
+  for (const byte of buffer) crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ byte) & 0xff];
   return (crc ^ 0xffffffff) >>> 0;
 }
 

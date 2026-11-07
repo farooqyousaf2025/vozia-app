@@ -557,6 +557,124 @@ rides and badges there is no art in this repository that would honestly fill a s
 table means every surface shows nothing, which is what a platform with no live campaign should look
 like.
 
+## Purpose accounts: the book behind the back office (migration 0029)
+
+Every balance the platform owes or holds, in one place, read from the tables that already owned it.
+This is a **projection, not a third wallet**: `fin_accounts` names the holders and
+`purpose_account_balances` is a view that reads a user's diamonds from `users.diamond_balance`, a
+host's R-coins from `users.r_coin_balance`, BD and seller positions from the commission entries and
+settlement batches that already pay them, and platform money from `fin_journal`. No existing money
+path was moved, so nothing here can disagree with the wallet that was already authoritative — and
+every account carries `balance_source` for exactly that reason: a figure with no provenance is not
+auditable.
+
+The identity that makes the book worth trusting is
+
+```
+opening = balance − (lifetime_in − lifetime_out)
+```
+
+so `opening + ΣIN − ΣOUT` reproduces the balance from any statement the API returns. `opening` is
+reported rather than assumed to be zero: for an account whose coins all arrived through recorded
+movements it is zero, and where it is not, it is the amount granted before this book existed. Naming
+it is what keeps a seeded balance from becoming a permanent unexplained difference.
+
+Three books, three statement shapes, because there genuinely are three — inventing a fourth would
+mean two definitions of "paid". The user and host books read the `coin_movements` view restricted to
+`status = 'COMPLETED'`, which is precisely the set the balance view counts as lifetime. A PENDING
+withdrawal is deliberately absent: the R-coins have already left `r_coin_balance` and are reported
+as `pending`, so listing them as an outflow would charge a host twice for the same escrow. The
+payable book emits three legs — accruals in, one `COMMISSION_REVERSAL` out per reversed entry, one
+out per `PAID` settlement — with the counterparty always the *other* side of the order, and the same
+`legs` expression serves the page and the count so the two cannot disagree.
+
+`GET /api/admin/accounts/reconcile` asks whether each account can explain itself. An ERROR is a
+contradiction between two tables, never a comparison of an account against the number the view just
+read from it: `account_source_missing`, `frozen_exceeds_available`, `payable_state_conflict`,
+`withdrawal_state_conflict`, `withdrawal_paid_step_missing`, `journal_entry_invalid`. INFO findings
+record what the book knows it cannot yet prove — `platform_revenue_not_booked` (gift spread and
+lucky-box tax are implicit residuals, fixed in #55) and `account_not_yet_opened`. The two named
+money gaps, an approved withdrawal with no paid step and unjournaled platform revenue, are real and
+are open work items, not artefacts of the query.
+
+### The endpoints
+
+| Route | Permission | Notes |
+|---|---|---|
+| `GET /admin/accounts` | `account:read` | category / ownerKind / ownerId / status / currency / search / `onlyWithPosition=true`, paged |
+| `GET /admin/accounts/reconcile` | `account:read` | `?format=csv\|xlsx` for a two-sheet workbook |
+| `GET /admin/accounts/holds` | `account:read` | across the book, `?status=OPEN\|RELEASED\|CONVERTED` |
+| `GET /admin/accounts/:code` | `account:read` | either shape: `CATEGORY:owner`, or a colon-less platform ledger name like `COIN_LIABILITY` |
+| `GET /admin/accounts/:code/movements` | `account:read` | `?from=&to=` ISO window; `?format=csv\|xlsx`; `?limit=` up to 200 |
+| `GET /admin/accounts/:code/holds` | `account:read` | |
+| `POST /admin/accounts/:code/holds` | `account:manage` | `{ kind, amount, reason, idempotencyKey }` → 201, or 200 with `replay: true` |
+| `POST /admin/accounts/:code/status` | `account:manage` | `{ status, reason }`; anything but ACTIVE needs a reason ≥ 8 chars |
+| `POST /admin/holds/:id/release` | `account:manage` | `{ idempotencyKey, convertTo? }` |
+
+**There is deliberately no balance-editing route in this router.** `POST /admin/users/:id/balance`
+stays the only manual money path in the product, because two entry points for the same act means two
+sets of guards and the weaker set is the one used at 02:00. What this router can do is hold,
+release, suspend and ask questions — actions that constrain money without inventing it. A hold is a
+row with a reason and an author rather than a number written on an account, so a release has a
+history; freezing more than the owner can currently spend is refused with `freeze_exceeds_available`.
+
+Reading and deciding are split across two permissions on purpose: an operator who can see that a BD
+balance does not reconcile should not thereby gain the right to freeze it. `SUPER_ADMIN` holds both,
+`FINANCE_ADMIN` holds both, `OPERATIONS_ADMIN` holds only `account:read`, and `MODERATOR` holds
+neither — the book contains platform and partner money, which is not a moderation concern.
+
+One constraint the accounts work surfaced for #58: **an operator who has acted cannot be deleted.**
+`admin_audit.admin_id` is `ON DELETE SET NULL`, but `admin_audit_actor_present` requires an actor on
+every row, so removing the link fails the check and the whole delete rolls back — the suite pins that
+as `node scripts/account-e2e.cjs`'s last assertion. An audit trail that survives the deletion of the
+person who wrote it is the right trade, and it means admin CRUD has to offer deactivation, not
+delete.
+
+Mutations are replay-safe. `idempotent_requests` has `PRIMARY KEY (scope, key)`, and a second
+attempt with the same key returns the first attempt's stored result rather than repeating the action;
+a claim that exists but has published no result answers `409 idempotency_in_flight` rather than being
+reported as a success it did not earn. Hold creation and hold release accept the caller's
+`PoolClient` so the claim and the action commit **in one transaction** — without that, a failure
+after the action would leave the money moved and the key permanently claimed. An attempt that
+rolls back leaves no row behind, which is what makes the next retry possible.
+
+### The exports, and why they are hand-written
+
+`?format=csv` and `?format=xlsx` on the statement and the reconciliation report.
+`src/utils/workbook.ts` writes OOXML directly: an `.xlsx` is a ZIP of XML parts, so the binary
+discipline needed is a correct CRC-32 and central directory per entry, and npm does not run on the
+development machine, which removes the library option. One column definition feeds both writers, so
+the CSV and the workbook cannot disagree about a figure. `int8` and `numeric` arrive from node-pg as
+strings, so a column marked `numeric` writes them as real numbers — otherwise an exported statement
+lands in Excel as left-aligned text that cannot be summed — and a value that does not parse stays
+text rather than silently becoming zero. The CSV carries a UTF-8 BOM, which is what makes Excel read
+it as UTF-8 instead of Windows-1252.
+
+A page of the statement route is at most 200 rows and an export is one page, so the whole book is
+walked page by page — which is also how `node scripts/account-e2e.cjs` proves the identity over a
+926-movement account instead of over the first screenful of it. That suite opens each workbook the
+way a spreadsheet program does: it walks the ZIP's local headers, inflates every entry and
+recomputes its CRC-32. Checking the checksum rather than grepping the buffer matters — a wrong CRC
+is invisible to `grep`, survives a lenient extractor, and reads in Excel as a damaged file.
+
+### Deployment note
+
+Migration 0029 was corrected after it had been applied to the development database: the first
+revision gave `idempotent_requests` no primary key at all, so the `ON CONFLICT (scope, key)` guard
+raised `42P10` the first time it was exercised, and the payable lifetime columns were restated gross
+of reversals so a reconstructed statement equals the balance it claims. `scripts/migrate.cjs --force`
+re-accepts the checksum but does **not** re-run the file, so any environment that ran the original
+revision needs those two changes applied by hand.
+
+The same applies to the first `?format=xlsx` builds: `crc32()` indexed its table by the raw byte
+instead of `crc ^ byte`, so every entry carried a checksum its own content did not satisfy. The rows
+inside those files were correct — the numbers, the BOM and the CSV were never affected — but the
+archives were not standards-conformant, so any workbook exported before that fix should be
+re-downloaded rather than repaired.
+
+Not yet built: the admin panel module that consumes these routes (#57), the PAID step on withdrawals
+(#53), and journaling for gift spread and box tax (#55).
+
 ## The socket speaks for a member, and a password is guessed slowly
 
 `joinRoom` is the moderation gate: it refuses a closed room, a banned account and a
