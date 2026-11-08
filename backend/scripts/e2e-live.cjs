@@ -2898,9 +2898,13 @@ async function pkPhase(adminToken) {
   const accepted = await api('POST', `/api/pk/battles/${battleId}/accept`, { token: hostB.token, body: {} });
   const active = accepted.json && accepted.json.battle;
   const windowSeconds = active ? Math.round((new Date(active.endsAt) - new Date(active.startedAt)) / 1000) : -1;
+  // The window is the contract; the countdown is read off a second clock. ends_at is a Postgres
+  // timestamp and remainingMs subtracts the app's Date.now(), and on Windows the two can disagree by
+  // a frame or two — so a bound like remainingMs <= 120000 fails on a machine that is running fine
+  // while still letting a battle that started with 1ms left through. Assert it opened at the window.
   check('pk: the challenged host starts the clock with the agreed duration',
     accepted.status === 200 && !!active && active.status === 'ACTIVE' &&
-    windowSeconds === 120 && active.remainingMs > 0 && active.remainingMs <= 120_000,
+    windowSeconds === 120 && Math.abs(active.remainingMs - 120_000) <= 1_000,
     { status: accepted.status, windowSeconds, remainingMs: active && active.remainingMs });
 
   const replayAccept = await api('POST', `/api/pk/battles/${battleId}/accept`, { token: hostB.token, body: {} });
