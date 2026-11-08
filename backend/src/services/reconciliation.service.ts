@@ -133,6 +133,54 @@ const CHECKS: CheckDefinition[] = [
               and (t.created_at >= coalesce($1, t.created_at)) and (t.created_at <= coalesce($2, t.created_at)))`,
   },
   {
+    key: 'recharge.issued_has_journal',
+    domain: 'recharge',
+    label: 'Every payment that minted coins booked the liability it created',
+    unit: 'payments with no posting',
+    expected: '0',
+    // The gap this closes was specific: `settlePaymentOnClient` is the primitive both the Stripe webhook
+    // and the seller flow call, and only the seller flow went on to post. So the check accepts either
+    // posting shape — the generic entry keyed on the proof, or the order's own fee-split entry reached
+    // through the transaction they share — but requires the credited cents to equal what was collected.
+    sql: `
+      select count(*)
+        from payment_proofs p
+       where p.amount_cents > 0
+         and (p.created_at >= coalesce($1, p.created_at)) and (p.created_at <= coalesce($2, p.created_at))
+         and not exists (
+           select 1
+             from fin_journal_entries e
+             join fin_journal_lines l on l.entry_id = e.id
+            where e.source_kind = 'COIN_ISSUANCE'
+              and e.source_id = p.id::text
+              and l.account_code = 'COIN_LIABILITY'
+              and l.direction = 'CREDIT'
+              and l.amount_cents = p.amount_cents)
+         and not exists (
+           select 1
+             from recharge_orders o
+             join fin_journal_entries e2 on e2.source_kind = 'RECHARGE_ORDER' and e2.source_id = o.id::text
+             join fin_journal_lines l2 on l2.entry_id = e2.id
+            where o.transaction_id = p.transaction_id
+              and l2.account_code = 'COIN_LIABILITY'
+              and l2.direction = 'CREDIT'
+              and l2.amount_cents = p.amount_cents)`,
+  },
+  {
+    key: 'journal.issuance_source_rows_exist',
+    domain: 'journal',
+    label: 'Every issuance posting names a payment proof that still exists',
+    unit: 'orphan postings',
+    expected: '0',
+    sql: `
+      select count(*)
+        from fin_journal_entries e
+       where e.source_kind = 'COIN_ISSUANCE'
+         and (coalesce(e.occurred_at, '-infinity'::timestamptz) >= coalesce($1, '-infinity'::timestamptz))
+         and (coalesce(e.occurred_at, 'infinity'::timestamptz) <= coalesce($2, 'infinity'::timestamptz))
+         and not exists (select 1 from payment_proofs p where p.id::text = e.source_id)`,
+  },
+  {
     key: 'recharge.reversed_commission_reversed',
     domain: 'recharge',
     label: 'A reversed order took its partners’ accruals with it',

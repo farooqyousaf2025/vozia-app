@@ -7,7 +7,7 @@ import { GiftBoxOutcomeRow, GiftRow, TransactionRow, UserRow, WithdrawalRow } fr
 import { ApiError } from '../utils/http';
 import { accrueAgencyCommission, commissionBpsLabel, commissionMembership } from './agency.service';
 import { readConfig } from './business.service';
-import { postCoinSpread } from './finance-journal.service';
+import { FIN_ACCOUNTS, postCoinSpread, postJournal } from './finance-journal.service';
 import { LuckyRollDto, rollLuckyBox, toBoxOutcomes } from './lucky-box.service';
 import { awardXp, ensureRankRegistry, xpForEarning, xpForSpend } from './rank.service';
 import { recordQuestProgress } from './quest.service';
@@ -547,6 +547,13 @@ export async function settlePaymentOnClient(
     currency: string;
     /** Anything that explains the collection: order reference, seller, BD. */
     meta?: Record<string, unknown>;
+    /**
+     * Set by a caller that books the collection itself. The seller path does, because its entry splits
+     * the gross into `PROVIDER_COLLECTIONS` and `PROVIDER_FEES` and is keyed on the order — the tie-outs
+     * in `reconciliation.service.ts` read that shape. Everyone else leaves it unset and is journaled
+     * here: defaulting to posting means a caller added later cannot mint coins silently.
+     */
+    journaledByCaller?: boolean;
   },
 ): Promise<{ credited: boolean; transaction?: TransactionDto; user?: UserDto } | null> {
   if (input.diamonds < 1) throw ApiError.badRequest('Payment credited no diamonds');
@@ -590,6 +597,22 @@ export async function settlePaymentOnClient(
     proof.rows[0].id,
     inserted.rows[0].id,
   ]);
+  // The issuance is booked in the same transaction as the credit it describes, on the proof's own id —
+  // the one key that is already unique per settlement here, so a replayed webhook returns the entry
+  // rather than doubling the liability. A payment that carried no money is not a collection, and an
+  // entry with two zero lines would be a document about nothing.
+  if (!input.journaledByCaller && input.amountCents > 0) {
+    await postJournal(client, {
+      sourceKind: 'COIN_ISSUANCE',
+      sourceId: proof.rows[0].id,
+      memo: `${input.provider} payment ${input.externalId}: ${input.diamonds} diamonds for ${input.amountCents} ${input.currency}`,
+      currency: input.currency,
+      lines: [
+        { accountCode: FIN_ACCOUNTS.providerCollections, direction: 'DEBIT', amountCents: input.amountCents },
+        { accountCode: FIN_ACCOUNTS.coinLiability, direction: 'CREDIT', amountCents: input.amountCents },
+      ],
+    });
+  }
   const fresh = await client.query<UserRow>('SELECT * FROM users WHERE id = $1', [input.userId]);
   const enriched = await client.query<TransactionRow>(`${TX_WITH_PARTIES} WHERE t.id = $1`, [inserted.rows[0].id]);
   return {

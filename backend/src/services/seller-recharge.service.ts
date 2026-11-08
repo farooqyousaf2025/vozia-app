@@ -569,6 +569,10 @@ async function creditOrder(
     amountCents,
     currency: order.currency,
     meta: { rechargeOrderId: order.id, reference: order.reference, sellerId: order.seller_id, bdId: order.bd_id },
+    // This order's own entry, below, is the one the tie-outs read: it carries the fee split and is
+    // keyed on the order. Without the opt-out the settlement would also book a generic issuance entry
+    // and the liability would count the same coins twice.
+    journaledByCaller: true,
   });
   if (!settled?.credited) {
     const raced = await lockOrder(client, orderId);

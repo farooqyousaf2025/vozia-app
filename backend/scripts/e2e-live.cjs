@@ -2062,6 +2062,34 @@ function loadLivekitService() {
     await sql(`select meta::text from transactions where meta->>'paymentId'='${payIntent}'`),
   );
 
+  // Crediting the wallet is only half of a payment. The same SQL transaction also has to book the
+  // collection as an asset and the diamonds as a liability still owed, or COIN_LIABILITY is just a
+  // tally of the seller orders somebody happened to open. The replay above is the second half of the
+  // assertion: a redelivery that doubled the entry would overstate the debt.
+  const booked = (
+    await sql(`select p.amount_cents as cents,
+                      (select count(*) from fin_journal_entries e
+                        where e.source_kind='COIN_ISSUANCE' and e.source_id = p.id::text) as entries,
+                      (select count(*) from fin_journal_lines l
+                        join fin_journal_entries e on e.id = l.entry_id
+                       where e.source_kind='COIN_ISSUANCE' and e.source_id = p.id::text) as lines,
+                      (select coalesce(sum(l.amount_cents),0) from fin_journal_lines l
+                        join fin_journal_entries e on e.id = l.entry_id
+                       where e.source_kind='COIN_ISSUANCE' and e.source_id = p.id::text
+                         and l.account_code='COIN_LIABILITY' and l.direction='CREDIT') as liability,
+                      (select coalesce(sum(l.amount_cents),0) from fin_journal_lines l
+                        join fin_journal_entries e on e.id = l.entry_id
+                       where e.source_kind='COIN_ISSUANCE' and e.source_id = p.id::text
+                         and l.account_code='PROVIDER_COLLECTIONS' and l.direction='DEBIT') as collections
+                 from payment_proofs p
+                where p.provider='stripe' and p.external_id='${payIntent}'`)
+  ).split('|').map(Number);
+  check(
+    'payments: once, and only once, the collection is journaled against the coin liability',
+    booked.length === 5 && booked[1] === 1 && booked[2] === 2 && booked[3] === booked[0] && booked[4] === booked[0],
+    { cents: booked[0], entries: booked[1], lines: booked[2], liability: booked[3], collections: booked[4] },
+  );
+
   const pingPayload = JSON.stringify({ id: 'evt_ping', type: 'customer.created', data: { object: { id: 'cus_1' } } });
   const hookUnknown = await stripePost(pingPayload, { signature: sign(pingPayload) });
   check(

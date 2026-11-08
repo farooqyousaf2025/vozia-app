@@ -27,6 +27,12 @@ export type JournalLine = {
 export type JournalInput = {
   sourceKind:
     | 'RECHARGE_ORDER'
+    // A payment the PSP confirmed, credited outside a seller order. Same economics as the order above
+    // and a different key, because there is no order to name: coins a member paid for are a service
+    // still owed, so the collection DEBITs PROVIDER_COLLECTIONS and CREDITs COIN_LIABILITY. Without
+    // this kind the liability only ever counted the 27 orders a seller opened, and every Stripe
+    // settlement on the platform minted coins the book had never heard of.
+    | 'COIN_ISSUANCE'
     | 'COMMISSION_ACCRUAL'
     | 'SETTLEMENT'
     | 'REVERSAL'

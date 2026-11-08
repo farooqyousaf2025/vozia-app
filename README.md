@@ -117,6 +117,17 @@ takes an amount: a payout records a reference for a transfer that already happen
 outside this stack. See `backend/README.md` → *An agency's share is booked, then settled
 (migration 0033)*.
 
+Coins a payment bought are owed on the book, not just present in a wallet. Until migration 0034 only a
+seller order credited `COIN_LIABILITY`, so every `payment_intent.succeeded` minted diamonds the accounts
+had never seen and the balance was a tally of the orders a seller happened to open. The posting now lives
+in `settlePaymentOnClient` — the primitive both routes share — as DEBIT PROVIDER_COLLECTIONS / CREDIT
+`COIN_LIABILITY`, keyed on the `payment_proofs` row, so a redelivered webhook answers the entry the first
+delivery booked instead of doubling the debt. The seller path keeps its own fee-split entry and opts out of
+the generic one, and the two shapes are mutually exclusive by construction: a proof counts as covered when
+either credits exactly what was collected. A simulated top-up and an admin balance grant still book
+nothing — they collect nothing, and the contra account they need is #60. See `backend/README.md` →
+*What a confirmed payment minted is owed on the book (migration 0034)*.
+
 Gifts also carry a **spend tier** (`gifts.min_vip_level` vs `users.vip_level`,
 0–20). The ledger checks the tier *before* the balance, so a VIP-0 account buying a
 tier-5 gift gets `403 vip_required` with `{required, current, giftName}` and no
@@ -402,7 +413,7 @@ fresh token. Turning approval off cancels the queue rather than stranding it. Se
 
 ## Verification
 
-* `cd backend && npm run test:e2e` — 401 checks against a running stack (real Postgres,
+* `cd backend && npm run test:e2e` — 402 checks against a running stack (real Postgres,
   Redis, LiveKit and this API): OTP auth, ledger double-spend under concurrency, seat
   row-lock contention, the seat policy (a new room gets the administrator's default, a
   rewrite is audited, and a guest can take a seat far beyond the old hardcoded nine),
@@ -418,18 +429,21 @@ fresh token. Turning approval off cancels the queue rather than stranding it. Se
   the VIP spend tier (refused before the balance, unlocked by an operator raise),
   push-token registration, and the Stripe recharge path (unsigned/forged/stale hooks
   rejected, a signed success credited once, a redelivery credited nothing, an
-  unreferenced payment crediting nobody). Re-runnable; it cleans up the accounts and
-  gifts it creates.
+  unreferenced payment crediting nobody, and the collection journaled against
+  `COIN_LIABILITY` once and only once across the credit and its replay). Re-runnable;
+  it cleans up the accounts and gifts it creates.
 * `cd backend && npm run test:sms` and `npm run test:payments` — 16 and 29 checks with
   `fetch` replaced by a recorder, so no account is needed: the exact Twilio form POST
   and Basic header, Vonage's `200`-with-`status:"1"` trap, the Stripe intent body, and
-  every webhook-signature rejection. Together with the e2e suite that is 446 checks.
-* `cd backend && npm run test:business` (87), `test:games` (69), `test:accounts` (98),
+  every webhook-signature rejection. Together with the e2e suite that is 447 checks.
+* `cd backend && npm run test:business` (87), `test:games` (69), `test:accounts` (133),
   `test:operators` (44) and `test:revenue` (25) cover the money book rather than the party: the
   nine-step recharge and its commission versions, the three game drivers and at-most-once
   settlement, the purpose-account projection and its exports, the operator roster's live re-read
   of every switch, and — since migration 0031 — the journal entry each gift's spread and each
-  settled game's pool now writes, priced at `system_config.accounts.coinValue`.
+  settled game's pool now writes, priced at `system_config.accounts.coinValue`. Since 0034 they hold
+  the other side of the book to the money too: `COIN_LIABILITY` has to equal every cent
+  `payment_proofs` recorded, whichever of the two posting kinds booked it.
 * `cd backend && npm run test:social` — 24 checks over the migration-0022 edges with no
   database: the report/status/decision vocabularies, every validator's trim-and-refuse
   behaviour (details, resolution, block reason, announcement, transfer note, UUIDs), and

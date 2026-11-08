@@ -817,12 +817,13 @@ and payout differ, each without a journal entry. The count is in **coins, never 
 multiplying history by today's face value would report an amount the journal never posted. With the
 spread booked as it is written, that finding has nothing to say.
 
-One consequence is worth stating before someone meets it in a report: `COIN_LIABILITY` is now a running
-total rather than a pile of credits, so a stack that minted diamonds through demo-mode
-`POST /api/wallet/recharge` or `POST /admin/users/:id/balance` — paths that create no recharge order and
-therefore no journal line — shows a negative balance. The debit side is correct; the issuance side was
-never booked. Closing that is #60's job (promotional grants need the same treatment), and it is visible
-on any development database long before it would be on one running real payment orders.
+One consequence is worth stating before someone meets it in a report: `COIN_LIABILITY` is a running total
+rather than a pile of credits, so it can read negative. Demo-mode `POST /api/wallet/recharge` and
+`POST /admin/users/:id/balance` mint diamonds that no entry recognises, because both collect nothing and
+neither creates a `payment_proofs` row to key one on — the debit side is real spend, the issuance side was
+operator fiat. #60's promotional balance is what gives a grant a contra account of its own. What is no
+longer missing is the half that was never a policy choice: a payment the provider confirmed is booked by
+the primitive that credited it, which is the next section.
 
 
 ## A withdrawal is paid, not promised (migration 0032)
@@ -1024,6 +1025,53 @@ pay with the claim CONVERTED, a void returning every accrual and RELEASED its ho
 money a dispute froze, the statement naming both an accrual and a payout and adding up to the account it
 describes, three audit rows for the three steps, and the agency book leaving the reconciler nothing to say.
 
+## What a confirmed payment minted is owed on the book (migration 0034)
+
+`COIN_LIABILITY` has existed since 0029 on the understanding that coins are a service still owed, which
+means the account should read as what the platform has to deliver. It did not, because only one route ever
+credited it. `seller-recharge.service.ts`'s `creditOrder` posts a `RECHARGE_ORDER` entry per order it
+verifies, and `settlePaymentOnClient` — the shared primitive *both* that flow and the Stripe webhook call —
+moved the balance, wrote a `transactions` row and stopped. So every payment confirmed through
+`payment_intent.succeeded` minted diamonds the book had never heard of, while the coins behind a seller's
+27 orders were counted. The account was not a running total of what was owed; it was a running total of the
+orders a seller happened to open.
+
+**The fix is in the primitive, and it is the default.** `settlePaymentOnClient` now posts `COIN_ISSUANCE` —
+DEBIT `PROVIDER_COLLECTIONS` / CREDIT `COIN_LIABILITY` — inside the same SQL transaction as the credit it
+describes, keyed on the `payment_proofs` row id. Two properties matter on a money path. Posting is what
+happens unless a caller says otherwise, so a caller added next month cannot mint coins silently; the failure
+mode chosen is the one that over-records, because an unrecorded collection is invisible while a duplicate is
+caught by the unique `(source_kind, source_id)`. And the key is the proof, which `payment_proofs` already
+guarantees is one-per-settlement on `(provider, external_id)`, so a redelivered webhook returns the entry the
+first delivery booked instead of doubling the liability. Idempotency for the bookkeeping comes from the same
+fact as idempotency for the credit, rather than being bolted beside it.
+
+**`journaledByCaller` is the opt-out and exactly one caller takes it.** The seller order's entry is not a
+coarser version of the generic one: it splits the gross into `PROVIDER_COLLECTIONS` and `PROVIDER_FEES`, so
+booking both would double the liability *and* lose the fee — and the order-keyed shape is what the existing
+recharge tie-outs read. Opting out leaves those checks meaningful. The two postings are then mutually
+exclusive by construction, which is the claim 0034's backfill is written to make true: a proof is missing
+only if it has neither an issuance entry keyed on itself nor an order entry reachable through the
+transaction they share.
+
+**History was booked, not forgiven.** The migration's backfill walks the proofs that minted coins with no
+entry and writes them at the cents and currency they recorded, with `occurred_at` set to the proof's own time
+so each entry lands in the period the payment actually arrived rather than the day the file ran — 66 entries
+and 625000 cents on the development database, which is the stripe-shaped traffic six earlier suites left
+behind. Idempotent by the same unique index, and re-running the file answers `INSERT 0 0`.
+
+### What the reconciler says now
+
+`recharge.issued_has_journal` counts proofs that collected money and booked no liability, accepting either
+posting shape but requiring the credited cents to equal what was paid; `journal.issuance_source_rows_exist`
+counts issuance entries whose proof has gone. Both are zero on a database where every path above has run.
+The stronger statement lives in the suites rather than in a count: `node scripts/business-e2e.cjs` asserts
+that the two issuance kinds add up to *exactly* what `payment_proofs` recorded, and
+`node scripts/e2e-live.cjs` drives a real signed webhook, replays it, and requires one entry with two
+balanced lines afterwards. Two paths still mint coins with no line at all — the simulated top-up collects
+nothing, and an admin grant has no contra account until #60 builds one — so they create no proof row and sit
+outside these checks by construction, which is a stated gap rather than a silent one.
+
 ## The socket speaks for a member, and a password is guessed slowly
 
 `joinRoom` is the moderation gate: it refuses a closed room, a banned account and a
@@ -1083,7 +1131,7 @@ Two behaviours worth knowing before pointing a test account at this:
 ## Tests
 
 `npm run test:e2e` drives a *running* stack (PostgreSQL + Redis + LiveKit + this API)
-through 401 checks: OTP auth, wallet ledger double-spend under concurrency, seat
+through 402 checks: OTP auth, wallet ledger double-spend under concurrency, seat
 row-lock contention, the seat policy (the published default, a room created with no
 capacity, a refused over-the-max request, an admin rewrite that lands in `admin_audit`,
 seats beyond the old hardcoded nine taken and refused, and a 64-seat room accepted by
@@ -1095,7 +1143,8 @@ database assertions, gift `effect_kind` and the SYSTEM chat lines it writes, lik
  batching (twelve taps must arrive as fewer than twelve broadcasts, and total exactly
 twelve), the two ranking boards against the same ledger aggregate, the entry notice and
 its dedupe, LiveKit webhook signature trust, VIP gift gating, and the Stripe webhook
-path (signature rejection, idempotent credit, replayed delivery) and the media store (an
+path (signature rejection, idempotent credit, replayed delivery, and the collection journaled against the
+coin liability exactly once across both) and the media store (an
 accepted PNG read back off `/uploads/` byte-for-byte, a script renamed `.png` refused by its
 magic bytes, an oversized file refused, identical bytes deduplicated instead of copied, a
 traversal-shaped file name stored as text only, a member token refused, and a delete refused
@@ -1116,7 +1165,9 @@ the game lifecycle, pinned rule versions, fees, at-most-once settlement, timeout
 forfeit, disputes and the three drivers, and since 0031 the journal leg of a settled pool — one
 entry, priced at the configured face value, and no entry at all for a free match; then BD/coin-seller
 accounts and scopes, the nine-step recharge, one-time credit, commission versions and statements,
-reversals and reconciliation, with the revenue account pinned to holding only the coin spread.
+reversals and reconciliation, with the revenue account pinned to holding only the coin spread and — since
+0034 — the liability pinned to exactly the cents every `payment_proofs` row collected, whichever of the two
+kinds posted it.
 
 `npm run test:accounts` (133) and `npm run test:operators` (44) need that stack running too. The
 accounts suite walks the whole book rather than a page of it: the projection identity

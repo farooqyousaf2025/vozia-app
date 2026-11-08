@@ -541,13 +541,23 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     { debits: trial.json && trial.json.trial.totalDebits, credits: trial.json && trial.json.trial.totalCredits });
 
   const liability = await api('GET', '/api/admin/business/finance/balance/COIN_LIABILITY', { token: finance.token });
-  const coinsCredited = Number(await scalar(
+  // The account is meant to read as "coins still owed for money actually taken", so the check compares it
+  // against the money rather than against one posting kind. Both kinds count: a seller order books its own
+  // fee-split entry keyed on the order, and every other confirmed payment is booked by `settlePaymentOnClient`
+  // keyed on the proof. An issuance that reached neither is the hole 0034 closed — before it, this account
+  // was only a tally of the orders a seller happened to open.
+  const liabilityPosted = Number(await scalar(
     `select coalesce(sum(l.amount_cents), 0)::text
        from fin_journal_entries e join fin_journal_lines l on l.entry_id = e.id
-      where e.source_kind = 'RECHARGE_ORDER' and l.account_code = 'COIN_LIABILITY' and l.direction = 'CREDIT'`,
+      where e.source_kind in ('RECHARGE_ORDER','COIN_ISSUANCE')
+        and l.account_code = 'COIN_LIABILITY' and l.direction = 'CREDIT'`,
   ));
-  check('journal: issued coins sit as a liability, not as revenue',
-    liability.status === 200 && coinsCredited > 0, { creditedCents: coinsCredited, accountBalance: liability.json && liability.json.account.balance });
+  const collectedCents = Number(await scalar(
+    `select coalesce(sum(amount_cents), 0)::text from payment_proofs where amount_cents > 0`,
+  ));
+  check('journal: every coin issued is a liability, and the liability is exactly what was collected',
+    liability.status === 200 && liabilityPosted > 0 && liabilityPosted === collectedCents,
+    { liabilityPosted, collectedCents, accountBalance: liability.json && liability.json.account.balance });
 
   const revenue = await api('GET', '/api/admin/business/finance/balance/PLATFORM_REVENUE', { token: finance.token });
   const revenueKinds = (await sql(
