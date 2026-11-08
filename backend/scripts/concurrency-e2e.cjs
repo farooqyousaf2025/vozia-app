@@ -406,21 +406,34 @@ const codes = (res) => res.map((r) => `${r.status}${r.code ? `/${r.code}` : ''}`
     diamondAcct.ok === true, { balance: diamondAcct.account && diamondAcct.account.balance });
 
   // ---- cleanup: leave no escrow and no freeze behind ----------------------
-  const openWd = await sql(`select id from withdrawal_requests where user_id=$1 and status in ('PENDING','APPROVED')`, [hostId]);
-  for (const row of openWd.rows) {
+  // Matched by the names this suite gives its own throwaway accounts, not by this run's ids: a run
+  // that dies part-way through its checks never reaches this line, and its escrows and holds would
+  // otherwise sit open in the development book forever — five stranded holds were there when this
+  // was written. The prefixes belong to this file, so no other suite's fixtures are touched.
+  const testWithdrawals = `select w.id from withdrawal_requests w join users u on u.id = w.user_id
+     where u.username like 'cc\\_%' and w.status in ('PENDING','APPROVED')`;
+  for (const row of (await sql(testWithdrawals)).rows) {
     await api('POST', `/api/admin/withdrawals/${row.id}/review`, {
       token: T, body: { approve: false, note: `concurrency-e2e-${stamp}: test escrow released` },
     });
   }
   const stillOpen = Number(await scalar(
-    `select count(*) from withdrawal_requests where user_id=$1 and status in ('PENDING','APPROVED')`,
-    [hostId],
+    `select count(*) from withdrawal_requests w join users u on u.id = w.user_id
+      where u.username like 'cc\\_%' and w.status in ('PENDING','APPROVED')`,
   ));
-  const hold = await scalar('select id from account_holds where reason=$1', [holdReason]);
-  const released = await api('POST', `/api/admin/holds/${hold}/release`, { token: T, body: { idempotencyKey: `cc-unhold-${stamp}` } });
-  check('cleanup: no test escrow stays open and the test hold is released',
-    stillOpen === 0 && released.status === 200, {
-      stillOpen, hold: released.status,
+  const stuckHolds = await sql(
+    `select id from account_holds where reason like 'concurrency-e2e-%' and status = 'OPEN'`,
+  );
+  let holdRelease = { status: 200, left: 0 };
+  for (const row of stuckHolds.rows) {
+    const released = await api('POST', `/api/admin/holds/${row.id}/release`, {
+      token: T, body: { idempotencyKey: `cc-unhold-${stamp}-${row.id}` },
+    });
+    holdRelease = { status: released.status, left: released.status === 200 ? holdRelease.left : holdRelease.left + 1 };
+  }
+  check('cleanup: no test escrow stays open and no test hold stays frozen',
+    stillOpen === 0 && holdRelease.status === 200 && holdRelease.left === 0, {
+      stillOpen, heldBack: holdRelease.left,
       rCoins: (await balanceOf(hostId)).r, funded: beforeC.r,
     });
 
