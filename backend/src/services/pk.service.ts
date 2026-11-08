@@ -331,14 +331,21 @@ export async function inviteBattle(
 
   const created = await withTransaction(async (client) => {
     const [first, second] = [roomId, opponentRoomId].sort();
-    const rooms = await client.query<{ id: string; host_id: string; status: string }>(
-      'SELECT id, host_id, status FROM rooms WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE',
-      [[first, second]],
-    );
-    if (rooms.rows.length !== 2) throw ApiError.notFound('Room not found', 'room_not_found');
-    const mine = rooms.rows.find((r) => r.id === roomId)!;
+    // One FOR UPDATE per room, ascending id: `id = ANY(...) ORDER BY id FOR UPDATE` locks while it
+    // scans and sorts afterwards, so the order is the plan's and not the query's — see the longer
+    // note on the same change in `sendGift`.
+    const lockedRooms: { id: string; host_id: string; status: string }[] = [];
+    for (const id of [first, second]) {
+      const room = await client.query<{ id: string; host_id: string; status: string }>(
+        'SELECT id, host_id, status FROM rooms WHERE id = $1 FOR UPDATE',
+        [id],
+      );
+      if (room.rows.length) lockedRooms.push(room.rows[0]);
+    }
+    if (lockedRooms.length !== 2) throw ApiError.notFound('Room not found', 'room_not_found');
+    const mine = lockedRooms.find((r) => r.id === roomId)!;
     if (mine.host_id !== hostUserId) throw ApiError.forbidden('Only the room\'s host can start a battle', 'not_host');
-    const closed = rooms.rows.find((r) => r.status !== 'ACTIVE');
+    const closed = lockedRooms.find((r) => r.status !== 'ACTIVE');
     if (closed) throw ApiError.conflict('A room in this battle is closed', 'room_closed');
 
     const busy = await client.query(
@@ -399,18 +406,22 @@ export async function acceptBattle(hostUserId: string, battleId: string): Promis
     if (!battle) throw ApiError.notFound('Battle not found', 'pk_not_found');
     if (battle.status !== 'INVITED') throw ApiError.conflict('This challenge is no longer open', 'pk_not_invited');
 
-    const rooms = await client.query<{ id: string; host_id: string; status: string }>(
-      'SELECT id, host_id, status FROM rooms WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE',
-      [[battle.room_a_id, battle.room_b_id].sort()],
-    );
-    const hostRoom = rooms.rows.find((r) => r.id === battle.room_b_id);
+    const lockedRooms: { id: string; host_id: string; status: string }[] = [];
+    for (const id of [battle.room_a_id, battle.room_b_id].sort()) {
+      const room = await client.query<{ id: string; host_id: string; status: string }>(
+        'SELECT id, host_id, status FROM rooms WHERE id = $1 FOR UPDATE',
+        [id],
+      );
+      if (room.rows.length) lockedRooms.push(room.rows[0]);
+    }
+    const hostRoom = lockedRooms.find((r) => r.id === battle.room_b_id);
     if (!hostRoom || hostRoom.host_id !== hostUserId) {
       throw ApiError.forbidden('Only the challenged room\'s host can accept', 'not_host');
     }
     if (new Date(battle.invite_expires_at).getTime() <= Date.now()) {
       throw ApiError.conflict('This challenge has expired', 'pk_invite_expired');
     }
-    const closed = rooms.rows.find((r) => r.status !== 'ACTIVE');
+    const closed = lockedRooms.find((r) => r.status !== 'ACTIVE');
     if (closed) throw ApiError.conflict('A room in this battle is closed', 'room_closed');
 
     const updated = await client.query<PkBattleRow>(

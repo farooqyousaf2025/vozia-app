@@ -1072,6 +1072,50 @@ balanced lines afterwards. Two paths still mint coins with no line at all — th
 nothing, and an admin grant has no contra account until #60 builds one — so they create no proof row and sit
 outside these checks by construction, which is a stated gap rather than a silent one.
 
+## What six simultaneous sends are allowed to do
+
+Every other suite here asks a money path one question at a time. The question a phone always ends up
+asking is different: it taps Send twice because the response was slow, six members gift the same host
+in the same second, an operator presses Pay on a withdrawal and then presses it again.
+`npm run test:concurrency` (35) runs those races as parallel HTTP against the live stack and asserts on
+what the database ends up holding rather than on what any single response said.
+
+What it must never find is a request that failed because the *database* gave up. That is not
+hypothetical: the first run of this suite answered five 500s to six gifts, and `pg.log` named the
+reason — `deadlock detected`, four backends each holding one `users` row and waiting for the other's.
+Two separate inversions were behind it, and both are gone from `sendGift`:
+
+* `SELECT * FROM users WHERE id = ANY($1) ORDER BY id FOR UPDATE` does not lock in `ORDER BY` order.
+  PostgreSQL takes a row's lock as it scans and applies the sort afterwards, so the sequence belongs to
+  whichever plan that execution chose, and a custom plan and a generic one can walk the same two rows in
+  opposite directions. The account locks are now one statement per id, in an order the code sorted.
+* The idempotency claim used to run *in front of* those locks. `gift_requests.sender_id` is a foreign
+  key, so its insert takes a `KEY SHARE` lock on the sender's row — weak, but it conflicts with the
+  strong mode. A gift waiting for the receiver therefore held a weak lock on the sender at exactly the
+  moment the gift holding the receiver asked for the strong mode on the sender. The claim now runs
+  behind the account locks, where that `KEY SHARE` lands on a row the same transaction already owns.
+  The one-statement-per-id shape is applied the same way in `postLedgerMoves` (games, seller
+  recharges) and in the two PK battle paths, which lock `rooms`.
+
+A deadlock that cannot happen is still worth answering honestly if one ever does, so PostgreSQL's
+`40P01` is mapped: 409 `retry` — "the request collided with another change; retry it" — instead of a
+500 that tells a caller their money moved unpredictably when the truth is that the transaction was
+rolled back whole and nothing was spent. The suite keeps the two apart on purpose: a 402 is a loss the
+sender's balance chose, and any `retry` or 5xx in a race is a loss the server chose for them.
+
+The rest of the run is the same discipline across the book. One idempotency key held by six arms
+produces one debit and five answers that name the same gift, while the same key around a *different*
+gift is refused 409 rather than replayed; five withdrawals against a balance that escrows two admit
+two; four parallel pays of one approved withdrawal leave one PAID row, one reference and one completed
+ledger row; six holds with one key freeze the money once. Then it asks the whole database the
+questions the operator's reports ask: no balance anywhere negative, with the two `CHECK` clauses still
+on the table; each test wallet equal to its own `coin_movements` legs less the escrow still held; no
+ERROR finding from `/api/admin/accounts/reconcile`; no breached tie-out from the finance report; no
+unbalanced journal entry in the book; and the account that was raced still reconstructing from opening
+plus entries. It rejects its own open withdrawals and releases its hold on the way out, so it leaves
+the database consistent rather than pristine — the throwaway accounts keep their ledger rows, which is
+what the reconciler reads.
+
 ## The socket speaks for a member, and a password is guessed slowly
 
 `joinRoom` is the moderation gate: it refuses a closed room, a banned account and a
@@ -1216,6 +1260,11 @@ close the whole book: no unbooked gift or game anywhere, revenue equal to the le
 configured rate, no `platform_revenue_not_booked`, Σdebits = Σcredits, and the entry visible on
 `GET /admin/accounts/PLATFORM_REVENUE/movements`. It creates two probe gifts and deletes them, and sends
 from time-stamped phone numbers, so it needs a development database too.
+
+`npm run test:concurrency` (35) needs the same running stack and, like the money suites above, a
+development database: it is the parallel one, and *What six simultaneous sends are allowed to do*
+earlier in this file is where its reason for existing — the two lock-order inversions it found in the
+gift path — is written down.
 
 `npm run test:wire-fixtures` and `npm run test:game-wire-fixtures` capture the live REST,
 socket and game-board payloads into `android/scripts/fixtures/`, which

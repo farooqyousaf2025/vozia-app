@@ -216,11 +216,32 @@ export async function sendGift(input: {
       ? giftRequestHash(input.giftId, input.receiverId, input.quantity)
       : null;
 
-    // The key is claimed before the account locks, and in this order on purpose: a concurrent
-    // retry blocks here on the winner's row while holding nothing the winner needs. Claimed the
-    // other way round, the two would each wait on the other and PostgreSQL would kill one of them
-    // with a deadlock error. An insert, not a lock, because it is the same statement that must
-    // roll back with the gift.
+    // Lock both accounts in ascending id order so two simultaneous gifts between the same pair
+    // cannot deadlock each other, and one statement per account to make that order real:
+    // `WHERE id = ANY(...) ORDER BY id FOR UPDATE` looks like it does the same thing but does not,
+    // because PostgreSQL locks a tuple as it reads it and applies the sort afterwards — so the
+    // sequence is whatever the plan for that execution happens to be, and two arms of one race can
+    // walk the same two rows in opposite directions.
+    const [first, second] = [input.senderId, input.receiverId].sort();
+    const rows: UserRow[] = [];
+    for (const id of [first, second]) {
+      const locked = await client.query<UserRow>('SELECT * FROM users WHERE id = $1 FOR UPDATE', [id]);
+      if (!locked.rows.length) throw ApiError.notFound('Account not found');
+      rows.push(locked.rows[0]);
+    }
+
+    // The key is claimed *behind* those locks, and that order is not a preference. An insert into
+    // gift_requests is an insert into a table with `sender_id → users(id)`, so PostgreSQL takes a
+    // KEY SHARE lock on the sender's row to check the reference. Claimed in front of the FOR
+    // UPDATE — where it sat until this was measured — a waiting request therefore holds that weak
+    // lock while it asks for the strong one on the receiver, and the request that got the receiver
+    // first is asking for the strong one on the sender. Neither can move, and PostgreSQL ends it by
+    // rolling one of them back with 40P01. Behind the locks, the KEY SHARE lands on a row this
+    // transaction already holds exclusively, so the cycle has no second edge to close on.
+    //
+    // A retry whose original already committed never reaches this at all: the ledger answers it
+    // above, before any lock is taken. An insert, not a lock, because it is the same statement that
+    // must roll back with the gift.
     if (input.idempotencyKey && requestHash) {
       const claimed = await client.query<{ id: string }>(
         `INSERT INTO gift_requests (sender_id, idempotency_key, request_hash)
@@ -245,23 +266,15 @@ export async function sendGift(input: {
         // rolled back and a third request re-claimed the key between the two statements.
         if (!winner.transaction_id) throw ApiError.conflict('Gift request already in flight; retry it', 'gift_request_in_flight');
         // Answer with the winner's gift instead of paying again. This transaction has written
-        // nothing — the conflicting insert was a no-op — so there is nothing to unwind, and the
-        // caller reads the committed row from the ledger the same way a sequential retry does.
+        // nothing — the conflicting insert was a no-op, and the two account locks above take no
+        // change of their own — so there is nothing to unwind, and the caller reads the committed
+        // row from the ledger the same way a sequential retry does.
         return { replayTransactionId: winner.transaction_id };
       }
     }
 
-    // Lock both accounts, sender first, in a stable order so two simultaneous
-    // gifts between the same pair cannot deadlock each other.
-    const [first, second] = [input.senderId, input.receiverId].sort();
-    const locked = await client.query<UserRow>(
-      'SELECT * FROM users WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE',
-      [[first, second]],
-    );
-    if (locked.rows.length !== 2) throw ApiError.notFound('Account not found');
-
-    const sender = locked.rows.find((u) => u.id === input.senderId)!;
-    const receiver = locked.rows.find((u) => u.id === input.receiverId)!;
+    const sender = rows.find((u) => u.id === input.senderId)!;
+    const receiver = rows.find((u) => u.id === input.receiverId)!;
     if (sender.status === 'BANNED') throw ApiError.forbidden('Account is banned', 'account_banned');
     if (receiver.status === 'BANNED') throw ApiError.forbidden('Receiver is banned', 'receiver_banned');
     // A block is read symmetrically, so a gift is refused whichever side pressed block. The check
@@ -749,12 +762,15 @@ export async function postLedgerMoves(client: PoolClient, moves: readonly Ledger
   const accountIds = [...new Set(normalized.filter((m) => m.userId).map((m) => m.userId as string))].sort();
   const balances = new Map<string, number>();
   if (accountIds.length) {
-    const locked = await client.query<UserRow>(
-      'SELECT id, diamond_balance, status FROM users WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE',
-      [accountIds],
-    );
-    if (locked.rows.length !== accountIds.length) throw ApiError.notFound('Account not found');
-    for (const row of locked.rows) {
+    // One FOR UPDATE per account, ascending id — see the note in `sendGift` about why
+    // `id = ANY(...) ORDER BY id FOR UPDATE` does not actually lock in `ORDER BY` order.
+    for (const id of accountIds) {
+      const locked = await client.query<Pick<UserRow, 'id' | 'diamond_balance' | 'status'>>(
+        'SELECT id, diamond_balance, status FROM users WHERE id = $1 FOR UPDATE',
+        [id],
+      );
+      const row = locked.rows[0];
+      if (!row) throw ApiError.notFound('Account not found');
       if (row.status === 'BANNED') throw ApiError.forbidden('Account is banned', 'account_banned');
       balances.set(row.id, row.diamond_balance);
     }

@@ -7,11 +7,15 @@ export function notFound(req: Request, _res: Response, next: NextFunction): void
 }
 
 /** Postgres error codes worth surfacing as client errors instead of 500s. */
-const PG_CODES: Record<string, { status: number; code: string }> = {
+const PG_CODES: Record<string, { status: number; code: string; message?: string }> = {
   '22P02': { status: 400, code: 'invalid_identifier' }, // invalid text representation (bad UUID)
   '23505': { status: 409, code: 'conflict' }, // unique violation
   '23503': { status: 409, code: 'referenced_row_missing' }, // foreign key
   '23514': { status: 400, code: 'constraint_violated' }, // check constraint
+  // A deadlock is always the loser's fault and always safe to replay: PostgreSQL rolled that one
+  // transaction back and committed the other, so nothing was half-spent. Saying 500 here tells a
+  // caller their money move failed when the honest answer is "you do not know yet, ask again".
+  '40P01': { status: 409, code: 'retry', message: 'The request collided with another change; retry it' },
 };
 
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction): void {
@@ -25,7 +29,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   const pgCode = (err as { code?: string })?.code;
   if (pgCode && PG_CODES[pgCode]) {
     const mapped = PG_CODES[pgCode];
-    res.status(mapped.status).json({ error: { code: mapped.code, message: 'The request conflicts with current data' } });
+    res.status(mapped.status).json({ error: { code: mapped.code, message: mapped.message ?? 'The request conflicts with current data' } });
     return;
   }
 

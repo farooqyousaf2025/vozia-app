@@ -444,6 +444,14 @@ fresh token. Turning approval off cancels the queue rather than stranding it. Se
   settled game's pool now writes, priced at `system_config.accounts.coinValue`. Since 0034 they hold
   the other side of the book to the money too: `COIN_LIABILITY` has to equal every cent
   `payment_proofs` recorded, whichever of the two posting kinds booked it.
+* `cd backend && npm run test:concurrency` — 35 checks that arrive at the same instant instead of one
+  after another: six gifts against a balance that affords three, one idempotency key held by six arms,
+  five withdrawals against two escrows, four parallel pays of one approved withdrawal, six holds with
+  one key, then the whole book — no negative balance anywhere, every test wallet equal to its own
+  ledger legs less the escrow still held, no ERROR finding and no breached tie-out. It is the suite that
+  found the gift path's `40P01` deadlock; *What six simultaneous sends are allowed to do* in
+  `backend/README.md` explains the two lock-order inversions behind it and why `ORDER BY … FOR UPDATE`
+  over an `ANY()` list cannot fix them.
 * `cd backend && npm run test:social` — 24 checks over the migration-0022 edges with no
   database: the report/status/decision vocabularies, every validator's trim-and-refuse
   behaviour (details, resolution, block reason, announcement, transfer note, UUIDs), and
