@@ -48,7 +48,13 @@ export type JournalInput = {
     | 'AGENCY_COMMISSION'
     // Recording that an agency batch was actually paid, which is when its payable leaves the book
     // (0033). Keyed on the settlement, so replaying the pay step describes the transfer once.
-    | 'AGENCY_SETTLEMENT';
+    | 'AGENCY_SETTLEMENT'
+    // Promotional diamonds (0036, booked on 0029's PROMOTIONAL:PLATFORM budget by 0037): coins the
+    // platform gave rather than sold, and the same coins released unspent when their grant expired.
+    // Keyed on the grant, so a retried reward posts once and a swept expiry cannot book the same
+    // remainder twice.
+    | 'PROMO_GRANT'
+    | 'PROMO_LAPSE';
   sourceId: string;
   memo?: string | null;
   currency?: string;
@@ -104,6 +110,10 @@ export const FIN_ACCOUNTS = {
   commissionExpense: 'COMMISSION_EXPENSE',
   platformRevenue: 'PLATFORM_REVENUE',
   refundReserve: 'REFUND_RESERVE',
+  // 0029's "Promotional and bonus budget". A bonus coin minted DEBITs it and one that dies unspent
+  // CREDITs it back, so the account is the marketing spend the operator is actually carrying —
+  // which is why 0037 deleted the parallel `PROMO_EXPENSE`/`PROMO_LAPSED` pair 0036 had added.
+  promoBudget: 'PROMOTIONAL:PLATFORM',
 } as const;
 
 export async function listFinAccounts(): Promise<FinAccountRow[]> {

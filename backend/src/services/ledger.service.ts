@@ -8,7 +8,10 @@ import { ApiError } from '../utils/http';
 import { accrueAgencyCommission, commissionBpsLabel, commissionMembership } from './agency.service';
 import { readConfig } from './business.service';
 import { FIN_ACCOUNTS, postCoinSpread, postJournal } from './finance-journal.service';
+import { announceBonusChange, earnWithin } from './earning.service';
 import { LuckyRollDto, rollLuckyBox, toBoxOutcomes } from './lucky-box.service';
+import { listPromoGrants, planPromoSpend, promoPolicy, recordPromoSpend, refundPromoDiamonds } from './promo-diamond.service';
+import type { PromoGrantDto, PromoPolicy, PromoPurpose, PromoSpendAllocation } from './promo-diamond.service';
 import { awardXp, ensureRankRegistry, xpForEarning, xpForSpend } from './rank.service';
 import { recordQuestProgress } from './quest.service';
 import { assertInteractionAllowed } from './social.service';
@@ -211,6 +214,10 @@ export async function sendGift(input: {
   const remaining = await rateLimit(`gift:${input.senderId}`, env.economy.giftRatePerMinute, 60);
   if (remaining === -1) throw ApiError.tooManyRequests('Too many gifts in one minute');
 
+  // Set inside the transaction, read after it: a campaign payout can land in the sender's bonus
+  // pocket, and the socket push must not go out before the mint that caused it is committed.
+  let earnedBonusDiamonds = false;
+
   const outcome = await withTransaction<GiftOutcome>(async (client) => {
     const requestHash = input.idempotencyKey
       ? giftRequestHash(input.giftId, input.receiverId, input.quantity)
@@ -314,10 +321,20 @@ export async function sendGift(input: {
         giftName: gift.name,
       });
     }
-    if (sender.diamond_balance < totalDiamonds) {
+    // Two pockets, one price. Bonus diamonds pay for a gift when the operator's `usableFor` dial allows
+    // it, and the member's own purchased balance covers the rest — but the combined figure is what is
+    // checked here, before the box is drawn, so a send that could not be afforded still never consumes
+    // a roll. `available` stays the number a client already reads; the split is what is new.
+    const promoPocket = gift.is_lucky_box ? 'BOX' : 'GIFT';
+    const promoUsable = (await promoPolicy(client)).usableFor.includes(promoPocket);
+    const promoAvailable = promoUsable ? sender.promo_diamond_balance : 0;
+    const affordable = sender.diamond_balance + promoAvailable;
+    if (affordable < totalDiamonds) {
       throw ApiError.paymentInsufficient('Not enough diamonds', {
         needed: totalDiamonds,
-        available: sender.diamond_balance,
+        available: affordable,
+        purchased: sender.diamond_balance,
+        promotional: promoAvailable,
       });
     }
 
@@ -330,11 +347,20 @@ export async function sendGift(input: {
     const lucky = gift.is_lucky_box ? await drawLuckyBox(client, gift, input.quantity) : null;
     const totalRCoins = lucky ? lucky.receiverRCoins : gift.r_coin_value * input.quantity;
 
+    // Nearest expiry first, so a bonus about to die is spent rather than lapsed while a longer-lived
+    // one sits untouched. The receipts land after the ledger row exists, in this same transaction.
+    const promo = await planPromoSpend(client, {
+      userId: sender.id,
+      needed: totalDiamonds,
+      purpose: promoPocket,
+    });
+    const paidFromWallet = totalDiamonds - promo.consumed;
+
     await client.query(
       `UPDATE users SET diamond_balance = diamond_balance - $2,
                         total_gifts_sent = total_gifts_sent + $3
         WHERE id = $1`,
-      [sender.id, totalDiamonds, input.quantity],
+      [sender.id, paidFromWallet, input.quantity],
     );
     await client.query(
       `UPDATE users SET r_coin_balance = r_coin_balance + $2,
@@ -366,11 +392,19 @@ export async function sendGift(input: {
         // wallet screen and an audit both read, and the odds the box published at the time of the
         // draw are part of what was paid for. Nothing here is recomputed from the catalogue — which
         // is also how a box keeps telling the same story after an operator reweights it.
-        JSON.stringify({ giftName: gift.name, iconUrl: gift.icon_url, ...(lucky ? { lucky } : {}) }),
-        sender.diamond_balance - totalDiamonds,
+        JSON.stringify({
+          giftName: gift.name,
+          iconUrl: gift.icon_url,
+          ...(lucky ? { lucky } : {}),
+          // Which pocket paid, in the receipt. A support answer for "my bonus went first" needs the
+          // split on the row, not a reconstruction from `promo_grant_spends`.
+          ...(promo.consumed > 0 ? { promoDiamonds: promo.consumed } : {}),
+        }),
+        sender.diamond_balance - paidFromWallet,
         receiver.r_coin_balance + totalRCoins,
       ],
     );
+    await recordPromoSpend(client, txRes.rows[0].id, promo.allocations);
 
     // The book's half of the row just posted. The diamonds the sender burnt were a liability the
     // platform owed its holder; the R-coins the receiver banks are a new one; and the gap between
@@ -392,6 +426,25 @@ export async function sendGift(input: {
       { metric: 'GIFT_SENT', amount: input.quantity },
       { metric: 'DIAMONDS_SPENT', amount: totalDiamonds },
     ]);
+
+    // The earning engine (0038) reads the same two numbers, and it is called from the same place for
+    // the same reason: a gift that rolls back must advance neither quest nor campaign. The context is
+    // what a rule's conditions are matched against — the price of this send, the catalogue category,
+    // and whether the tile was a lucky box — so a rule conditioned on `minDiamonds: 500` cannot be
+    // satisfied by five cheap gifts, and one conditioned on `luckyBox` is not satisfied by a rose.
+    const earnings = await earnWithin(client, sender.id, [
+      {
+        metric: 'GIFT_SENT',
+        amount: input.quantity,
+        context: { diamonds: totalDiamonds, giftCategory: gift.category, luckyBox: gift.is_lucky_box },
+      },
+      {
+        metric: 'DIAMONDS_SPENT',
+        amount: totalDiamonds,
+        context: { diamonds: totalDiamonds, giftCategory: gift.category, luckyBox: gift.is_lucky_box },
+      },
+    ]);
+    earnedBonusDiamonds = earnings.some((payout) => payout.currency === 'BONUS_DIAMOND');
 
     // Agency commission: tracked as its own ledger row so back-office reporting can attribute a
     // host's earnings, and — since 0033 — booked as a journal line so the agency's account says what
@@ -468,6 +521,10 @@ export async function sendGift(input: {
     return replay;
   }
   const result = outcome.paid;
+
+  // The reward moved a pocket the member can spend, so say so on the socket the way the promo module
+  // does. Best effort: a failed push cannot take a committed gift back.
+  if (earnedBonusDiamonds) await announceBonusChange([result.sender.id]);
 
   const enriched = await one<TransactionRow>(`${TX_WITH_PARTIES} WHERE t.id = $1`, [result.transaction.id]);
   return {
@@ -692,6 +749,12 @@ export type GameMove = {
   sessionId: string;
   roomId?: string | null;
   note?: string | null;
+  /**
+   * On a `GAME_REFUND`, the `GAME_ENTRY` row whose money this returns. Its bonus receipts go back to the
+   * grants that paid them and never touch `diamond_balance`; without it a fee paid from the bonus pocket
+   * would be refunded as a purchased diamond.
+   */
+  refundOfTransactionId?: string | null;
 };
 
 export type PostedGameMove = {
@@ -723,6 +786,19 @@ export type LedgerMove = {
   meta?: Record<string, unknown>;
   /** What the caller wants a short balance to be called; games say "this bet", refunds say "this clawback". */
   insufficientMessage?: string;
+  /**
+   * Set on a debit that promotional diamonds may pay for — `'STORE'` for a purchase, `'GAME'` for an
+   * entry fee. Left off, the move is wallet-only: a seller buying inventory is not a member spending a
+   * bonus, and the operator's `usableFor` dial is not consulted for it.
+   */
+  promoPurpose?: PromoPurpose | null;
+  /**
+   * Set on a credit that reverses a debit: the id of the transaction whose bonus receipts go back. The
+   * ledger performs that restore itself, so the amount the member gets back in `diamond_balance` is
+   * `diamonds` minus whatever went to the grants — which is why this is an input the ledger acts on
+   * rather than a number the caller declares.
+   */
+  promoRefundOf?: string | null;
 };
 
 export type PostedLedgerMove = {
@@ -731,6 +807,17 @@ export type PostedLedgerMove = {
   diamonds: number;
   transactionId: string;
   diamondsAfter: number | null;
+};
+
+/** What one move did to the bonus pocket, in whichever direction it went. */
+type BonusEffect = {
+  /** Diamonds taken off the grants to pay for this debit. */
+  consumed: number;
+  allocations: PromoSpendAllocation[];
+  /** Diamonds put back on live grants by this credit, so they never reached `diamond_balance`. */
+  restored: number;
+  /** Diamonds this credit returned to grants whose expiry has passed; they lapsed on the spot. */
+  lapsed: number;
 };
 
 /**
@@ -756,23 +843,28 @@ export async function postLedgerMoves(client: PoolClient, moves: readonly Ledger
     if (move.diamonds === 0 && move.direction !== 'record') {
       throw ApiError.badRequest('A balance move must be more than zero diamonds', 'bad_ledger_move');
     }
+    if (move.promoRefundOf && move.direction !== 'credit') {
+      throw ApiError.badRequest(`A ${move.type} move cannot restore a bonus spend`, 'bad_ledger_move');
+    }
     return move;
   });
 
   const accountIds = [...new Set(normalized.filter((m) => m.userId).map((m) => m.userId as string))].sort();
   const balances = new Map<string, number>();
+  const promoBalances = new Map<string, number>();
+  const policy = await promoPolicy(client);
   if (accountIds.length) {
     // One FOR UPDATE per account, ascending id — see the note in `sendGift` about why
     // `id = ANY(...) ORDER BY id FOR UPDATE` does not actually lock in `ORDER BY` order.
     for (const id of accountIds) {
-      const locked = await client.query<Pick<UserRow, 'id' | 'diamond_balance' | 'status'>>(
-        'SELECT id, diamond_balance, status FROM users WHERE id = $1 FOR UPDATE',
-        [id],
-      );
+      const locked = await client.query<
+        Pick<UserRow, 'id' | 'diamond_balance' | 'promo_diamond_balance' | 'status'>
+      >('SELECT id, diamond_balance, promo_diamond_balance, status FROM users WHERE id = $1 FOR UPDATE', [id]);
       const row = locked.rows[0];
       if (!row) throw ApiError.notFound('Account not found');
       if (row.status === 'BANNED') throw ApiError.forbidden('Account is banned', 'account_banned');
       balances.set(row.id, row.diamond_balance);
+      promoBalances.set(row.id, row.promo_diamond_balance);
     }
   }
 
@@ -786,21 +878,71 @@ export async function postLedgerMoves(client: PoolClient, moves: readonly Ledger
   }
   for (const [userId, delta] of deltas) {
     const balance = balances.get(userId) ?? 0;
-    if (balance + delta < 0) {
+    // The bonus pocket counts towards affordability only when this account actually has a debit that
+    // may be paid from it. Otherwise a member with a live grant could pass a guard they cannot settle.
+    const pocket = normalized.some(
+      (m) => m.userId === userId && m.direction === 'debit' && m.promoPurpose && policy.usableFor.includes(m.promoPurpose),
+    )
+      ? (promoBalances.get(userId) ?? 0)
+      : 0;
+    if (balance + pocket + delta < 0) {
       throw ApiError.paymentInsufficient(
         normalized.find((m) => m.userId === userId)?.insufficientMessage ?? 'Not enough diamonds',
-        { needed: -delta, available: balance },
+        { needed: -delta, available: balance + pocket, purchased: balance, promotional: pocket },
       );
+    }
+  }
+
+  // Take the bonus coins per debit move, nearest expiry first. Each call sees the balance the previous
+  // one left behind, so two entry fees in one batch cannot both spend the same grant, and the wallet
+  // pays whatever the grants did not. A credit that reverses a spend runs here too, for the same reason:
+  // it belongs to the batch's single wallet delta, not to a second statement the guard never saw.
+  const bonusForMove: Array<BonusEffect | null> = normalized.map(() => null);
+  // What each account's wallet delta is wrong by, because the bonus pocket carried it instead:
+  // consumption shrinks a debit, restoration shrinks a credit.
+  const promoOffset = new Map<string, number>();
+  for (let index = 0; index < normalized.length; index += 1) {
+    const move = normalized[index];
+    if (!move.userId || move.diamonds === 0) continue;
+    if (move.direction === 'debit' && move.promoPurpose && policy.usableFor.includes(move.promoPurpose)) {
+      const taken = await planPromoSpend(client, {
+        userId: move.userId,
+        needed: move.diamonds,
+        purpose: move.promoPurpose,
+      });
+      bonusForMove[index] = { consumed: taken.consumed, allocations: taken.allocations, restored: 0, lapsed: 0 };
+      if (taken.consumed > 0) {
+        promoOffset.set(move.userId, (promoOffset.get(move.userId) ?? 0) + taken.consumed);
+      }
+    } else if (move.direction === 'credit' && move.promoRefundOf) {
+      // A fee paid wholly in bought diamonds has no receipts, reads back two zeros and takes the full
+      // credit it always did. Both outcomes of a restore bypass this wallet: a coin returned to a live
+      // grant goes to the bonus pocket, and one returned to a grant whose expiry has passed lapsed there.
+      // Crediting either as a purchased diamond would mint the same coin twice.
+      const back = await refundPromoDiamonds(client, move.promoRefundOf);
+      bonusForMove[index] = { consumed: 0, allocations: [], restored: back.returned, lapsed: back.lapsed };
+      const bypassed = back.returned + back.lapsed;
+      if (bypassed > 0) {
+        promoOffset.set(move.userId, (promoOffset.get(move.userId) ?? 0) - bypassed);
+      }
     }
   }
 
   const running = new Map(balances);
   const posted: PostedLedgerMove[] = [];
-  for (const move of normalized) {
+  for (let index = 0; index < normalized.length; index += 1) {
+    const move = normalized[index];
     if (move.diamonds === 0) continue; // a zero commission is nothing to post
+    // What moved through the bonus pocket instead of the purchased balance — out for a debit, back for a
+    // credit — which is what the post-image on the row is a picture of. The price the member paid, or the
+    // fee they got back, stays the full `move.diamonds`; the split is in the meta and the receipts.
+    const bonus = bonusForMove[index];
+    const fromPromo = bonus?.consumed ?? 0;
+    const toPromo = (bonus?.restored ?? 0) + (bonus?.lapsed ?? 0);
     let diamondsAfter: number | null = null;
     if (move.userId) {
-      const next = (running.get(move.userId) ?? 0) + (move.direction === 'debit' ? -move.diamonds : move.diamonds);
+      const effective = move.direction === 'debit' ? move.diamonds - fromPromo : move.diamonds - toPromo;
+      const next = (running.get(move.userId) ?? 0) + (move.direction === 'debit' ? -effective : effective);
       running.set(move.userId, next);
       diamondsAfter = next;
     }
@@ -821,9 +963,18 @@ export async function postLedgerMoves(client: PoolClient, moves: readonly Ledger
         move.sessionId ?? null,
         move.note ?? null,
         diamondsAfter,
-        JSON.stringify({ direction: move.direction, diamondsAfter, ...(move.meta ?? {}) }),
+        JSON.stringify({
+          direction: move.direction,
+          diamondsAfter,
+          ...(fromPromo + toPromo > 0 ? { promoDiamonds: fromPromo + toPromo } : {}),
+          ...(bonus && bonus.lapsed > 0 ? { promoDiamondsLapsed: bonus.lapsed } : {}),
+          ...(move.meta ?? {}),
+        }),
       ],
     );
+    if (fromPromo > 0) {
+      await recordPromoSpend(client, rows.rows[0].id, bonus!.allocations);
+    }
     posted.push({
       type: move.type,
       userId: move.userId ?? null,
@@ -834,8 +985,12 @@ export async function postLedgerMoves(client: PoolClient, moves: readonly Ledger
   }
 
   for (const [userId, delta] of deltas) {
-    if (delta === 0) continue;
-    await client.query('UPDATE users SET diamond_balance = diamond_balance + $2 WHERE id = $1', [userId, delta]);
+    const walletDelta = delta + (promoOffset.get(userId) ?? 0);
+    if (walletDelta === 0) continue;
+    await client.query('UPDATE users SET diamond_balance = diamond_balance + $2 WHERE id = $1', [
+      userId,
+      walletDelta,
+    ]);
   }
   return posted;
 }
@@ -860,6 +1015,13 @@ export async function postGameMoves(client: PoolClient, moves: readonly GameMove
       note: move.note ?? null,
       meta: { gameId: move.sessionId },
       insufficientMessage: 'Not enough diamonds for this game',
+      // The entry fee is the only move here a bonus coin may pay for. A prize is new value and belongs in
+      // the purchased pocket, and a commission touches no wallet at all — declaring a purpose for either
+      // would be a lie the guard acts on.
+      promoPurpose: move.type === 'GAME_ENTRY' ? 'GAME' : null,
+      // A refund is the fee's mirror: whatever the grants paid for that entry goes back to the grants, and
+      // only the purchased remainder re-enters `diamond_balance`.
+      promoRefundOf: move.type === 'GAME_REFUND' ? move.refundOfTransactionId ?? null : null,
     })),
   );
   return posted as PostedGameMove[];
@@ -1051,12 +1213,18 @@ export async function getWallet(userId: string, limit = 30): Promise<{
   stats: { diamondsSpent: number; rCoinsEarned: number; giftsSent: number };
   /** The same dial `requestWithdrawal` charges at, so a wallet screen can quote the terms it will apply. */
   withdrawalPolicy: { minRCoins: number; feeBps: number };
+  /**
+   * The bonus pocket as the member sees it: which grant dies when, and what the operator lets it buy.
+   * A single number would be a promise the app cannot keep — "1,200 bonus diamonds" means nothing
+   * until the holder knows 300 of them expire tonight.
+   */
+  promo: { grants: PromoGrantDto[]; policy: PromoPolicy };
 }> {
   await ensureRankRegistry();
   const userRow = await one<UserRow>('SELECT * FROM users WHERE id = $1', [userId]);
   if (!userRow) throw ApiError.notFound('Account not found');
 
-  const [transactions, aggregates, policy] = await Promise.all([
+  const [transactions, aggregates, policy, promo] = await Promise.all([
     many<TransactionRow>(`${TX_WITH_PARTIES} WHERE t.sender_id = $1 OR t.receiver_id = $1 ORDER BY t.created_at DESC LIMIT $2`, [
       userId,
       limit,
@@ -1069,6 +1237,10 @@ export async function getWallet(userId: string, limit = 30): Promise<{
       [userId],
     ),
     withdrawalPolicy(),
+    Promise.all([listPromoGrants(userId), promoPolicy()]).then(([grants, grantPolicy]) => ({
+      grants,
+      policy: grantPolicy,
+    })),
   ]);
 
   return {
@@ -1080,6 +1252,7 @@ export async function getWallet(userId: string, limit = 30): Promise<{
       giftsSent: Number(aggregates?.sent ?? 0),
     },
     withdrawalPolicy: policy,
+    promo: { grants: promo.grants, policy: promo.policy },
   };
 }
 

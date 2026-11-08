@@ -91,6 +91,12 @@ data class User(
     val gender: String?,
     val countryCode: String?,
     val diamondBalance: Int,
+    /**
+     * The bonus pocket: diamonds the platform minted rather than sold. Shown apart from
+     * [diamondBalance] because these expire and the paid ones do not, and only the paid ones can ever
+     * reach a cash-out. The server spends them nearest-expiry-first.
+     */
+    val promoDiamondBalance: Int = 0,
     val rCoinBalance: Int,
     val totalGiftsSent: Long,
     val totalGiftsReceived: Long,
@@ -467,6 +473,26 @@ data class WalletSnapshot(
     val stats: WalletStats,
     /** Null on a backend that does not publish the dial; the sheet then quotes no terms at all. */
     val withdrawalPolicy: WithdrawalPolicy? = null,
+    /** Null on a backend with no bonus pocket; the wallet then shows one balance instead of two. */
+    val promo: PromoPocket? = null,
+)
+
+/**
+ * The bonus pocket as the server owns it. [grants] is ordered nearest its death first, which is the
+ * order the ledger spends in, so the coin the screen says expires soonest really is the one going first.
+ */
+data class PromoPocket(
+    val grants: List<PromoGrant>,
+    val usableFor: List<String>,
+)
+
+/** One minted award. The row expires; the wallet number is only the sum of the live ones. */
+data class PromoGrant(
+    val remaining: Int,
+    val status: String,
+    val sourceKind: String,
+    val reason: String,
+    val expiresAt: String,
 )
 
 /** The operator's `accounts.withdrawal` dial, read by the same call that fills the ledger. */

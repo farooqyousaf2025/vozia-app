@@ -4,6 +4,7 @@ import { DailyCheckinRow, DailyQuestRow, QuestSettingsRow } from '../types/db';
 import { ApiError, requireBoolean, requireEnum, requireInt, requireString } from '../utils/http';
 import { toUser, UserDto } from '../utils/serialize';
 import { awardXp, ensureRankRegistry } from './rank.service';
+import { announceBonusChange, earnWithin } from './earning.service';
 
 /**
  * Daily activity: a handful of quests that reset at midnight in the platform's timezone, and a
@@ -198,6 +199,10 @@ export async function questsForToday(userId: string): Promise<QuestsTodayDto> {
 export async function checkIn(userId: string): Promise<{ status: QuestsTodayDto; xpAwarded: number; user: UserDto }> {
   await ensureRankRegistry();
 
+  // Read inside the transaction, announced after it: a campaign diamond minted by this check-in is
+  // only real once the check-in commits, and `wallet:update` carries a balance the app will display.
+  let earnedBonusDiamonds = false;
+
   const result = await withTransaction(async (client) => {
     // Read the dials first so a missing settings row fails before anything is written.
     await readSettings(client);
@@ -222,10 +227,24 @@ export async function checkIn(userId: string): Promise<{ status: QuestsTodayDto;
     if (!row) throw ApiError.conflict('You already checked in today', 'already_checked_in');
 
     await awardXp(client, userId, row.xp_awarded);
+
+    // Two events from one row, because they answer two different questions. `CHECKIN` counts
+    // check-ins (an `ADD` metric, so a rule can pay per visit), while `CHECKIN_STREAK` carries the
+    // streak number itself into a `MAX` metric — the rule pays for reaching day 7, and a day that
+    // repeats must not raise the answer twice. The value is this row's `streak_day`, which the
+    // database computed, not a number the phone sent.
+    const earnings = await earnWithin(client, userId, [
+      { metric: 'CHECKIN', amount: 1, context: { streakDay: row.streak_day } },
+      { metric: 'CHECKIN_STREAK', amount: row.streak_day, context: { streakDay: row.streak_day } },
+    ]);
+    earnedBonusDiamonds = earnings.some((payout) => payout.currency === 'BONUS_DIAMOND');
+
     const fresh = await client.query('SELECT * FROM users WHERE id = $1', [userId]);
     if (fresh.rows.length === 0) throw ApiError.notFound('Account not found');
     return { xpAwarded: row.xp_awarded, user: toUser(fresh.rows[0]) };
   });
+
+  if (earnedBonusDiamonds) await announceBonusChange([userId]);
 
   return { ...result, status: await questsForToday(userId) };
 }

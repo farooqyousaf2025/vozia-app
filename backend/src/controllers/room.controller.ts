@@ -30,6 +30,7 @@ import {
   emitToRoom,
   emitToUser,
 } from '../services/socket.service';
+import { recordEarningProgressOutside } from '../services/earning.service';
 import { themeCatalogue, themeSlugs } from '../services/theme.service';
 import {
   addFavorite,
@@ -232,6 +233,13 @@ export const join = asyncHandler(async (req: Request, res: Response) => {
   const id = roomId(req);
   const result = await joinRoom(req.user!.sub, id, optionalString(req.body?.password, 'password', 32));
   await broadcastSeatUpdate(id);
+  // ROOM_JOIN is counted from the one request that writes the participant row. Not awaited: the
+  // earning runs in its own transaction, and a campaign that cannot pay must not hold up the token
+  // the member needs to enter. The category travels with the event because that is the only thing a
+  // room rule can be conditioned on, and it comes from the room the server just opened, not the body.
+  recordEarningProgressOutside(req.user!.sub, [
+    { metric: 'ROOM_JOIN', amount: 1, context: { roomCategory: result.room.category } },
+  ]).catch((err) => console.warn('[room] earning progress', err.message));
   res.json({ room: result.room, seats: result.seats, audience: result.audience, livekit: result.livekit });
 });
 

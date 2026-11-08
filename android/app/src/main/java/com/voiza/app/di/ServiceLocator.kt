@@ -12,6 +12,7 @@ import com.voiza.app.data.repository.GameRepositoryImpl
 import com.voiza.app.data.repository.GiftRepositoryImpl
 import com.voiza.app.data.repository.PkRepositoryImpl
 import com.voiza.app.data.repository.QuestRepositoryImpl
+import com.voiza.app.data.repository.RoleApplicationRepositoryImpl
 import com.voiza.app.data.repository.RoomRepositoryImpl
 import com.voiza.app.data.repository.SocialRepositoryImpl
 import com.voiza.app.data.repository.StoreRepositoryImpl
@@ -23,6 +24,7 @@ import com.voiza.app.domain.repository.GiftRepository
 import com.voiza.app.domain.repository.GameRepository
 import com.voiza.app.domain.repository.PkRepository
 import com.voiza.app.domain.repository.QuestRepository
+import com.voiza.app.domain.repository.RoleApplicationRepository
 import com.voiza.app.domain.repository.RoomRepository
 import com.voiza.app.domain.repository.SocialRepository
 import com.voiza.app.domain.repository.StoreRepository
@@ -73,6 +75,10 @@ object ServiceLocator {
     lateinit var pkRepository: PkRepository
         private set
 
+    /** Become a Partner: the four applications this account can file, and what they are waiting on. */
+    lateinit var roleApplicationRepository: RoleApplicationRepository
+        private set
+
     /** Follows, blocks and reports between members — the card opened from a roster row or a chat line. */
     lateinit var socialRepository: SocialRepository
         private set
@@ -120,6 +126,7 @@ object ServiceLocator {
             storeRepository = StoreRepositoryImpl(apiService, sessionManager)
             questRepository = QuestRepositoryImpl(apiService, sessionManager)
             pkRepository = PkRepositoryImpl(apiService)
+            roleApplicationRepository = RoleApplicationRepositoryImpl(apiService)
             socialRepository = SocialRepositoryImpl(apiService)
 
             joinRoomUseCase = JoinRoomUseCase(roomRepository) { roomId ->

@@ -19,6 +19,10 @@ import type {
   AdminQuestsResult,
   AdminRank,
   AdminReport,
+  ApplicationListQuery,
+  ApplicationListResult,
+  ApplicationFormSpecResult,
+  ApplicationMutationResult,
   AdminRoomTheme,
   AdminStats,
   Agency,
@@ -76,6 +80,8 @@ import type {
   OperatorRoleInfo,
   ProfileFrame,
   ProfileRide,
+  PromoGrant,
+  PromoPolicyConfig,
   PurposeAccount,
   PublishedBanner,
   PublishedEmojiCatalogue,
@@ -412,6 +418,39 @@ export const api = {
       method: 'POST',
       body: { delta, reason: reason && reason.length > 0 ? reason : undefined },
     });
+  },
+
+  // ---- promotional diamonds (migration 0036) -----------------------------------
+  /**
+   * Mint bonus diamonds into a member's expiring pocket. `days` overrides the policy's expiry; left
+   * out, the server uses `accounts.promotional.expiryDays`.
+   *
+   * `alreadyGranted` is the server's replay flag for reward hooks, which pass a source id; an
+   * operator mint has none, so it is always false here and a second click mints a second grant.
+   */
+  grantPromoDiamonds(
+    userId: string,
+    input: { amount: number; reason: string; days?: number },
+  ): Promise<{ grant: PromoGrant; alreadyGranted: boolean }> {
+    return request<{ grant: PromoGrant; alreadyGranted: boolean }>(`/api/admin/users/${userId}/promo-grant`, {
+      method: 'POST',
+      body: { amount: input.amount, reason: input.reason, days: input.days },
+    });
+  },
+
+  /** The awards behind a member's bonus pocket. `includeSpent` also returns the dead ones. */
+  promoGrants(userId: string, includeSpent = false): Promise<{ grants: PromoGrant[] }> {
+    return request<{ grants: PromoGrant[] }>(
+      `/api/admin/users/${userId}/promo-grants${query({ includeSpent: includeSpent ? 'true' : undefined })}`,
+    );
+  },
+
+  /**
+   * Run the expiry sweep now instead of waiting for the clock. An expired grant is still a liability
+   * until this releases it, which is why finance gets a button for it.
+   */
+  lapsePromoGrants(): Promise<{ lapsed: number; diamonds: number }> {
+    return request<{ lapsed: number; diamonds: number }>('/api/admin/promo-grants/lapse', { method: 'POST' });
   },
 
   // ---- social moderation (migration 0022) --------------------------------------
@@ -903,6 +942,69 @@ export const api = {
     return request<WithdrawalMutationResult>(`/api/admin/withdrawals/${withdrawalId}/pay`, {
       method: 'POST',
       body: { payoutReference },
+    });
+  },
+
+  // ---- partner applications ----------------------------------------------
+  /**
+   * The Become a Partner queue. Filters are exact values, not prose, because the server binds them
+   * as parameters — a search matches a username or the phone the account signed up with.
+   */
+  listApplications(params: ApplicationListQuery = {}): Promise<ApplicationListResult> {
+    return request<ApplicationListResult>(
+      `/api/admin/partner-applications${query({
+        status: params.status,
+        role: params.role,
+        search: params.search,
+        page: params.page,
+        limit: params.limit ?? 25,
+      })}`,
+    );
+  },
+
+  application(applicationId: string): Promise<ApplicationMutationResult> {
+    return request<ApplicationMutationResult>(`/api/admin/partner-applications/${applicationId}`);
+  },
+
+  /**
+   * The four forms as the backend validates them, plus the agency names a host could have picked.
+   *
+   * Fetched rather than copied: an answer shown under a label the server did not ask with is how an
+   * operator approves the wrong thing.
+   */
+  applicationForms(): Promise<ApplicationFormSpecResult> {
+    return request<ApplicationFormSpecResult>('/api/admin/partner-applications/forms');
+  },
+
+  approveApplication(applicationId: string, body: { note?: string; bdAccountId?: string } = {}): Promise<ApplicationMutationResult> {
+    return request<ApplicationMutationResult>(`/api/admin/partner-applications/${applicationId}/approve`, {
+      method: 'POST',
+      body: { note: body.note || undefined, bdAccountId: body.bdAccountId || undefined },
+    });
+  },
+
+  rejectApplication(applicationId: string, note: string): Promise<ApplicationMutationResult> {
+    return request<ApplicationMutationResult>(`/api/admin/partner-applications/${applicationId}/reject`, {
+      method: 'POST',
+      body: { note },
+    });
+  },
+
+  requestApplicationInfo(applicationId: string, note: string): Promise<ApplicationMutationResult> {
+    return request<ApplicationMutationResult>(`/api/admin/partner-applications/${applicationId}/request-info`, {
+      method: 'POST',
+      body: { note },
+    });
+  },
+
+  /**
+   * Take a granted role back. The server suspends whatever the approval created, so this is the only
+   * way a host, agency or partner stops being one without editing another table by hand.
+   */
+  revokeApplication(applicationId: string, reason: string): Promise<ApplicationMutationResult> {
+    return request<ApplicationMutationResult>(`/api/admin/partner-applications/${applicationId}/revoke`, {
+      method: 'POST',
+      body: { reason },
     });
   },
 

@@ -472,6 +472,20 @@ valid cert, or `adb reverse` for local testing).
   `wallet:update` event is folded into the cached session by
   `SessionManager.applyWalletUpdate()`, and only the side the server actually names is
   replaced, so a gift sender never sees their R-coin balance drop to zero.
+  Bonus diamonds (`promo_grants`, backend migrations `0036`/`0037`) are the card under the hero
+  number, and they are not added into it. The two balances differ in exactly the ways a member acts
+  on — one was bought and lasts, the other was minted, dies on a date and buys only some things — so
+  a single combined number would hide the fuse. The card's own line states it ("Minted by the
+  platform, not bought. They pay for some things and expire; they can never be withdrawn.").
+  It is absent while the pocket is empty, and it
+  appears without a refetch from the `wallet:update` push, whose `promoDiamondBalance` is the wallet
+  total rather than the remainder of the single grant just minted. Under the number, `GET /api/wallet`'s
+  `promo` block lists the live grants (reason or source, what is left, and `Expires <date>` against the
+  device clock) in the server's own order — nearest death first, which is the order the ledger spends
+  in, so the top row genuinely is the batch going first — and prints the sink line "Spendable on:
+  gift, box, store, game" straight from `usableFor`. Nothing on the card is a client constant: the
+  expiry date, the spend order and the list of what the pocket may buy are all the operator's numbers,
+  so closing a sink shows up as that line getting shorter rather than as a rule this app invented.
   The withdrawal sheet offers exactly the three methods `POST /api/wallet/withdraw`
   accepts — `BANK`, `WALLET`, `USDT`. It previously also offered UPI and PayPal, which
   the server's `requireEnum` refused with a 400, so two of five choices could never be
@@ -497,6 +511,32 @@ valid cert, or `adb reverse` for local testing).
   money means replacing that one call with `POST /api/wallet/recharge/checkout` plus a
   card sheet (Stripe PaymentSheet, `com.stripe:stripe-android`); the server side and the
   `wallet:update` refresh are already in place, so no polling is needed.
+- `ui/screens/partner` — Become a Partner, from the applicant's side, in three screens over one
+  repository (`RoleApplicationRepository`) and three view models (`PartnerViewModel`,
+  `PartnerApplyViewModel`, `MyApplicationsViewModel`). The hub draws one card per role straight out of
+  `GET /api/role-applications/roles`, which answers each form's questions *beside* where this account
+  stands in that role — `granted` and the live row are the server's read of its own `APPROVED` row,
+  never something this build works out. The form screen then renders exactly what that spec named:
+  a `TEXT`, `TEXTAREA`, `NUMBER`, `CHECKBOX`, `COUNTRY`, `PHONE`, `EMAIL` or `AGENCY` widget per
+  question, its `required` flag deciding whether the label reads *(optional)*, its `hint` and `max`
+  arriving under the field as the counter and the note the server chose, and a
+  field kind this build cannot draw is *named* on screen rather than quietly filled with a text box the
+  server will refuse. Nothing is validated client-side, deliberately: `normaliseForm` on the backend is
+  the only place an answer gets a shape, so a missing required question, a three-letter country or an
+  unticked confirmation comes back as the server's own sentence about it, and a question added there
+  appears here without a release. The submission carries a role and the answers — never an account id,
+  because the applicant is the bearer token. `MyApplicationsScreen` is the same discipline read back:
+  status, the note the operator wrote (the reason for a refusal, the reason for a revocation, the
+  question in an information request), the answers as they were filed — with `formatPartnerAnswer`
+  putting a stored `12.0` back to `12` and a `true` back to *Yes*, since Gson decodes every JSON number
+  as a `Double` — plus **Answer their request** only while the row waits on the member and **Withdraw**
+  only while it is still open. An unknown role or status is displayed with a prettified label and offers
+  no action: a state added later must not become a button by default.
+  Two ways in, no third: **Become a Partner** on the profile screen (the main entry, which opens the hub)
+  and the **Earn more** card on the wallet screen, whose two shortcuts deep-link
+  `partnerApply/HOST` and `partnerApply/COIN_SELLER` — the contextual entry an applicant who arrived
+  wondering how to earn is actually looking for. Both are navigation callbacks; neither checks a role
+  before showing itself, because nothing here has a privilege to check.
 - `ui/screens/profile` — identity header with HOST/AGENCY badges plus a gold
   `VIP n` pill whenever the spend tier is above 0, lifetime
   stats, edit-profile dialog (`PATCH /api/auth/me`), wallet link, logout.

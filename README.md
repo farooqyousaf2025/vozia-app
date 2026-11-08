@@ -77,7 +77,9 @@ that is the only free path. With `PAYMENTS_PROVIDER=stripe` it returns
 (`UNIQUE (provider, external_id)`, written in the same transaction as the credit) makes
 a webhook redelivery a no-op rather than a second top-up. Balances then reach the
 client over the private `wallet:update` event, which the Android session store folds
-into the cached user — the diamond chip and wallet screen update without a reload.
+into the cached user — the diamond chip and wallet screen update without a reload. The
+event's `promoDiamondBalance` is the wallet's bonus total rather than the amount of the
+grant that just landed, so a minted batch cannot be quoted to the member as the pocket.
 
 Gift sends are a single SQL transaction with `SELECT ... FOR UPDATE` on both
 accounts, so a balance can never go negative and a double-tap cannot double-spend.
@@ -125,8 +127,37 @@ in `settlePaymentOnClient` — the primitive both routes share — as DEBIT PROV
 delivery booked instead of doubling the debt. The seller path keeps its own fee-split entry and opts out of
 the generic one, and the two shapes are mutually exclusive by construction: a proof counts as covered when
 either credits exactly what was collected. A simulated top-up and an admin balance grant still book
-nothing — they collect nothing, and the contra account they need is #60. See `backend/README.md` →
+nothing — they collect nothing, and the purchased-coin hand-out has no contra account either; the mint
+that does book is the bonus pocket below. See `backend/README.md` →
 *What a confirmed payment minted is owed on the book (migration 0034)*.
+
+The wallet has a second pocket. `users.promo_diamond_balance` (`promo_grants`, migration 0036) holds coins
+the platform minted rather than coins a member bought, and each grant carries its own deadline: a send
+draws the batch dying soonest, so a bonus about to lapse is spent instead of left to expire. The balance is
+a cache and the grant is the truth — which is why a 60-second sweep closes overdue rows, each one reversing
+its own `PROMO_GRANT` entry with a `PROMO_LAPSE` rather than quietly dropping a number. Bonus coins feed
+only the sinks an operator opens in `accounts.promotional.usableFor` (gift / box / store / game), and they
+become cash to nobody: a member's only exit for diamonds is spending them, since withdrawal is priced in
+R-coins. A gift paid from both pockets stores which grants paid it, so a refund returns the bonus to those
+grants instead of handing back a purchased coin. See `backend/README.md` → *Promotional diamonds: the
+pocket that expires (migrations 0036, 0037)*, and `npm run test:promo` (38).
+
+What those bonus coins are earned for is now data rather than code. A campaign and its rules are operator
+rows (`earning_rules`, migration 0038) carrying a target, a currency (`XP` or `BONUS_DIAMOND`), eligibility,
+caps, a reset period and the conditions a payment must meet; a payout reads every one of those numbers off
+the live rule *version* inside the transaction that pays, so no client can quote its own price and repricing
+a campaign cannot change what an in-flight attempt was already owed. The reset period is a bucket string
+computed in PostgreSQL — a new day needs no midnight job for the caps to be right — and the caps themselves
+are unique keys, `(user_id, rule_id, bucket, occurrence)` on the attempt and `activity_id` on the payout, so
+"twice a day" and "never twice for one attempt" hold while two requests race rather than in a count either of
+them could pass. Nine metrics are counted by the server itself — gift sends, diamonds spent, chat lines,
+check-ins, streak days, logins, room joins, game starts and store purchases — fired from the real product
+paths, and the three on paths a member is waiting for (chat, room entry, sign-in) are deliberately not
+awaited: a campaign never adds its latency to an action or fails it. `SUBMISSION` is the only thing a phone
+may assert, only into a rule an operator marked reviewable, and a human with `user:wallet` signs every
+payment from it. See `backend/README.md` → *What a member is paid for is a rule, not a code path
+(migration 0038)*, and `npm run test:earning` (92), `test:earning:routes` (38) and
+`test:earning:hooks` (40).
 
 Gifts also carry a **spend tier** (`gifts.min_vip_level` vs `users.vip_level`,
 0–20). The ledger checks the tier *before* the balance, so a VIP-0 account buying a
@@ -225,6 +256,10 @@ Two layers, neither of which needs a third-party account to work:
 · users `GET /api/users/:id`, `GET /api/users/top?window=day|week|month&role=receivers|senders&limit=`,
 `GET /api/users/:id/{followers,following,relationship}`, `POST|DELETE /api/users/:id/{follow,block}`,
 `POST /api/users/:id/report`, `GET /api/users/blocked`
+· Become a Partner `GET /api/role-applications/roles` (the four forms, plus where this account stands in each),
+`GET /api/role-applications/form/:role`, `GET /api/role-applications/mine`,
+`POST /api/role-applications` (`{role, data}` — the applicant is taken from the token, never from the body),
+`POST /api/role-applications/:id/{supplement,cancel}`
 · room community `GET|POST|DELETE /api/rooms/:id/favorite`, `GET /api/rooms/favorites`,
 `POST /api/rooms/:id/announcement`,
 `POST /api/rooms/:id/{transfer,seat/:index/invite}`,
@@ -234,7 +269,12 @@ Two layers, neither of which needs a third-party account to work:
 `POST /api/admin/withdrawals/:id/{review,pay}`, `PUT /api/admin/config/accounts.withdrawal`,
 `GET /api/admin/agencies` + `/api/admin/agencies/:id`, `PUT /api/admin/agencies/{:id/rate,:id/hosts/:userId/rate}`,
 `POST /api/admin/agencies/:id/settlements` and `/api/admin/agencies/settlements/:id/{approve,pay,void}`,
-`POST /api/admin/users/:id/vip` and the matching mutation routes.
+`POST /api/admin/users/:id/vip` and the matching mutation routes for each domain above,
+`POST /api/admin/users/:id/promo-grant` and `POST /api/admin/promo-grants/lapse` (behind `user:wallet`),
+`GET /api/admin/users/:id/promo-grants` (behind `user:read`),
+`GET /api/admin/partner-applications?status=&role=&search=&limit=&offset` — plus `.../forms` and `.../:id` —
+behind `application:read`, and `POST /api/admin/partner-applications/:id/{approve,reject,request-info,revoke}`
+behind `application:review`.
 
 Socket.IO events: client sends `room:join`, `room:leave`, `room:chat`, `room:like`,
 `room:reaction`, `room:raise_hand`; server sends `room:chat_message`, `room:gift_animated`,
@@ -411,6 +451,29 @@ host decides the queue, and approval arrives on the requester's private channel 
 fresh token. Turning approval off cancels the queue rather than stranding it. See
 `backend/README.md` → *Social graph and room community*.
 
+## Become a Partner
+
+Host, Agency, Coin seller and BD manager are privileges a member applies for and an operator grants.
+One module, four forms, one queue: `GET /api/role-applications/roles` ships the questions themselves,
+so the phone draws a form it was handed rather than four screens written down in Kotlin, and the same
+spec is what refuses a submission the moment an answer is missing, invented, unticked or out of bounds
+— the client validates nothing, because a client that validated would be a second place to decide what
+an application asks.
+
+The app never asserts a privilege. A role is the `role_applications` row whose status is `APPROVED`,
+which only an operator's decision can write; `users.user_type`, the column that has always recorded who
+has *hosted*, is display only. An approval activates what the role is in the same transaction as the
+decision — an agency row beside the member who owns it and its earnings account, a coin-seller partner
+account under the BD it reports to and within the configured recharge limits — and a revocation suspends
+those objects rather than merely flipping the row. Two `system_config` switches decide how much of the
+platform this gates: `roles.hostApplicationRequired`, which ships off so that making hosting a
+privilege is a choice an operator makes once the queue has caught up, and `business.bd`'s
+`multiManager`. Reading the queue and deciding it are separate permissions, every refusal — reject,
+ask for more information, revoke — has to carry a sentence the member reads back on the application's
+own history (an approval is the one decision that can be filed without one), and every event on either
+side lands in `admin_audit`. See `backend/README.md` → *Become a Partner: a role is a row an operator
+approved*.
+
 ## Verification
 
 * `cd backend && npm run test:e2e` — 402 checks against a running stack (real Postgres,
@@ -444,6 +507,13 @@ fresh token. Turning approval off cancels the queue rather than stranding it. Se
   settled game's pool now writes, priced at `system_config.accounts.coinValue`. Since 0034 they hold
   the other side of the book to the money too: `COIN_LIABILITY` has to equal every cent
   `payment_proofs` recorded, whichever of the two posting kinds booked it.
+* `cd backend && npm run test:promo` (38) — the second pocket, over the running stack: a mint that books
+  its liability at the operator's face value, a spend that draws the batch dying soonest, a gift too big
+  for the bonus pocket that pays the rest from the wallet and receipts exactly which grants paid it, a
+  closed sink that leaves the bonus untouched, a refund that returns bonus coins to those grants instead
+  of handing back bought ones, and an expiry that reverses the entry rather than deleting a number. It
+  opens every sink at the start and puts the dial back before it reconciles, so it tests the spend path
+  rather than whatever a previous interrupted run left switched off.
 * `cd backend && npm run test:concurrency` — 35 checks that arrive at the same instant instead of one
   after another: six gifts against a balance that affords three, one idempotency key held by six arms,
   five withdrawals against two escrows, four parallel pays of one approved withdrawal, six holds with
@@ -452,6 +522,14 @@ fresh token. Turning approval off cancels the queue rather than stranding it. Se
   found the gift path's `40P01` deadlock; *What six simultaneous sends are allowed to do* in
   `backend/README.md` explains the two lock-order inversions behind it and why `ORDER BY … FOR UPDATE`
   over an `ANY()` list cannot fix them.
+* `cd backend && npm run test:partner` — 98 checks on both sides of the Become a Partner door at once:
+  eight member accounts file, withdraw and answer while three operators (one per role that the
+  permission split actually separates) read, approve, ask for more information, refuse and revoke. The
+  three claims it exists to hold are that a body naming another account is ignored, that an approval
+  activates exactly the role asked for and nothing wider — an agency row with its earnings account, a
+  seller account that cannot be approved without the BD it reports to — and that every refusal above
+  files no row. It also walks the create-room switch on and back off again, and puts everything it
+  borrowed back even when it throws.
 * `cd backend && npm run test:social` — 24 checks over the migration-0022 edges with no
   database: the report/status/decision vocabularies, every validator's trim-and-refuse
   behaviour (details, resolution, block reason, announcement, transfer note, UUIDs), and
@@ -469,13 +547,15 @@ fresh token. Turning approval off cancels the queue rather than stranding it. Se
   where an absent key lands as null instead of
   the declared default. A response shape change fails in seconds rather than as an NPE on
   a phone.
-* `cd android && ./gradlew testDebugUnitTest` — 170 JVM tests over the DTO→domain
+* `cd android && ./gradlew testDebugUnitTest` — 200 JVM tests over the DTO→domain
   mappers (unknown enums, absent keys, Gson's skipped default initialisers), the game
   boards and the client's copy of the engine's seat rules, the gift
   purchase guard, the effect queue policy (takeover depth and eviction, ticker
   trim, entry tiers, panel paging), and the banner wall (rows that cannot be honoured,
   tap targets this build cannot name, one fetch serving four surfaces, impression
-  dedupe).
+  dedupe), the partner forms (a role or state this build has not met stays readable, a field it cannot
+  draw is named rather than guessed at, `granted` read from the server's flag, and an answer that
+  reads back as the member typed it rather than as Gson decoded it).
 * `.github/workflows/ci.yml` runs all of the above plus `assembleDebug` and an
   unsigned `assembleRelease` (R8 + resource shrinking + lint) on real service
   containers.

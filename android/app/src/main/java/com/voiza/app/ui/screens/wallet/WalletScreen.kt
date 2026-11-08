@@ -45,6 +45,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.voiza.app.data.mapper.isoToEpochMs
+import com.voiza.app.domain.model.PromoPocket
 import com.voiza.app.domain.model.Transaction
 import com.voiza.app.domain.model.WithdrawalPolicy
 import com.voiza.app.ui.components.EmptyState
@@ -64,16 +66,20 @@ import com.voiza.app.ui.theme.VoizaSurface
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
 import com.voiza.app.viewmodel.WalletViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Wallet: diamond hero card + R-coin earnings card, recharge presets
- * (simulated purchase against /api/wallet/recharge), withdrawal sheet, and
- * the colour-coded transaction ledger.
+ * (simulated purchase against /api/wallet/recharge), withdrawal sheet, the two
+ * partner-role shortcuts, and the colour-coded transaction ledger.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WalletScreen(
     onBack: () -> Unit,
+    onOpenPartnerApply: (String) -> Unit,
     viewModel: WalletViewModel = viewModel(
         factory = voizaViewModelFactory { WalletViewModel() },
     ),
@@ -153,12 +159,19 @@ fun WalletScreen(
                 )
             }
             item {
+                PromoBonusCard(
+                    bonusDiamonds = user?.promoDiamondBalance ?: 0,
+                    pocket = snapshot?.promo,
+                )
+            }
+            item {
                 StatsCard(
                     diamondsSpent = snapshot?.stats?.diamondsSpent ?: 0,
                     rCoinsEarned = snapshot?.stats?.rCoinsEarned ?: 0,
                     giftsSent = snapshot?.stats?.giftsSent ?: 0,
                 )
             }
+            item { PartnerShortcuts(onOpenPartnerApply) }
             item {
                 Text(
                     text = "Transactions",
@@ -276,6 +289,93 @@ private fun HeroBalanceCard(
     }
 }
 
+/**
+ * The bonus pocket, shown as its own card rather than folded into the big number above it.
+ *
+ * Two reasons the separation is the point: these diamonds expire, and they can never be withdrawn, so
+ * a member who sees "1,300 diamonds" would believe they hold 1,300 of the cashable kind. The list is
+ * the server's own ordering — nearest death first, which is the order the ledger spends in — so the
+ * line at the top is genuinely the batch going first.
+ */
+@Composable
+private fun PromoBonusCard(bonusDiamonds: Int, pocket: PromoPocket?) {
+    val live = pocket?.grants?.filter { it.status == "ACTIVE" && it.remaining > 0 }.orEmpty()
+    if (bonusDiamonds <= 0 && live.isEmpty()) return
+
+    VoizaCard(
+        modifier = Modifier.fillMaxWidth(),
+        backgroundColor = VoizaSurface,
+        contentPadding = 12.dp,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x33B02FD6)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("\u2756", color = Fuchsia, fontSize = 14.sp)
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Bonus diamonds", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(bonusDiamonds.toString(), color = Fuchsia, fontSize = 22.sp, fontWeight = FontWeight.Black)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = "Minted by the platform, not bought. They pay for some things and expire; they can " +
+                "never be withdrawn.",
+            color = OnDarkMedium,
+            fontSize = 11.sp,
+        )
+
+        if (live.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            live.take(4).forEach { grant ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(grant.reason.ifBlank { grant.sourceKind }, color = OnDarkHigh, fontSize = 12.sp)
+                        Text(
+                            text = "Expires " + expiryLabel(grant.expiresAt),
+                            color = OnDarkMedium,
+                            fontSize = 11.sp,
+                        )
+                    }
+                    Text(
+                        text = "${grant.remaining} \u2756",
+                        color = Fuchsia,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            if (live.size > 4) {
+                Text("+${live.size - 4} more", color = OnDarkMedium, fontSize = 11.sp)
+            }
+        }
+
+        pocket?.usableFor?.takeIf { it.isNotEmpty() }?.let { sinks ->
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = "Spendable on: " + sinks.joinToString(", ") { it.lowercase() },
+                color = OnDarkMedium,
+                fontSize = 11.sp,
+            )
+        }
+    }
+}
+
+/** The server's ISO deadline, read against the device clock; an unparseable value says nothing. */
+private fun expiryLabel(iso: String): String {
+    val millis = isoToEpochMs(iso) ?: return iso
+    return SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(Date(millis))
+}
+
 @Composable
 private fun StatsCard(diamondsSpent: Long, rCoinsEarned: Long, giftsSent: Long) {
     VoizaCard(modifier = Modifier.fillMaxWidth()) {
@@ -287,6 +387,47 @@ private fun StatsCard(diamondsSpent: Long, rCoinsEarned: Long, giftsSent: Long) 
             StatColumn("R-Coins earned", rCoinsEarned.toString(), RCoinGreen)
             StatColumn("Gifts sent", giftsSent.toString(), Fuchsia)
         }
+    }
+}
+/**
+ * The two roles this screen's money actually flows through.
+ *
+ * A host's R-coin payout and a coin seller's recharge margin are both privileges an operator grants
+ * from the partner queue, so the shortcut files the form and stops there: nothing here is drawn
+ * differently for an account that already holds the role, because this screen cannot read that. The
+ * application's own status is on the Become a Partner hub, which is the server's answer.
+ */
+@Composable
+private fun PartnerShortcuts(onOpenPartnerApply: (String) -> Unit) {
+    VoizaCard(
+        modifier = Modifier.fillMaxWidth(),
+        backgroundColor = VoizaSurface,
+        contentPadding = 12.dp,
+    ) {
+        Text("Earn more", color = OnDarkHigh, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "Hosting a room and selling diamonds are approved roles. Applying sends the form to " +
+                "an operator; nothing unlocks until they approve it.",
+            color = OnDarkMedium,
+            fontSize = 11.sp,
+        )
+        Spacer(Modifier.height(10.dp))
+        VoizaButton(
+            text = "Apply as a Host",
+            onClick = { onOpenPartnerApply("HOST") },
+            gradient = Brush.horizontalGradient(listOf(Color(0xFF1B1140), Color(0xFF2A2459))),
+            height = 44,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        VoizaButton(
+            text = "Apply as a Coin Seller",
+            onClick = { onOpenPartnerApply("COIN_SELLER") },
+            gradient = Brush.horizontalGradient(listOf(Color(0xFF1B1140), Color(0xFF2A2459))),
+            height = 44,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 

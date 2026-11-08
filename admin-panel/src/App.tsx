@@ -7,6 +7,7 @@ import { IconShieldCheck } from './components/ui/Icons';
 import { useAuth } from './context/AuthContext';
 import AccountsPage from './pages/AccountsPage';
 import AgenciesPage from './pages/AgenciesPage';
+import ApplicationsPage from './pages/ApplicationsPage';
 import AuditPage from './pages/AuditPage';
 import BannersPage from './pages/BannersPage';
 import CommissionsPage from './pages/CommissionsPage';
@@ -84,6 +85,14 @@ export default function App() {
         <Route path="withdrawals" element={<RequirePermission permission="withdrawal:review"><WithdrawalsPage /></RequirePermission>} />
         <Route path="games" element={<RequirePermission permission="game:read"><GamesPage /></RequirePermission>} />
         <Route path="partners" element={<RequirePermission permission="business:manage"><PartnersPage /></RequirePermission>} />
+        <Route
+          path="applications"
+          element={
+            <RequirePermission permission="application:read">
+              <ApplicationsPage />
+            </RequirePermission>
+          }
+        />
         <Route path="recharges" element={<RequirePermission permission="finance:read"><RechargesPage /></RequirePermission>} />
         <Route path="commissions" element={<RequirePermission permission="finance:read"><CommissionsPage /></RequirePermission>} />
         <Route path="agencies" element={<RequirePermission permission="finance:read"><AgenciesPage /></RequirePermission>} />

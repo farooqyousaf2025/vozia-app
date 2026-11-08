@@ -55,12 +55,13 @@ class SessionManager(context: Context) {
      * A `wallet:update` carries only the side the server changed (gift sender:
      * diamonds, receiver: R-coins), so a null means "keep the current copy".
      */
-    fun applyWalletUpdate(diamondBalance: Int?, rCoinBalance: Int?) {
+    fun applyWalletUpdate(diamondBalance: Int?, rCoinBalance: Int?, promoDiamondBalance: Int? = null) {
         val current = _user.value ?: return
         publish(
             current.copy(
                 diamondBalance = diamondBalance ?: current.diamondBalance,
                 rCoinBalance = rCoinBalance ?: current.rCoinBalance,
+                promoDiamondBalance = promoDiamondBalance ?: current.promoDiamondBalance,
             ),
         )
     }

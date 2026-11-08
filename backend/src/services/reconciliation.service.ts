@@ -14,7 +14,7 @@ import { one } from '../config/db';
  * 3 cents" invites somebody to explain the 3 away.
  */
 
-export type ReconciliationDomain = 'journal' | 'recharge' | 'commission' | 'revenue' | 'games';
+export type ReconciliationDomain = 'journal' | 'recharge' | 'commission' | 'revenue' | 'games' | 'promo' | 'earning';
 
 export type ReconciliationCheck = {
   key: string;
@@ -42,8 +42,9 @@ type CheckDefinition = {
   unit: string;
   expected: string;
   /**
-   * A scalar SELECT. `$1`/`$2` are always bound to the optional window so that every check
-   * accepts the same two parameters, whether or not it narrows by time.
+   * A scalar SELECT. A check that narrows by time reads `$1`/`$2`, which the report binds to the
+   * window; a check of a present-state invariant names neither and is run with no parameters at all
+   * (see `reconciliationReport`) — Postgres refuses a bind whose values outnumber the placeholders.
    */
   sql: string;
 };
@@ -354,13 +355,183 @@ const CHECKS: CheckDefinition[] = [
          and (g.created_at >= coalesce($1, g.created_at)) and (g.created_at <= coalesce($2, g.created_at))
          and s.distributed > 0`,
   },
+  {
+    key: 'promo.every_grant_booked',
+    domain: 'promo',
+    label: 'Every bonus coin minted by a grant was booked against the coin liability',
+    unit: 'grants with no posting',
+    expected: '0',
+    // The same hole 0034 closed for recharges, in the one place the platform hands out coins it never
+    // sold. A grant made while `minorPerCoin` is unset mints no platform value, so it has nothing to
+    // post — the second predicate skips exactly those, the way `grantPromoDiamonds` does.
+    sql: `
+      select count(*)
+        from promo_grants g
+       where (g.created_at >= coalesce($1, g.created_at)) and (g.created_at <= coalesce($2, g.created_at))
+         and coalesce((select (c.value->>'minorPerCoin')::int from system_config c where c.key = 'accounts.coinValue'), 0) > 0
+         and not exists (
+           select 1
+             from fin_journal_entries e
+             join fin_journal_lines l on l.entry_id = e.id
+            where e.source_kind = 'PROMO_GRANT'
+              and e.source_id = g.id::text
+              and l.account_code = 'PROMOTIONAL:PLATFORM'
+              and l.direction = 'DEBIT')`,
+  },
+  {
+    key: 'promo.cached_balance_matches_grants',
+    domain: 'promo',
+    label: 'The bonus balance a wallet shows is the sum of the grants behind it',
+    unit: 'accounts out of step',
+    expected: '0',
+    // `users.promo_diamond_balance` is a cache; `promo_grants.remaining` is the truth, because that is
+    // what expires. If they drift, a member is shown coins they cannot spend or denied coins they can.
+    sql: `
+      select count(*)
+        from users u
+       where u.promo_diamond_balance <> coalesce(
+               (select sum(g.remaining) from promo_grants g where g.user_id = u.id and g.status = 'ACTIVE'), 0)`,
+  },
+  {
+    key: 'promo.spend_within_purchase',
+    domain: 'promo',
+    label: 'No purchase drew more bonus diamonds from a grant than it cost',
+    unit: 'over-claimed spends',
+    expected: '0',
+    sql: `
+      select count(*) from (
+        select s.transaction_id, sum(s.diamonds) as from_grants, t.amount_diamonds as cost
+          from promo_grant_spends s
+          join transactions t on t.id = s.transaction_id
+         where (t.created_at >= coalesce($1, t.created_at)) and (t.created_at <= coalesce($2, t.created_at))
+         group by s.transaction_id, t.amount_diamonds
+      ) x where x.from_grants > x.cost`,
+  },
+  {
+    key: 'earning.paid_attempt_has_a_payout',
+    domain: 'earning',
+    label: 'Every attempt the engine called PAID also wrote its payout row',
+    unit: 'paid attempts with no payout',
+    expected: '0',
+    // The claim and the mint are one UPDATE and one INSERT inside one transaction, so a PAID attempt
+    // with nothing beside it is not a lag — it is a reward a member was told they got and never got.
+    // `UNIQUE (activity_id)` on the payout already refuses a second one; nothing refuses zero.
+    sql: `
+      select count(*)
+        from earning_activities a
+       where a.status = 'PAID'
+         and (a.paid_at >= coalesce($1, a.paid_at)) and (a.paid_at <= coalesce($2, a.paid_at))
+         and not exists (select 1 from earning_payouts p where p.activity_id = a.id)`,
+  },
+  {
+    key: 'earning.payout_belongs_to_a_paid_attempt',
+    domain: 'earning',
+    label: 'No payout stands on an attempt that was never paid',
+    unit: 'payouts on unpaid attempts',
+    expected: '0',
+    sql: `
+      select count(*)
+        from earning_payouts p
+        join earning_activities a on a.id = p.activity_id
+       where (p.created_at >= coalesce($1, p.created_at)) and (p.created_at <= coalesce($2, p.created_at))
+         and (a.status <> 'PAID' or a.paid_at is null)`,
+  },
+  {
+    key: 'earning.payout_is_the_grant_it_names',
+    domain: 'earning',
+    label: 'A bonus-diamond payout minted exactly its own grant, and an XP payout minted none',
+    unit: 'payouts not matched by their mint',
+    expected: '0',
+    // The dedupe the engine leans on is `promo_grants (source_kind, source_id)`, keyed on the attempt.
+    // If the grant beside a payout belongs to a different account, a different source, or is a different
+    // size, then either a reward was minted twice or the balance a member sees cannot be traced back to
+    // the rule that promised it.
+    sql: `
+      select count(*)
+        from earning_payouts p
+        left join promo_grants g on g.id = p.promo_grant_id
+       where (p.created_at >= coalesce($1, p.created_at)) and (p.created_at <= coalesce($2, p.created_at))
+         and (
+                (p.currency = 'BONUS_DIAMOND'
+                  and (g.id is null
+                       or g.amount <> p.amount
+                       or g.user_id <> p.user_id
+                       or g.source_kind <> p.purpose
+                       or g.source_id <> p.activity_id::text))
+             or (p.currency = 'XP' and p.promo_grant_id is not null)
+         )`,
+  },
+  {
+    key: 'earning.payout_keeps_its_promise',
+    domain: 'earning',
+    label: 'Every payout repeats the account, rule, bucket, occurrence and amount its attempt promised',
+    unit: 'payouts that drifted from the attempt',
+    expected: '0',
+    // §10 asks for the rule version and the snapshot to travel with the money. The attempt is the
+    // promise read off the rule at the moment it was met; the payout is the receipt. Any column where
+    // they disagree — including the campaign, which is whose budget was charged — is a receipt for a
+    // different reward.
+    sql: `
+      select count(*)
+        from earning_payouts p
+        join earning_activities a on a.id = p.activity_id
+       where (p.created_at >= coalesce($1, p.created_at)) and (p.created_at <= coalesce($2, p.created_at))
+         and (   p.user_id <> a.user_id
+              or p.rule_id <> a.rule_id
+              or p.rule_version <> a.rule_version
+              or p.bucket <> a.bucket
+              or p.occurrence <> a.occurrence
+              or p.currency <> a.reward_currency
+              or p.amount <> a.reward_amount
+              or coalesce(p.campaign_id::text, '') <> coalesce(a.campaign_id::text, ''))`,
+  },
+  {
+    key: 'earning.payout_snapshot_is_readable',
+    domain: 'earning',
+    label: 'Every payout still resolves to the rule version it was paid under',
+    unit: 'payouts with no matching rule snapshot',
+    expected: '0',
+    // A rule edit writes a new version rather than overwriting, so the row that priced a reward is
+    // supposed to be readable forever. A payout that joins nothing is a payment no support answer,
+    // and no appeal, can explain. Deliberately unwindowed: the snapshot either exists or does not,
+    // and a date filter would only hide the rows that matter.
+    sql: `
+      select count(*)
+        from earning_payouts p
+       where not exists (
+         select 1 from earning_rules r
+          where r.id = p.rule_id and r.rule_version = p.rule_version)`,
+  },
+  {
+    key: 'earning.campaign_budget_holds',
+    domain: 'earning',
+    label: 'No campaign minted more bonus diamonds than its budget',
+    unit: 'over-budget campaigns',
+    expected: '0',
+    // The engine checks this before it pays, so a breach here means two paths paid concurrently past
+    // the cap — the failure the `FOR UPDATE` on the campaign row exists to prevent. Read as a lifetime
+    // total against a lifetime cap: a windowed sum would compare this week's spending to the whole
+    // budget and pass a campaign that had already blown it.
+    sql: `
+      select count(*) from (
+        select p.campaign_id, c.budget_diamonds, sum(p.amount) as paid
+          from earning_payouts p
+          join earning_campaigns c on c.id = p.campaign_id
+         where p.currency = 'BONUS_DIAMOND' and c.budget_diamonds is not null
+         group by p.campaign_id, c.budget_diamonds
+      ) x where x.paid > x.budget_diamonds`,
+  },
 ];
 
 export async function reconciliationReport(from?: Date, to?: Date): Promise<ReconciliationReport> {
-  const params = [from ?? null, to ?? null];
+  const window = [from ?? null, to ?? null];
   const checks: ReconciliationCheck[] = [];
 
   for (const definition of CHECKS) {
+    // A present-state invariant — a cache out of step with the rows it caches is out of step now,
+    // whatever period the operator asked about — names no window in its SQL. Binding the dates to it
+    // anyway would fail the query, so the parameters follow the statement.
+    const params = definition.sql.includes('$1') ? window : [];
     const row = await one<{ n: string | number }>(`select (${definition.sql}) as n`, params);
     const breaches = Number(row?.n ?? 0);
     checks.push({

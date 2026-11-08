@@ -60,6 +60,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/withdrawals', label: 'Withdrawals', icon: <IconWallet className="h-5 w-5" />, permission: 'withdrawal:review' },
   { to: '/games', label: 'Games', icon: <IconGame className="h-5 w-5" />, permission: 'game:read' },
   { to: '/partners', label: 'Partners', icon: <IconPartners className="h-5 w-5" />, permission: 'business:manage' },
+  { to: '/applications', label: 'Applications', icon: <IconShieldCheck className="h-5 w-5" />, permission: 'application:read' },
   { to: '/recharges', label: 'Recharges', icon: <IconRecharge className="h-5 w-5" />, permission: 'finance:read' },
   { to: '/commissions', label: 'Commission', icon: <IconCommission className="h-5 w-5" />, permission: 'finance:read' },
   { to: '/agencies', label: 'Agencies', icon: <IconPartners className="h-5 w-5" />, permission: 'finance:read' },

@@ -165,6 +165,12 @@ export type UserDto = {
   gender: string | null;
   countryCode: string | null;
   diamondBalance: number;
+  /**
+   * The bonus pocket, kept apart from `diamondBalance` because it expires and that one does not.
+   * A phone shows the two as separate numbers so a member never mistakes a marketing giveaway for
+   * money they paid for; the server spends them in its own order (nearest expiry first).
+   */
+  promoDiamondBalance: number;
   rCoinBalance: number;
   totalGiftsSent: number;
   totalGiftsReceived: number;
@@ -295,7 +301,8 @@ export type GameDisputeDto = {
   raisedBy: MiniUser;
 };
 
-const iso = (value: Date | string): string => new Date(value).toISOString();
+/** Timestamps leave the API as ISO strings, whether pg handed back a Date or the text form. */
+export const iso = (value: Date | string): string => new Date(value).toISOString();
 
 export function toMiniUser(row: {
   id: string;
@@ -334,6 +341,7 @@ export function toUser(row: UserRow): UserDto {
     gender: row.gender,
     countryCode: row.country_code,
     diamondBalance: row.diamond_balance,
+    promoDiamondBalance: row.promo_diamond_balance,
     rCoinBalance: row.r_coin_balance,
     totalGiftsSent: Number(row.total_gifts_sent),
     totalGiftsReceived: Number(row.total_gifts_received),

@@ -53,13 +53,22 @@ export const UNIT_CODES = { diamonds: 'dmn', rCoins: 'rcn', pkr: 'pkr' } as cons
 export const UNIT_LABELS: Record<string, string> = { dmn: 'Diamonds', rcn: 'R-coins', pkr: 'PKR' };
 
 /** Categories whose balance someone can act on. A payable is owed, not spendable. */
-const SPENDABLE = new Set<AccountCategory>(['USER_DIAMOND', 'HOST_RCOIN', 'AGENCY']);
+const SPENDABLE = new Set<AccountCategory>(['USER_DIAMOND', 'HOST_RCOIN', 'AGENCY', 'PROMOTIONAL']);
 
-/** The two accounts every person gets, and the column each one reads. */
-const USER_CATEGORIES: Record<'USER_DIAMOND' | 'HOST_RCOIN', { code: string; source: string; name: string }> = {
-  USER_DIAMOND: { code: 'dmn', source: 'users.diamond_balance', name: 'diamonds' },
-  HOST_RCOIN: { code: 'rcn', source: 'users.r_coin_balance', name: 'R-coin earnings' },
+/** The three accounts every person gets, and the column each one reads. */
+const USER_CATEGORIES: Record<
+  'USER_DIAMOND' | 'HOST_RCOIN' | 'PROMOTIONAL',
+  { code: string; source: string; name: string; kind: 'ASSET' | 'LIABILITY'; normalSide: 'DEBIT' | 'CREDIT' }
+> = {
+  USER_DIAMOND: { code: 'dmn', source: 'users.diamond_balance', name: 'diamonds', kind: 'ASSET', normalSide: 'DEBIT' },
+  HOST_RCOIN: { code: 'rcn', source: 'users.r_coin_balance', name: 'R-coin earnings', kind: 'LIABILITY', normalSide: 'CREDIT' },
+  // What the platform gave rather than sold: spendable like a diamond, but it expires and it was
+  // never bought, so it is reported apart from the pocket a member paid for (0036, 0037).
+  PROMOTIONAL: { code: 'dmn', source: 'users.promo_diamond_balance', name: 'bonus diamonds', kind: 'ASSET', normalSide: 'DEBIT' },
 };
+
+/** The pockets a person holds — and so the ones `ensureUserAccounts` is responsible for opening. */
+const USER_OWNED = Object.keys(USER_CATEGORIES) as AccountCategory[];
 
 /** An account that accrues rather than holds: available is zero by design, not by omission. */
 const PAYABLE_CATEGORIES: Record<'BD_MANAGER' | 'COIN_SELLER', { beneficiary: 'BD' | 'SELLER'; label: string }> = {
@@ -270,12 +279,12 @@ async function insertAccount(
 }
 
 /**
- * Open the two accounts a person holds, if they are not open yet.
+ * Open the accounts a person holds, if they are not open yet.
  *
- * The backfill in 0029 covers everyone who existed before the layer; this covers everyone after.
- * It runs on first read rather than on signup so that a signup path cannot fail because an
- * accounting table was unavailable — an account is derived, so a missing one is never a reason
- * to refuse a login.
+ * The backfills in 0029 and 0037 cover everyone who existed before each category was added; this
+ * covers everyone after. It runs on first read rather than on signup so that a signup path cannot
+ * fail because an accounting table was unavailable — an account is derived, so a missing one is
+ * never a reason to refuse a login.
  */
 export async function ensureUserAccounts(userId: string, client?: PoolClient): Promise<void> {
   const run = async (tx: PoolClient) => {
@@ -286,9 +295,9 @@ export async function ensureUserAccounts(userId: string, client?: PoolClient): P
       await insertAccount(tx, {
         code: accountCodeFor(category as AccountCategory, user.id),
         name: `${user.username} — ${meta.name}`,
-        kind: category === 'USER_DIAMOND' ? 'ASSET' : 'LIABILITY',
+        kind: meta.kind,
         currency: meta.code,
-        normalSide: category === 'USER_DIAMOND' ? 'DEBIT' : 'CREDIT',
+        normalSide: meta.normalSide,
         category: category as AccountCategory,
         ownerKind: 'USER',
         ownerId: user.id,
@@ -367,7 +376,9 @@ export async function accountFor(category: AccountCategory, ownerId?: string | n
   if (!exists) {
     if (!ownerId) throw ApiError.notFound(`Platform account ${code} is missing`, 'account_not_found');
     await withTransaction(async (client) => {
-      if (category === 'USER_DIAMOND' || category === 'HOST_RCOIN') return ensureUserAccounts(ownerId, client);
+      // Exactly the categories `ensureUserAccounts` opens, so a fourth pocket cannot join
+      // `USER_CATEGORIES` without being reachable here too.
+      if (USER_OWNED.includes(category)) return ensureUserAccounts(ownerId, client);
       return ensureOwnerAccount(client, category, ownerId);
     });
   }
@@ -428,7 +439,7 @@ export async function listAccounts(filters: AccountListFilters): Promise<{ accou
 /**
  * One movement list per account, from whatever the account reads.
  *
- * Three shapes because there are genuinely three books, and pretending otherwise would mean
+ * Four shapes because there are genuinely four books, and pretending otherwise would mean
  * either a second ledger or a statement that silently stops at a page boundary. The unit is
  * carried on every row so a caller cannot add a diamond figure to a rupee figure.
  */
@@ -470,6 +481,48 @@ export async function listMovements(
                  WHERE m.owner_id = $1 AND m.unit = $2 AND m.status = 'COMPLETED'
                    AND ($3::timestamptz IS NULL OR m.occurred_at >= $3)
                    AND ($4::timestamptz IS NULL OR m.occurred_at <= $4)`;
+  } else if (account.category === 'PROMOTIONAL' && account.ownerId) {
+    params.push(account.ownerId, from, to);
+    // A bonus coin never appears in `transactions` — it is minted, not sent — so `coin_movements`
+    // has nothing to say about this account. Its legs come from the grant rows: one mint leg per grant,
+    // plus an out leg for whatever that grant has already lost.
+    //
+    // Deliberately per grant rather than per purchase. A refund puts coins back by lowering
+    // `promo_grants.spent` without touching the spend receipts beside it, so a leg per receipt would
+    // keep an OUT for a purchase that was reversed and the statement would stop reproducing the
+    // balance. `remaining = amount - spent - lapsed` is CHECKed in the schema, which makes
+    // `0 + Σamount − Σ(spent + lapsed)` the balance by construction. Which purchase drew on the pocket
+    // stays visible where it happened: the ledger row carries `meta.promoDiamonds`.
+    const legs = `
+        SELECT ('PG-' || g.id)::text AS reference,
+               g.created_at AS occurred_at,
+               'PROMO_GRANT' AS type,
+               g.status::text AS status,
+               'IN' AS direction,
+               g.amount AS amount_minor,
+               'dmn' AS currency,
+               g.reason AS description,
+               'the platform' AS counterparty
+          FROM promo_grants g
+         WHERE g.user_id = $1
+        UNION ALL
+        SELECT ('PG-' || g.id || '-spend')::text, g.updated_at, 'PROMO_SPEND', g.status::text, 'OUT',
+               g.spent, 'dmn', 'Bonus diamonds spent', 'the platform'
+          FROM promo_grants g
+         WHERE g.user_id = $1 AND g.spent > 0
+        UNION ALL
+        SELECT ('PG-' || g.id || '-lapse')::text, g.updated_at, 'PROMO_LAPSE', g.status::text, 'OUT',
+               g.lapsed, 'dmn', 'Bonus diamonds expired unspent', 'the platform'
+          FROM promo_grants g
+         WHERE g.user_id = $1 AND g.lapsed > 0`;
+    sql = `SELECT * FROM (${legs}) AS legs
+       WHERE ($2::timestamptz IS NULL OR occurred_at >= $2)
+         AND ($3::timestamptz IS NULL OR occurred_at <= $3)
+       ORDER BY occurred_at DESC, reference DESC
+       LIMIT ${limit} OFFSET ${offset}`;
+    countSql = `SELECT COUNT(*)::text AS n FROM (${legs}) AS legs
+                 WHERE ($2::timestamptz IS NULL OR occurred_at >= $2)
+                   AND ($3::timestamptz IS NULL OR occurred_at <= $3)`;
   } else if (account.category === 'BD_MANAGER' || account.category === 'COIN_SELLER') {
     const beneficiary = PAYABLE_CATEGORIES[account.category].beneficiary;
     params.push(account.ownerId, beneficiary, from, to);
@@ -887,7 +940,7 @@ export async function reconcileAccounts(): Promise<{ generatedAt: string; findin
   const overFrozen = await many<{ account_code: string; currency: string; frozen: string | number; available: string | number }>(
     `SELECT account_code, currency, frozen_minor AS frozen, available_minor AS available
        FROM purpose_account_balances
-      WHERE category IN ('USER_DIAMOND','HOST_RCOIN','AGENCY') AND frozen_minor > available_minor`,
+      WHERE category IN ('USER_DIAMOND','HOST_RCOIN','AGENCY','PROMOTIONAL') AND frozen_minor > available_minor`,
   );
   for (const row of overFrozen) {
     findings.push({

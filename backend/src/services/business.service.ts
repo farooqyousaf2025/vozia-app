@@ -48,7 +48,14 @@ export async function findBusinessAccountByCode(code: string): Promise<BusinessA
   return one<BusinessAccountRow>(`SELECT * FROM business_accounts WHERE code = $1`, [code]);
 }
 
-async function nextCode(kind: BusinessAccountKind): Promise<string> {
+/**
+ * A fresh business ID for a new partner.
+ *
+ * Exported because an approved coin-seller or BD application creates the same kind of row an operator
+ * types by hand (`partner-application.service.ts`), and the two paths must not disagree about how an
+ * ID is shaped or who owns the uniqueness retry.
+ */
+export async function nextCode(kind: BusinessAccountKind): Promise<string> {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const candidate = shortCode(`${CODE_PREFIX[kind]}-`, 4);
     const taken = await one<{ id: string }>('SELECT id FROM business_accounts WHERE code = $1', [candidate]);

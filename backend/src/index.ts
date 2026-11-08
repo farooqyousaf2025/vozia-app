@@ -7,6 +7,8 @@ import { bootstrapAdmin } from './controllers/auth.controller';
 import { setGameBroadcaster, sweepExpiredSessions } from './services/game.service';
 import { expireStaleOrders } from './services/seller-recharge.service';
 import { pruneGiftRequests } from './services/ledger.service';
+import { lapsePromoGrants } from './services/promo-diamond.service';
+import { expireStaleActivities } from './services/earning.service';
 import { expireInvites, settleDueBattles, setPkBroadcaster } from './services/pk.service';
 import { emitToRoom, emitToUser, initSocket } from './services/socket.service';
 import { loadRankRegistry } from './services/rank.service';
@@ -72,6 +74,22 @@ async function main(): Promise<void> {
         if (pruned) console.info(`[voiza] pruned ${pruned} expired gift idempotency key(s)`);
       })
       .catch((err) => console.warn('[voiza] gift key sweep failed:', err.message));
+    // A bonus diamond that nobody spent still counts as a coin the platform issued, so `COIN_LIABILITY`
+    // carries it until this releases it. Expiry is a date, not an event: without a sweep, the liability
+    // is only ever corrected by whoever happens to open the wallet next.
+    lapsePromoGrants()
+      .then(({ lapsed, diamonds }) => {
+        if (lapsed) console.info(`[voiza] lapsed ${lapsed} promotional grant(s), ${diamonds} diamond(s) released`);
+      })
+      .catch((err) => console.warn('[voiza] promo lapse sweep failed:', err.message));
+    // An earning attempt dies on a date too: yesterday's daily quest is not today's, and a rule whose
+    // window or campaign has closed can never be paid. Without this the queue keeps showing claims the
+    // review screen cannot approve and a member's card keeps showing progress that will not pay.
+    expireStaleActivities()
+      .then(({ expired }) => {
+        if (expired) console.info(`[voiza] expired ${expired} stale earning attempt(s)`);
+      })
+      .catch((err) => console.warn('[voiza] earning sweep failed:', err.message));
   }, 60_000);
   rechargeSweeper.unref();
 

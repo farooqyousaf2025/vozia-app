@@ -4,6 +4,7 @@ import { rateLimit } from '../config/redis';
 import { ProfileFrameRow, ProfileRideRow, RoomThemeRow, UserItemRow, UserRow, VisualEffectRow } from '../types/db';
 import { ApiError, requireEnum, requireInt, requireString } from '../utils/http';
 import { toTransaction, toUser, TransactionDto, UserDto } from '../utils/serialize';
+import { announceBonusChange, earnWithin } from './earning.service';
 import { postedTransaction, postLedgerMoves } from './ledger.service';
 import { awardXp, ensureRankRegistry, xpForSpend } from './rank.service';
 import type { RideFormat } from './theme.service';
@@ -482,6 +483,9 @@ export async function purchaseItem(input: { userId: string; kind: ItemKind; key:
   const remaining = await rateLimit(`store:${input.userId}`, PURCHASES_PER_MINUTE, 60);
   if (remaining === -1) throw ApiError.tooManyRequests('Too many store purchases in one minute');
 
+  // Set inside the transaction, announced after it — see the same seam in `sendGift`.
+  let earnedBonusDiamonds = false;
+
   const result = await withTransaction(async (client) => {
     const item = await catalogueRow(client, input.kind, input.key);
     if (!item) {
@@ -525,12 +529,21 @@ export async function purchaseItem(input: { userId: string; kind: ItemKind; key:
         note: `Store: ${item.name}`,
         meta: { kind: item.kind, key: item.key, name: item.name },
         insufficientMessage: `Not enough diamonds for ${item.name}`,
+        promoPurpose: 'STORE',
       },
     ]);
 
     // Spending on a cosmetic is spending: the same rate a gift pays out, from the same function, so
     // the ladder cannot be gamed by choosing the cheaper-looking sink.
     await awardXp(client, input.userId, xpForSpend(item.priceDiamonds));
+
+    // The campaign answer for the same purchase. `STORE_PURCHASE` is the metric an operator can
+    // condition on `itemKind`, so the kind — not the name, which an operator can rename — is what
+    // travels in the context, and it is read off the catalogue row this transaction just debited.
+    const earnings = await earnWithin(client, input.userId, [
+      { metric: 'STORE_PURCHASE', amount: 1, context: { itemKind: item.kind, diamonds: item.priceDiamonds } },
+    ]);
+    earnedBonusDiamonds = earnings.some((payout) => payout.currency === 'BONUS_DIAMOND');
 
     const held = await upsertOwnership(client, {
       userId: input.userId,
@@ -545,6 +558,8 @@ export async function purchaseItem(input: { userId: string; kind: ItemKind; key:
     const fresh = await client.query<UserRow>('SELECT * FROM users WHERE id = $1', [input.userId]);
     return { transactionId: move.transactionId, item, user: fresh.rows[0] };
   });
+
+  if (earnedBonusDiamonds) await announceBonusChange([input.userId]);
 
   const posted = await postedTransaction(result.transactionId);
   return {

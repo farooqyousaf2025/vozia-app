@@ -79,6 +79,11 @@ export interface UserRow {
   userType: UserType;
   status: UserStatus;
   diamondBalance: number;
+  /**
+   * The bonus pocket: diamonds the platform minted rather than sold. Kept apart from
+   * `diamondBalance` because these expire and the paid ones do not.
+   */
+  promoDiamondBalance: number;
   rCoinBalance: number;
   totalGiftsSent: number;
   totalGiftsReceived: number;
@@ -101,6 +106,28 @@ export interface UserListResult {
   total: number;
   page: number;
   limit: number;
+}
+
+/**
+ * One minted bonus award (`promo_grants`, migration 0036). The row is the truth: the wallet's bonus
+ * number is the sum of the `remaining` of the ACTIVE ones, and this is what expires.
+ */
+export interface PromoGrant {
+  id: string;
+  amount: number;
+  remaining: number;
+  status: 'ACTIVE' | 'EXHAUSTED' | 'LAPSED' | 'REVERSED';
+  sourceKind: string;
+  reason: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+/** The two promo dials behind `accounts.promotional`, as the backend reads them. */
+export interface PromoPolicyConfig {
+  expiryDays?: number;
+  welcomeBonusDiamonds?: number;
+  usableFor?: string[];
 }
 
 /** Ledger entry returned after an admin balance adjustment (transactions table). */
@@ -865,6 +892,101 @@ export interface RoomListQuery {
 
 export interface WithdrawalListQuery {
   status?: WithdrawalStatus | '';
+}
+
+// ---- Become a Partner (migration 0035) --------------------------------------
+export type PartnerRole = 'HOST' | 'AGENCY' | 'COIN_SELLER' | 'BD_MANAGER';
+
+export type ApplicationStatus =
+  | 'PENDING'
+  | 'INFO_REQUESTED'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'CANCELLED'
+  | 'REVOKED';
+
+/**
+ * What the approval created, if anything. A host grants nothing — the approved row is the privilege —
+ * so `kind: 'HOST'` points at the applicant's own account. `status` is that object's status, which is
+ * how a revoked agency or suspended seller shows up as more than a word in this column.
+ */
+export interface ApplicationGrant {
+  kind: 'HOST' | 'AGENCY' | 'BUSINESS_ACCOUNT' | null;
+  id: string | null;
+  label: string | null;
+  status: string | null;
+}
+
+export interface ApplicationApplicant {
+  id: string;
+  username: string;
+  phone: string;
+  countryCode: string | null;
+  userType: string;
+  status: string;
+}
+
+export interface RoleApplicationRow {
+  id: string;
+  role: PartnerRole;
+  status: ApplicationStatus;
+  formVersion: number;
+  /** The answers, keyed by the form's own field keys. Read-only here: the applicant writes them. */
+  data: Record<string, unknown>;
+  submittedAt: string;
+  updatedAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  decisionNote: string | null;
+  infoRequestNote: string | null;
+  revokedAt: string | null;
+  revokedBy: string | null;
+  revokeReason: string | null;
+  grant: ApplicationGrant;
+  applicant?: ApplicationApplicant;
+}
+
+export interface ApplicationListResult {
+  applications: RoleApplicationRow[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface ApplicationMutationResult {
+  application: RoleApplicationRow;
+}
+
+export interface ApplicationListQuery {
+  status?: ApplicationStatus | '';
+  role?: PartnerRole | '';
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+/** One question on a form, exactly as the backend validates it. */
+export interface ApplicationField {
+  key: string;
+  label: string;
+  input: 'TEXT' | 'TEXTAREA' | 'NUMBER' | 'CHECKBOX' | 'COUNTRY' | 'PHONE' | 'EMAIL' | 'AGENCY';
+  required: boolean;
+  min?: number;
+  max?: number;
+  hint?: string;
+}
+
+export interface ApplicationFormSpec {
+  role: PartnerRole;
+  title: string;
+  blurb: string;
+  benefits: string[];
+  fields: ApplicationField[];
+}
+
+export interface ApplicationFormSpecResult {
+  roles: ApplicationFormSpec[];
+  agencies: Array<{ id: string; name: string }>;
 }
 
 // ---------------------------------------------------------------------------

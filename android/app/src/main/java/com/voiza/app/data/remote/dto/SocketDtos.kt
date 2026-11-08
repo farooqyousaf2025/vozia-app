@@ -146,6 +146,8 @@ data class SocketHandRaiseDto(
 data class SocketWalletUpdateDto(
     @SerializedName("diamondBalance") val diamondBalance: Int? = null,
     @SerializedName("rCoinBalance") val rCoinBalance: Int? = null,
+    /** Sent when an operator mints bonus diamonds; null keeps the copy already on the phone. */
+    @SerializedName("promoDiamondBalance") val promoDiamondBalance: Int? = null,
 )
 
 data class SocketGiftAnimatedDto(

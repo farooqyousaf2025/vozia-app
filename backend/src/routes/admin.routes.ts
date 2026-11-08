@@ -3,7 +3,9 @@ import * as admin from '../controllers/admin.controller';
 import * as auth from '../controllers/auth.controller';
 import * as account from '../controllers/account.controller';
 import * as operator from '../controllers/operator.controller';
+import * as partnerApplication from '../controllers/partner-application.controller';
 import agencyRoutes from './agency-admin.routes';
+import earningRoutes from './earning-admin.routes';
 import partnerRoutes from './partner-admin.routes';
 import { requireAdminOperator, requirePermission } from '../middleware/auth';
 
@@ -33,6 +35,11 @@ router.get('/stats', requirePermission('dashboard:read'), admin.stats);
 
 router.get('/users', requirePermission('user:read'), admin.users);
 router.post('/users/:id/balance', requirePermission('user:wallet'), admin.adjustUserBalance);
+// Promotional diamonds (0036). Mints value with no money behind it, so it holds the same permission
+// as the manual balance adjustment above; the expiry sweep only releases what is already booked.
+router.post('/users/:id/promo-grant', requirePermission('user:wallet'), admin.grantPromoEndpoint);
+router.get('/users/:id/promo-grants', requirePermission('user:read'), admin.promoGrantsEndpoint);
+router.post('/promo-grants/lapse', requirePermission('user:wallet'), admin.lapsePromoEndpoint);
 router.post('/users/:id/ban', requirePermission('user:moderate'), admin.ban);
 router.post('/users/:id/vip', requirePermission('user:vip'), admin.setVipLevel);
 // Experience is the same "levels and VIP" concern as the spend tier, under the same permission,
@@ -216,6 +223,31 @@ router.post('/operators', requirePermission('operator:manage'), operator.create)
 router.put('/operators/:id', requirePermission('operator:manage'), operator.update);
 router.post('/operators/:id/disable', requirePermission('operator:manage'), operator.disable);
 router.post('/operators/:id/enable', requirePermission('operator:manage'), operator.enable);
+
+// ---------------------------------------------------------------------------
+// Become a Partner: the queue an account cannot see itself (migration 0035).
+//
+// Reading and deciding are separate permissions, and there is no create route: an application is
+// filed by the account it belongs to, at `/api/role-applications`. An operator who could open one
+// by hand would be able to grant a role to a person who never asked — which is the one thing this
+// module exists to prevent.
+// ---------------------------------------------------------------------------
+router.get('/partner-applications', requirePermission('application:read'), partnerApplication.queue);
+// Ordered before `/:id`, which would otherwise read "forms" as an application id and refuse it.
+router.get('/partner-applications/forms', requirePermission('application:read'), partnerApplication.specs);
+router.get('/partner-applications/:id', requirePermission('application:read'), partnerApplication.detail);
+router.post('/partner-applications/:id/approve', requirePermission('application:review'), partnerApplication.approve);
+router.post('/partner-applications/:id/reject', requirePermission('application:review'), partnerApplication.reject);
+router.post('/partner-applications/:id/request-info', requirePermission('application:review'), partnerApplication.requestInfo);
+// The reward engine's controls (migration 0038): campaigns, rules, the claim queue and the payout
+// trail. Its own sub-router, because the module has fourteen routes and three different permissions,
+// and the rules it publishes are not about a user, a room or an account in any of the senses the
+// blocks above are.
+router.use('/earning', earningRoutes);
+
+// Only an approved grant can be revoked, so this is the removal half of `application:review` rather
+// than a third permission — and it is the only place in the product a privileged role is taken away.
+router.post('/partner-applications/:id/revoke', requirePermission('application:review'), partnerApplication.revoke);
 
 // Audit needs its own permission: the log names every other role's work, so reading it is not
 // a courtesy attached to `dashboard:read`.

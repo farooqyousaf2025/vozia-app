@@ -394,7 +394,7 @@ class VoizaSocketClient(
         }
         bindHandler(newSocket, EVENT_WALLET) { args ->
             parse<SocketWalletUpdateDto>(args)?.let { update ->
-                sessionManager.applyWalletUpdate(update.diamondBalance, update.rCoinBalance)
+                sessionManager.applyWalletUpdate(update.diamondBalance, update.rCoinBalance, update.promoDiamondBalance)
             }
         }
 

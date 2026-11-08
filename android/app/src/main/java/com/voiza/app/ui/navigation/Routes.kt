@@ -20,6 +20,14 @@ object Routes {
 
     const val SESSION_ARG = "sessionId"
 
+    // Become a Partner. The role travels as the server's own constant, so a role added in the
+    // backend reaches the form renderer as another value rather than as something this APK cannot name.
+    const val PARTNER = "partner"
+    const val PARTNER_APPLICATIONS = "partnerApplications"
+    const val PARTNER_ROLE_ARG = "role"
+    const val PARTNER_APPLY_BASE = "partnerApply"
+    const val PARTNER_APPLY_PATTERN = "$PARTNER_APPLY_BASE/{$PARTNER_ROLE_ARG}"
+
     // Nested under the room path so opening the desk never pops the room entry, which
     // keeps PartyRoomViewModel (and the LiveKit voice connection it owns) alive.
     const val GAME_LOBBY_PATTERN = "$ROOM_PATTERN/games"
@@ -37,4 +45,6 @@ object Routes {
     fun pk(roomId: String) = "$ROOM_BASE/$roomId/pk"
 
     fun game(sessionId: String) = "game/$sessionId"
+
+    fun partnerApply(role: String) = "$PARTNER_APPLY_BASE/$role"
 }

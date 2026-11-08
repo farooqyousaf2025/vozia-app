@@ -7,6 +7,8 @@ export type UserRow = {
   gender: string | null;
   country_code: string | null;
   diamond_balance: number;
+  /** Promotional diamonds (migration 0036). Spendable like a purchased one, never cashable by its holder. */
+  promo_diamond_balance: number;
   r_coin_balance: number;
   total_gifts_sent: string | number;
   total_gifts_received: string | number;
@@ -768,6 +770,36 @@ export type PkBattleRow = {
   bonus_user_id: string | null;
   bonus_xp_awarded: number;
   stopped_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+/**
+ * `role_applications` (migration 0035) — one partner-role request, and the grant itself.
+ *
+ * The row whose status is `APPROVED` *is* the privilege: nothing else records that an account is a
+ * host, an agency, a coin seller or a BD manager. `users.user_type` is only a display marker because
+ * `room.service.ts` has long written 'HOST' for anyone who opened a room.
+ *
+ * The decision columns are set together — a database CHECK refuses a half-decided row — so a reader
+ * never has to guess whether a `reviewed_at` without a `reviewed_by` means something.
+ */
+export type RoleApplicationRow = {
+  id: string;
+  user_id: string;
+  role: 'HOST' | 'AGENCY' | 'COIN_SELLER' | 'BD_MANAGER';
+  status: 'PENDING' | 'INFO_REQUESTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'REVOKED';
+  data: Record<string, unknown>;
+  form_version: number;
+  decision_note: string | null;
+  info_request_note: string | null;
+  reviewed_by: string | null;
+  reviewed_at: Date | null;
+  agency_id: string | null;
+  business_account_id: string | null;
+  revoked_by: string | null;
+  revoked_at: Date | null;
+  revoke_reason: string | null;
   created_at: Date;
   updated_at: Date;
 };

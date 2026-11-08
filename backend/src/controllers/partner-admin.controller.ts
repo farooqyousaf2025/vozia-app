@@ -444,7 +444,10 @@ export const readConfigEndpoint = asyncHandler(async (req: Request, res: Respons
  * deletes its neighbour's value for the next reader. Refusing the write is the only place an operator
  * can still be told. A key that is not listed here is accepted as it always was.
  */
-const CONFIG_DIALS: Record<string, ReadonlyArray<{ field: string; min: number; max: number }>> = {
+/** A dial is either a bounded whole number or a list drawn from a closed set. */
+type DialSpec = { field: string; min?: number; max?: number; oneOf?: readonly string[] };
+
+const CONFIG_DIALS: Record<string, ReadonlyArray<DialSpec>> = {
   'accounts.withdrawal': [
     { field: 'minRCoins', min: 1, max: 1_000_000_000 },
     { field: 'feeBps', min: 0, max: 10_000 },
@@ -454,6 +457,14 @@ const CONFIG_DIALS: Record<string, ReadonlyArray<{ field: string; min: number; m
   // decision, not an absence: it says the platform defaults to taking nothing, and the readers
   // distinguish it from a missing row exactly the way the rate columns do.
   'accounts.agency': [{ field: 'defaultCommissionBps', min: 0, max: 10_000 }],
+  // Promotional diamonds (0036, on 0029's own dial). `usableFor` is checked against the closed list
+  // rather than ignored: `promoPolicy` falls back to "everything" when the value it reads names no
+  // known sink, so a typo here would silently *widen* a restriction an operator meant to impose.
+  'accounts.promotional': [
+    { field: 'expiryDays', min: 1, max: 3650 },
+    { field: 'welcomeBonusDiamonds', min: 0, max: 1_000_000 },
+    { field: 'usableFor', oneOf: ['GIFT', 'BOX', 'STORE', 'GAME'] },
+  ],
 };
 
 export const writeConfigEndpoint = asyncHandler(async (req: Request, res: Response) => {
@@ -464,10 +475,22 @@ export const writeConfigEndpoint = asyncHandler(async (req: Request, res: Respon
   }
   for (const spec of CONFIG_DIALS[key] ?? []) {
     const raw = (value as Record<string, unknown>)[spec.field];
+    if (spec.oneOf) {
+      const allowed = spec.oneOf;
+      if (!Array.isArray(raw) || !raw.length || raw.some((p) => !allowed.includes(String(p)))) {
+        throw ApiError.badRequest(
+          `${key}.${spec.field} must be a non-empty list of ${allowed.join(', ')}`,
+          'bad_config_value',
+        );
+      }
+      continue;
+    }
     const number = Number(raw);
-    if (!Number.isInteger(number) || number < spec.min || number > spec.max) {
+    const min = spec.min ?? 0;
+    const max = spec.max ?? Number.MAX_SAFE_INTEGER;
+    if (!Number.isInteger(number) || number < min || number > max) {
       throw ApiError.badRequest(
-        `${key}.${spec.field} must be a whole number between ${spec.min} and ${spec.max}`,
+        `${key}.${spec.field} must be a whole number between ${min} and ${max}`,
         'bad_config_value',
       );
     }

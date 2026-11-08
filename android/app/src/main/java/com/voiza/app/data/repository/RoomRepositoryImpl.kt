@@ -6,6 +6,7 @@ import com.voiza.app.data.remote.VoizaApiService
 import com.voiza.app.data.remote.apiCall
 import com.voiza.app.data.remote.dto.AnnouncementBody
 import com.voiza.app.data.remote.dto.CreateRoomBody
+import com.voiza.app.data.remote.dto.EmptyRequestBody
 import com.voiza.app.data.remote.dto.HandRaiseBody
 import com.voiza.app.data.remote.dto.JoinRoomBody
 import com.voiza.app.data.remote.dto.SeatInviteBody
@@ -156,7 +157,7 @@ class RoomRepositoryImpl(
             .mapSuccess { resp -> resp.seats.map { it.toDomain() } }
 
     override suspend fun kickFromSeat(roomId: String, seatIndex: Int): ApiResult<List<Seat>> =
-        apiCall { api.kickFromSeat(roomId, seatIndex) }
+        apiCall { api.kickFromSeat(roomId, seatIndex, EmptyRequestBody()) }
             .mapSuccess { resp -> resp.seats.map { it.toDomain() } }
 
     override suspend fun inviteToSeat(roomId: String, seatIndex: Int, userId: String): ApiResult<List<Seat>> =
@@ -175,7 +176,7 @@ class RoomRepositoryImpl(
         apiCall { api.rejectSpeakerRequest(roomId, requestId) }.mapSuccess { true }
 
     override suspend fun cancelSpeakerRequest(roomId: String): ApiResult<Boolean> =
-        apiCall { api.cancelSpeakerRequest(roomId) }.mapSuccess { it.cancelled > 0 }
+        apiCall { api.cancelSpeakerRequest(roomId, EmptyRequestBody()) }.mapSuccess { it.cancelled > 0 }
 
     override suspend fun setAnnouncement(roomId: String, text: String): ApiResult<Room> =
         apiCall { api.setAnnouncement(roomId, AnnouncementBody(text.trim())) }

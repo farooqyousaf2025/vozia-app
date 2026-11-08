@@ -16,6 +16,7 @@ import { Modal } from '../components/ui/Modal';
 import { Pagination } from '../components/ui/Pagination';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
+import { Switch } from '../components/ui/Switch';
 import { useToast } from '../components/ui/Toast';
 import {
   IconAlert,
@@ -33,8 +34,9 @@ import {
 } from '../components/ui/Icons';
 import { Table, TBody, Td, Th, THead, Tr } from '../components/ui/Table';
 import { ApiError, api, assetUrl } from '../lib/api';
-import { formatCompact, formatDiamonds, formatRCoin, parseSignedInt, relativeTime } from '../lib/format';
-import type { StoreItemKind, UserListQuery, UserRow, UserSocialSummary, UserStatus, UserType } from '../types';
+import { formatCompact, formatDiamonds, formatRCoin, parseSignedInt, parseUnsignedInt, relativeTime, formatDateTime } from '../lib/format';
+import { useAuth } from '../context/AuthContext';
+import type { PromoGrant, PromoPolicyConfig, StoreItemKind, UserListQuery, UserRow, UserSocialSummary, UserStatus, UserType } from '../types';
 
 const PAGE_LIMIT = 20;
 
@@ -49,6 +51,7 @@ const USER_TYPE_TONES: Record<UserType, BadgeTone> = {
 
 export default function UsersPage() {
   const toast = useToast();
+  const { can } = useAuth();
   const [searchParams] = useSearchParams();
 
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
@@ -68,6 +71,7 @@ export default function UsersPage() {
   const [xpTarget, setXpTarget] = useState<UserRow | null>(null);
   const [grantTarget, setGrantTarget] = useState<UserRow | null>(null);
   const [socialTarget, setSocialTarget] = useState<UserRow | null>(null);
+  const [promoTarget, setPromoTarget] = useState<UserRow | null>(null);
 
   const query = useMemo<UserListQuery>(
     () => ({
@@ -166,6 +170,12 @@ export default function UsersPage() {
         </div>
       </Card>
 
+      <PromoPolicyCard
+        canRead={can('finance:read')}
+        canWrite={can('config:manage')}
+        canWallet={can('user:wallet')}
+      />
+
       <Card bodyClassName="p-0">
         {loading && rows.length === 0 ? (
           <div className="grid h-64 place-items-center text-violet-300">
@@ -259,8 +269,16 @@ export default function UsersPage() {
                         </span>
                       </span>
                     </Td>
+                    {/* The two pockets are never summed here: one is bought and permanent, the other is
+                        minted and expiring, and an operator reading "1,300" cannot tell which the member
+                        can still cash out a room with. */}
                     <Td align="right" className="tabular-nums text-ink">
                       {formatDiamonds(user.diamondBalance)}
+                      {user.promoDiamondBalance > 0 && (
+                        <span className="mt-0.5 block text-[11px] text-violet-300">
+                          +{formatCompact(user.promoDiamondBalance)} bonus
+                        </span>
+                      )}
                     </Td>
                     <Td align="right" className="tabular-nums text-ink">
                       {formatRCoin(user.rCoinBalance)}
@@ -291,6 +309,13 @@ export default function UsersPage() {
                           onClick={() => setGrantTarget(user)}
                         >
                           Grant
+                        </Button>
+                        <Button
+                          size="sm"
+                          icon={<IconSpark className="h-3.5 w-3.5" />}
+                          onClick={() => setPromoTarget(user)}
+                        >
+                          Bonus
                         </Button>
                         <IconButton
                           label={`Social graph for ${user.username}`}
@@ -357,6 +382,19 @@ export default function UsersPage() {
 
       {socialTarget !== null && (
         <UserSocialModal user={socialTarget} onClose={() => setSocialTarget(null)} />
+      )}
+
+      {promoTarget !== null && (
+        <BonusDiamondsModal
+          user={promoTarget}
+          canWrite={can('user:wallet')}
+          onClose={() => setPromoTarget(null)}
+          onBalance={(userId, bonus) =>
+            setRows((current) =>
+              current.map((row) => (row.id === userId ? { ...row, promoDiamondBalance: bonus } : row)),
+            )
+          }
+        />
       )}
 
       {banTarget !== null && (
@@ -1115,5 +1153,449 @@ function GrantItemModal({ user, onClose, onGranted }: GrantItemModalProps) {
         </form>
       )}
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bonus diamonds. These are minted, not taken from the platform's stock, so the
+// only thing the operator decides here is how long the member gets to spend them.
+// The table is the truth: a wallet's bonus number is just the sum of the ACTIVE
+// rows below it, which is why this screen lists the rows rather than the number.
+// ---------------------------------------------------------------------------
+const GRANT_STATUS_TONES: Record<PromoGrant['status'], BadgeTone> = {
+  ACTIVE: 'green',
+  EXHAUSTED: 'slate',
+  LAPSED: 'amber',
+  REVERSED: 'red',
+};
+
+interface BonusDiamondsModalProps {
+  user: UserRow;
+  canWrite: boolean;
+  onClose: () => void;
+  /** The live bonus total, so the row behind this dialog stops showing a stale number. */
+  onBalance: (userId: string, bonus: number) => void;
+}
+
+function BonusDiamondsModal({ user, canWrite, onClose, onBalance }: BonusDiamondsModalProps) {
+  const [grants, setGrants] = useState<PromoGrant[] | null>(null);
+  const [includeSpent, setIncludeSpent] = useState(false);
+  const [amountRaw, setAmountRaw] = useState('');
+  const [daysRaw, setDaysRaw] = useState('');
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .promoGrants(user.id, includeSpent)
+      .then((result) => {
+        if (cancelled) return;
+        setGrants(result.grants);
+        onBalance(user.id, bonusTotal(result.grants));
+      })
+      .catch((err) => {
+        if (!cancelled) setServerError(err instanceof ApiError ? err.message : 'Could not load the grants.');
+      });
+    return () => {
+      cancelled = true;
+    };
+    // `onBalance` is an inline arrow from the page and changes every render; the list is
+    // refetched on the two inputs that actually decide it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id, includeSpent]);
+
+  const amount = parseUnsignedInt(amountRaw);
+  const days = daysRaw.trim() === '' ? undefined : parseUnsignedInt(daysRaw);
+  const amountError =
+    amountRaw.trim() === ''
+      ? null
+      : amount === null
+        ? 'Whole number of diamonds.'
+        : amount > 10_000_000
+          ? 'One grant is capped at 10,000,000 diamonds.'
+          : null;
+  const daysError =
+    days === undefined
+      ? null
+      : days === null || days < 1 || days > 3650
+        ? 'Whole days between 1 and 3650.'
+        : null;
+  const reasonError =
+    reason.trim().length === 0
+      ? null
+      : reason.trim().length < 3
+        ? 'The audit trail needs at least 3 characters.'
+        : reason.trim().length > 200
+          ? 'Reason is limited to 200 characters.'
+          : null;
+
+  const canSubmit =
+    canWrite &&
+    !submitting &&
+    amount !== null &&
+    amount >= 1 &&
+    amountError === null &&
+    daysError === null &&
+    reasonError === null &&
+    reason.trim().length >= 3;
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setServerError(null);
+    try {
+      // Every accepted click is its own grant row — an operator mint carries no de-duplication key,
+      // because "the same giveaway twice" and "the same campaign twice" are indistinguishable here.
+      // What stops the accidental double is this dialog's own submit guard: the button is disabled
+      // until the server answers.
+      await api.grantPromoDiamonds(user.id, {
+        amount: amount as number,
+        reason: reason.trim(),
+        days: days ?? undefined,
+      });
+      setAmountRaw('');
+      setReason('');
+      const next = await api.promoGrants(user.id, includeSpent);
+      setGrants(next.grants);
+      onBalance(user.id, bonusTotal(next.grants));
+    } catch (err) {
+      setServerError(err instanceof ApiError ? err.message : 'The grant was refused.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const live = bonusTotal(grants ?? []);
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="lg"
+      title="Bonus diamonds"
+      subtitle={
+        <span className="flex items-center gap-2">
+          <Avatar name={user.username} src={user.avatarUrl} size="xs" />
+          {user.username} · {user.phone}
+        </span>
+      }
+      footer={<Button onClick={onClose}>Close</Button>}
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3 rounded-lg border border-edge/60 bg-elevated/40 p-3 text-sm sm:grid-cols-3">
+          <div>
+            <p className="flex items-center gap-1.5 text-xs text-faint">
+              <IconDiamond className="h-4 w-4 text-violet-300" /> Bought
+            </p>
+            <p className="mt-1 font-bold tabular-nums text-ink">{formatCompact(user.diamondBalance)}</p>
+          </div>
+          <div>
+            <p className="flex items-center gap-1.5 text-xs text-faint">
+              <IconSpark className="h-4 w-4 text-amber-300" /> Bonus
+            </p>
+            <p className="mt-1 font-bold tabular-nums text-ink">{formatCompact(live)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-faint">Next to expire</p>
+            <p className="mt-1 text-sm tabular-nums text-ink">{nextExpiry(grants ?? [])}</p>
+          </div>
+        </div>
+
+        <form onSubmit={submit} className="space-y-3 rounded-lg border border-edge/60 p-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Input
+              label="Amount"
+              inputMode="numeric"
+              placeholder="500"
+              value={amountRaw}
+              onChange={(e) => setAmountRaw(e.target.value)}
+              error={amountError}
+              disabled={!canWrite}
+            />
+            <Input
+              label="Days (blank uses the policy)"
+              inputMode="numeric"
+              placeholder="30"
+              value={daysRaw}
+              onChange={(e) => setDaysRaw(e.target.value)}
+              error={daysError}
+              disabled={!canWrite}
+            />
+            <Input
+              label="Reason (audit trail)"
+              placeholder="e.g. apology for the outage on 4 Nov"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              error={reasonError}
+              disabled={!canWrite}
+            />
+          </div>
+          {canWrite ? (
+            <Button variant="primary" type="submit" size="sm" loading={submitting} disabled={!canSubmit}>
+              Mint bonus diamonds
+            </Button>
+          ) : (
+            <p className="text-xs text-faint">
+              Read-only for this role: minting needs the wallet permission.
+            </p>
+          )}
+        </form>
+
+        {grants === null ? (
+          <div className="grid h-32 place-items-center text-violet-300">
+            {serverError === null ? <Spinner className="h-6 w-6" /> : null}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-ink">
+                {includeSpent ? 'Every grant, live or spent' : 'What is still spendable'}
+              </p>
+              <label className="flex items-center gap-2 text-[11px] text-muted">
+                Include spent and lapsed
+                <Switch checked={includeSpent} onChange={setIncludeSpent} label="Include spent grants" />
+              </label>
+            </div>
+            {grants.length === 0 ? (
+              <p className="text-[11px] text-faint">
+                {includeSpent ? 'Nothing was ever minted for this member.' : 'Nothing live.'}
+              </p>
+            ) : (
+              <Table>
+                <THead>
+                  <Th>Minted</Th>
+                  <Th align="right">Amount</Th>
+                  <Th align="right">Left</Th>
+                  <Th>Status</Th>
+                  <Th>Reason</Th>
+                  <Th>Expires</Th>
+                </THead>
+                <TBody>
+                  {grants.map((grant) => (
+                    <Tr key={grant.id}>
+                      <Td className="whitespace-nowrap text-[11px] text-muted">{relativeTime(grant.createdAt)}</Td>
+                      <Td align="right" className="tabular-nums">{formatCompact(grant.amount)}</Td>
+                      <Td align="right" className="tabular-nums text-ink">{formatCompact(grant.remaining)}</Td>
+                      <Td>
+                        <Badge tone={GRANT_STATUS_TONES[grant.status] ?? 'slate'}>{grant.status}</Badge>
+                      </Td>
+                      <Td className="max-w-[220px] truncate text-[11px] text-muted" title={grant.reason}>
+                        {grant.sourceKind} · {grant.reason}
+                      </Td>
+                      <Td className="whitespace-nowrap text-[11px]">{formatDateTime(grant.expiresAt)}</Td>
+                    </Tr>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </div>
+        )}
+
+        <p className="text-[11px] text-faint">
+          Bonus coins leave the wallet on the nearest expiry first, buy gifts, boxes, store items and game
+          entries only if the promo policy allows it, and can never be cashed out — a withdrawal is priced
+          in R-coins, which a bonus diamond cannot become.
+        </p>
+
+        {serverError !== null && (
+          <div className="flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 py-2 text-xs text-rose-200">
+            <IconAlert className="h-4 w-4 shrink-0" />
+            {serverError}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/** The wallet's bonus number, re-derived from the grants rather than trusted from the row. */
+function bonusTotal(grants: PromoGrant[]): number {
+  return grants.filter((grant) => grant.status === 'ACTIVE').reduce((sum, grant) => sum + grant.remaining, 0);
+}
+
+function nextExpiry(grants: PromoGrant[]): string {
+  const live = grants
+    .filter((grant) => grant.status === 'ACTIVE' && grant.remaining > 0)
+    .map((grant) => Date.parse(grant.expiresAt))
+    .sort((a, b) => a - b)[0];
+  if (live === undefined) return '—';
+  // `relativeTime` answers "how long ago" and has no future branch, so a deadline still ahead of
+  // now would come back as "just now". A fuse that has not burned down yet is the normal case here.
+  const msLeft = live - Date.now();
+  if (msLeft <= 0) return 'due now — run the sweep';
+  const days = Math.floor(msLeft / 86_400_000);
+  if (days >= 1) return `in ${days}d`;
+  const hours = Math.floor(msLeft / 3_600_000);
+  if (hours >= 1) return `in ${hours}h`;
+  return `in ${Math.max(1, Math.floor(msLeft / 60_000))}m`;
+}
+
+// ---------------------------------------------------------------------------
+// The two dials promo money is priced on, and the sweep that closes dead grants
+// early. `writeConfig` replaces the whole blob rather than merging, so the value
+// saved here keeps every field the read returned and changes only these two —
+// otherwise tightening the expiry would silently delete a dial this form does
+// not know about yet.
+// ---------------------------------------------------------------------------
+const PROMO_SINKS = ['GIFT', 'BOX', 'STORE', 'GAME'] as const;
+
+interface PromoPolicyCardProps {
+  canRead: boolean;
+  canWrite: boolean;
+  canWallet: boolean;
+}
+
+function PromoPolicyCard({ canRead, canWrite, canWallet }: PromoPolicyCardProps) {
+  const toast = useToast();
+  const [stored, setStored] = useState<PromoPolicyConfig | null>(null);
+  const [expiryRaw, setExpiryRaw] = useState('30');
+  const [sinks, setSinks] = useState<string[]>([...PROMO_SINKS]);
+  const [busy, setBusy] = useState(false);
+  const [sweeping, setSweeping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!canRead) return;
+    let cancelled = false;
+    api
+      .readConfig<PromoPolicyConfig>('accounts.promotional')
+      .then((result) => {
+        if (cancelled) return;
+        const value = result.value ?? {};
+        setStored(value);
+        setExpiryRaw(String(value.expiryDays ?? 30));
+        setSinks(Array.isArray(value.usableFor) && value.usableFor.length > 0 ? value.usableFor : [...PROMO_SINKS]);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof ApiError ? err.message : 'Could not read the promo policy.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canRead]);
+
+  const expiry = parseUnsignedInt(expiryRaw);
+  const expiryError =
+    expiry === null || expiry < 1 || expiry > 3650 ? 'Whole days between 1 and 3650.' : null;
+  const sinksError = sinks.length === 0 ? 'At least one purchase must accept bonus coins.' : null;
+  const dirty =
+    stored !== null &&
+    expiryError === null &&
+    sinksError === null &&
+    (Number(stored.expiryDays ?? 30) !== expiry ||
+      [...sinks].sort().join() !== [...(stored.usableFor ?? [...PROMO_SINKS])].sort().join());
+
+  const save = async () => {
+    if (busy || !canWrite || stored === null || expiry === null || sinks.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.writeConfig('accounts.promotional', { ...stored, expiryDays: expiry, usableFor: sinks });
+      const value = (result.value ?? {}) as PromoPolicyConfig;
+      setStored(value);
+      setExpiryRaw(String(value.expiryDays ?? expiry));
+      setSinks(Array.isArray(value.usableFor) ? value.usableFor : [...PROMO_SINKS]);
+      toast.success('Promo policy saved. Grants already minted keep the expiry they were given.');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save the promo policy.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // The clock runs this every minute anyway; finance gets the button because an expired grant is
+  // still a liability on the book until something releases it.
+  const sweep = async () => {
+    if (sweeping) return;
+    setSweeping(true);
+    setError(null);
+    try {
+      const result = await api.lapsePromoGrants();
+      toast.success(
+        result.lapsed > 0
+          ? `${result.lapsed} grant(s) expired, releasing ${formatCompact(result.diamonds)} bonus diamonds.`
+          : 'Nothing was due to expire.',
+      );
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'The expiry sweep failed.');
+    } finally {
+      setSweeping(false);
+    }
+  };
+
+  if (!canRead) return null;
+  if (stored === null && error === null) return null;
+
+  return (
+    <Card
+      title="Promotional diamond policy"
+      subtitle="How long minted bonus coins live, and what they are allowed to buy."
+      actions={
+        <>
+          {canWallet && (
+            <Button size="sm" onClick={() => void sweep()} loading={sweeping}>
+              Expire due grants now
+            </Button>
+          )}
+          {canWrite && (
+            <Button size="sm" variant="primary" onClick={() => void save()} loading={busy} disabled={!dirty || expiryError !== null || sinksError !== null}>
+              Save policy
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Input
+          label="Default expiry (days)"
+          type="number"
+          min={1}
+          max={3650}
+          value={expiryRaw}
+          onChange={(e) => setExpiryRaw(e.target.value)}
+          error={expiryError}
+          disabled={!canWrite}
+          hint="Used when a grant is minted without an explicit number of days."
+        />
+        <div>
+          <p className="mb-1.5 text-xs font-medium text-muted">Bonus coins may be spent on</p>
+          <div className="flex flex-wrap gap-2">
+            {PROMO_SINKS.map((sink) => {
+              const on = sinks.includes(sink);
+              return (
+                <button
+                  key={sink}
+                  type="button"
+                  disabled={!canWrite}
+                  aria-pressed={on}
+                  onClick={() => setSinks((current) => (on ? current.filter((s) => s !== sink) : [...current, sink]))}
+                  className={`rounded-full border px-3 py-1 text-xs transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    on ? 'border-violet-500/50 bg-violet-500/15 text-violet-200' : 'border-edge bg-elevated text-faint'
+                  }`}
+                >
+                  {sink}
+                </button>
+              );
+            })}
+          </div>
+          {sinksError !== null && <p className="mt-1.5 text-xs text-rose-300">{sinksError}</p>}
+        </div>
+      </div>
+
+      <p className="mt-3 text-[11px] text-faint">
+        A sink switched off here does not hide the price: a member with only bonus coins is refused at the
+        guard, so the app quotes the purchase as unaffordable rather than taking the order and failing it.
+      </p>
+
+      {error !== null && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 py-2 text-xs text-rose-200">
+          <IconAlert className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      )}
+    </Card>
   );
 }

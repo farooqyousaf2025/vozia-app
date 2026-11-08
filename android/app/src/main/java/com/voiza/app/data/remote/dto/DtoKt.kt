@@ -89,6 +89,9 @@ data class UserDto(
     @SerializedName("gender") val gender: String? = null,
     @SerializedName("countryCode") val countryCode: String? = null,
     @SerializedName("diamondBalance") val diamondBalance: Int = 0,
+    // Nullable because Gson leaves a missing key at null rather than at the default below it, so a
+    // backend that predates the bonus pocket cannot produce a half-parsed user.
+    @SerializedName("promoDiamondBalance") val promoDiamondBalance: Int? = null,
     @SerializedName("rCoinBalance") val rCoinBalance: Int = 0,
     @SerializedName("totalGiftsSent") val totalGiftsSent: Long = 0,
     @SerializedName("totalGiftsReceived") val totalGiftsReceived: Long = 0,
@@ -389,6 +392,12 @@ data class HandRaiseResponse(
 
 data class OkResponse(@SerializedName("ok") val ok: Boolean)
 
+/**
+ * OkHttp refuses a `POST` that carries no body at all, so a POST the server reads only from the
+ * token still has to send one. Gson writes this class as `{}`, which those routes ignore.
+ */
+class EmptyRequestBody
+
 data class UpdateProfileBody(
     @SerializedName("username") val username: String? = null,
     @SerializedName("avatarUrl") val avatarUrl: String? = null,
@@ -550,6 +559,29 @@ data class WalletResponse(
     @SerializedName("transactions") val transactions: List<TransactionDto> = emptyList(),
     @SerializedName("stats") val stats: WalletStatsDto = WalletStatsDto(),
     @SerializedName("withdrawalPolicy") val withdrawalPolicy: WithdrawalPolicyDto? = null,
+    @SerializedName("promo") val promo: PromoSnapshotDto? = null,
+)
+
+/**
+ * The bonus pocket as the server owns it: the grants behind the number and what the operator lets
+ * them buy. Absent on an older backend, which is why every field below is optional.
+ */
+data class PromoSnapshotDto(
+    @SerializedName("grants") val grants: List<PromoGrantDto> = emptyList(),
+    @SerializedName("policy") val policy: PromoPolicyDto = PromoPolicyDto(),
+)
+
+data class PromoGrantDto(
+    @SerializedName("remaining") val remaining: Int = 0,
+    @SerializedName("status") val status: String = "",
+    @SerializedName("sourceKind") val sourceKind: String = "",
+    @SerializedName("reason") val reason: String = "",
+    @SerializedName("expiresAt") val expiresAt: String = "",
+)
+
+/** `accounts.promotional`, as far as this screen needs it: which purchases take bonus coins. */
+data class PromoPolicyDto(
+    @SerializedName("usableFor") val usableFor: List<String> = emptyList(),
 )
 
 /** The operator's cash-out dial (`accounts.withdrawal`), as the ledger reads it. Absent on an older backend. */

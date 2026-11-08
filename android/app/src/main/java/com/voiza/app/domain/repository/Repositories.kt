@@ -1,6 +1,7 @@
 package com.voiza.app.domain.repository
 
 import com.voiza.app.data.remote.ApiResult
+import com.voiza.app.domain.model.ApplicationForm
 import com.voiza.app.domain.model.BannerPlacement
 import com.voiza.app.domain.model.ChatMessage
 import com.voiza.app.domain.model.CheckInResult
@@ -11,6 +12,8 @@ import com.voiza.app.domain.model.GameSession
 import com.voiza.app.domain.model.GiftCatalogue
 import com.voiza.app.domain.model.Leaderboard
 import com.voiza.app.domain.model.MiniUser
+import com.voiza.app.domain.model.MyApplications
+import com.voiza.app.domain.model.PartnerCatalogue
 import com.voiza.app.domain.model.PkBattle
 import com.voiza.app.domain.model.PkSettings
 import com.voiza.app.domain.model.PromoBanner
@@ -18,6 +21,7 @@ import com.voiza.app.domain.model.QuestsToday
 import com.voiza.app.domain.model.RankBoard
 import com.voiza.app.domain.model.Relationship
 import com.voiza.app.domain.model.ReportReason
+import com.voiza.app.domain.model.RoleApplication
 import com.voiza.app.domain.model.Room
 import com.voiza.app.domain.model.RoomJoinResult
 import com.voiza.app.domain.model.RoomSummary
@@ -371,4 +375,33 @@ interface SocialRepository {
         details: String?,
         roomId: String? = null,
     ): ApiResult<Unit>
+}
+
+/**
+ * Become a Partner (migration 0035): four applications, read as the server's forms and filed as
+ * this account's own.
+ *
+ * No method here takes a user id, and none takes a role to grant. The applicant is the bearer token
+ * and the approval is an operator's decision, so the most this interface can do is ask — which is
+ * the point of routing `users.user_type` through the grant row instead of through anything the app
+ * can call.
+ */
+interface RoleApplicationRepository {
+    /** The four forms, what this account already holds, and the agencies a Host may name. */
+    suspend fun catalogue(): ApiResult<PartnerCatalogue>
+
+    /** One form by itself, for a client that already knows which role it is rendering. */
+    suspend fun form(role: String): ApiResult<ApplicationForm>
+
+    /** This account's applications, newest first, plus the roles with an approved row. */
+    suspend fun mine(): ApiResult<MyApplications>
+
+    /** File one. Answers are sent as the form asked them; the server re-reads every value. */
+    suspend fun submit(role: String, answers: Map<String, Any?>): ApiResult<RoleApplication>
+
+    /** Reply to a request for more information. Only the questions being answered are sent. */
+    suspend fun supplement(applicationId: String, answers: Map<String, Any?>): ApiResult<RoleApplication>
+
+    /** Take an open application back out of the queue. */
+    suspend fun cancel(applicationId: String): ApiResult<RoleApplication>
 }

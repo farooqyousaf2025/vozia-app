@@ -5,6 +5,7 @@ import { sendSms, smsIsConfigured } from './sms.service';
 import { hashSecret, randomNumericCode, verifySecret } from '../utils/crypto';
 import { ApiError } from '../utils/http';
 import { UserRow } from '../types/db';
+import { recordEarningProgressOutside } from './earning.service';
 
 type OtpRecord = {
   id: string;
@@ -94,7 +95,15 @@ export async function verifyOtpAndResolve(
   opts: { username?: string; avatarUrl?: string | null; purpose?: string } = {},
 ): Promise<ProvisionedUser> {
   await consumeOtp(phone, code, opts.purpose ?? 'LOGIN');
-  return resolveUserByPhone(phone, opts);
+  const resolved = await resolveUserByPhone(phone, opts);
+  // A consumed code is the only proof of a login this stack has: there is no last-login column, and a
+  // client that re-authenticates twice in a day is counted twice and paid once — the DAY bucket plus
+  // the rule's own cap answer "once a day", exactly as they do for every other metric. Fired without
+  // awaiting: a campaign that cannot pay must not delay, let alone fail, the token the member logged in for.
+  recordEarningProgressOutside(resolved.user.id, [{ metric: 'DAILY_LOGIN', amount: 1 }]).catch((err) =>
+    console.warn('[otp] earning progress', err.message),
+  );
+  return resolved;
 }
 
 export async function resolveUserByPhone(

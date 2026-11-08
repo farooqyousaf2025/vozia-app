@@ -6,6 +6,7 @@ import { ChatRow, ParticipantRow, RoomRow, SeatRow, UserRow } from '../types/db'
 import { hashSecret, randomRoomNumber, verifySecret } from '../utils/crypto';
 import { ApiError } from '../utils/http';
 import { readConfig } from './business.service';
+import { activeRolesFor, hostApplicationRequired } from './partner-application.service';
 import { assertMayWearTheme } from './store.service';
 import {
   ChatMessageDto,
@@ -442,8 +443,34 @@ export type CreateRoomInput = {
   rules?: string | null;
 };
 
+/**
+ * May this account open a room? Only while the platform asks for nothing (`system_config`
+ * `roles.hostApplicationRequired`, default off) or it holds an approved partner role.
+ *
+ * The switch exists because the answer used to be unconditional. Migration 0035 made an approved
+ * `HOST` application the grant, and turning the switch on is what makes that mean anything — but
+ * flipping it on a live platform would close every existing host's door at once, so the flag ships
+ * off and the operator turns it when the queue has caught up.
+ *
+ * Any grant passes, not only `HOST`. An agency owner and a BD manager are both trusted with a room
+ * already, and refusing them would be a new rule rather than the one being enforced. `user_type` is
+ * deliberately not consulted: this file has been writing 'HOST' into it for anyone who opened a
+ * room, so it records who has hosted, not who is allowed to.
+ */
+async function assertMayHost(hostUserId: string): Promise<void> {
+  if (!(await hostApplicationRequired())) return;
+  const roles = await activeRolesFor(hostUserId);
+  if (roles.length === 0) {
+    throw ApiError.forbidden(
+      'Hosting a room now requires an approved Host application. Apply from Become a Partner.',
+      'role_approval_required',
+    );
+  }
+}
+
 export async function createRoom(hostUserId: string, input: CreateRoomInput): Promise<RoomDto & { seats: SeatDto[] }> {
   const user = await loadUser(hostUserId);
+  await assertMayHost(hostUserId);
   const seatCapacity = await resolveSeatCapacity(input.seatCapacity);
   // Asked for a paid look with no receipt behind it? Refuse before a room exists to hang it on.
   if (input.theme && isTheme(input.theme)) await assertMayWearTheme(hostUserId, input.theme);

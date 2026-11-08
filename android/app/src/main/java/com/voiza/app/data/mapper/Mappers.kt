@@ -188,6 +188,7 @@ fun UserDto.toDomain(): User = User(
     gender = gender,
     countryCode = countryCode,
     diamondBalance = diamondBalance,
+    promoDiamondBalance = promoDiamondBalance ?: 0,
     rCoinBalance = rCoinBalance,
     totalGiftsSent = totalGiftsSent,
     totalGiftsReceived = totalGiftsReceived,
@@ -429,6 +430,20 @@ fun WalletResponse.toDomain(): WalletSnapshot = WalletSnapshot(
     ),
     withdrawalPolicy = withdrawalPolicy?.let {
         com.voiza.app.domain.model.WithdrawalPolicy(minRCoins = it.minRCoins, feeBps = it.feeBps)
+    },
+    promo = promo?.let { pocket ->
+        com.voiza.app.domain.model.PromoPocket(
+            grants = pocket.grants.map {
+                com.voiza.app.domain.model.PromoGrant(
+                    remaining = it.remaining,
+                    status = it.status,
+                    sourceKind = it.sourceKind,
+                    reason = it.reason,
+                    expiresAt = it.expiresAt,
+                )
+            },
+            usableFor = pocket.policy.usableFor,
+        )
     },
 )
 

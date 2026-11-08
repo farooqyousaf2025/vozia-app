@@ -5,7 +5,8 @@ import { query } from '../config/db';
 import { presenceKeys, rateLimit, redis, touchOnline } from '../config/redis';
 import { verifyToken } from './token.service';
 import { GiftDto, MiniUser, SeatDto } from '../utils/serialize';
-import { appendChat, appendSystemChat, assertMayAttendRoom, fetchMiniUser, isActiveRoomMember, recomputeListenerCount, seatSnapshot, setHandRaised } from './room.service';
+import { appendChat, appendSystemChat, assertMayAttendRoom, fetchMiniUser, isActiveRoomMember, loadRoom, recomputeListenerCount, seatSnapshot, setHandRaised } from './room.service';
+import { needsContext, recordEarningProgressOutside } from './earning.service';
 import { forgetLikes, registerLike } from './like.service';
 import { RoomGiftEventDto, recentRoomGiftEvents } from './gift-events.service';
 import { LuckyRollDto } from './lucky-box.service';
@@ -126,6 +127,20 @@ export function broadcastRoomClosed(roomId: string): void {
 }
 
 const CHAT_MAX_LENGTH = 300;
+
+/**
+ * Count a stored message for the earning engine.
+ *
+ * The room's category is the one fact a chat rule can be conditioned on, and it is not on hand here,
+ * so it is read only when a live rule asks for it — a message that satisfies no filter still advances
+ * progress, and the notification path stays as cheap as it was before campaigns existed.
+ */
+export async function recordChatEarning(userId: string, roomId: string): Promise<void> {
+  const room = await needsContext('CHAT_MESSAGE').then((wanted) => (wanted ? loadRoom(roomId) : null));
+  await recordEarningProgressOutside(userId, [
+    { metric: 'CHAT_MESSAGE', amount: 1, context: { roomCategory: room?.category } },
+  ]);
+}
 
 /**
  * The entry notice. TUILiveKit writes a bare "{name} Entered room" chat row per
@@ -298,6 +313,10 @@ export function initSocket(httpServer: HttpServer): Server {
         recordQuestProgressOutside(me.userId, [{ metric: 'CHAT_MESSAGE', amount: 1 }]).catch((err) =>
           console.warn('[socket] quest progress', err.message),
         );
+        // The earning engine takes the same event with one more fact attached: which kind of room it
+        // was said in. `roomCategory` is what a rule's condition is matched against, so the read is
+        // only made when a live rule actually asks for it.
+        void recordChatEarning(me.userId, roomId).catch((err) => console.warn('[socket] earning progress', err.message));
         ack?.({ ok: true, message });
       } catch (err) {
         ack?.({ ok: false, error: (err as Error).message });

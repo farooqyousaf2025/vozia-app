@@ -66,7 +66,8 @@ import com.voiza.app.viewmodel.voizaViewModelFactory
 
 /**
  * Profile: identity header (agency/host badges), wallet link, lifetime gift
- * stats, edit-profile dialog (PATCH /api/auth/me) and logout.
+ * stats, the Become a Partner entry, edit-profile dialog (PATCH /api/auth/me)
+ * and logout.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +76,7 @@ fun ProfileScreen(
     onOpenWallet: () -> Unit,
     onOpenStore: () -> Unit,
     onOpenQuests: () -> Unit,
+    onOpenPartner: () -> Unit,
     onLoggedOut: () -> Unit,
     viewModel: AuthViewModel = viewModel(
         factory = voizaViewModelFactory { AuthViewModel() },
@@ -197,6 +199,15 @@ fun ProfileScreen(
         VoizaButton(
             text = "Open wallet",
             onClick = onOpenWallet,
+            gradient = Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670))),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+        )
+        Spacer(Modifier.height(8.dp))
+        VoizaButton(
+            text = "Become a Partner",
+            onClick = onOpenPartner,
             gradient = Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670))),
             modifier = Modifier
                 .fillMaxWidth()

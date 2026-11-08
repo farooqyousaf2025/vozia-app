@@ -43,12 +43,14 @@ src/
                · livekit (tokens, SFU admin, webhook verify)
                · room (seats, participants, moderation) · ledger (money)
                · socket (realtime fan-out) · admin (stats, store, users)
+               · partner-application (the four forms, the queue, what an approval activates)
   routes/      one router per domain, mounted under /api
   middleware/  auth (requireAuth / requireAdmin), error (ApiError + pg code mapping)
   utils/       crypto (scrypt, codes, room numbers) · http (validation) · serialize (DTOs)
   types/       db.ts row shapes
-scripts/       e2e-live.cjs · games-e2e.cjs · business-e2e.cjs · capture-wire-fixtures.cjs
-               · capture-game-wire.cjs · generate-placeholder-assets.cjs · demo-gift-chat.cjs
+scripts/       e2e-live.cjs · games-e2e.cjs · business-e2e.cjs · partner-e2e.cjs
+               · capture-wire-fixtures.cjs · capture-game-wire.cjs · generate-placeholder-assets.cjs
+               · demo-gift-chat.cjs
 public/        gift icons/animations and demo avatars served at the API origin
 ```
 
@@ -1072,6 +1074,289 @@ balanced lines afterwards. Two paths still mint coins with no line at all — th
 nothing, and an admin grant has no contra account until #60 builds one — so they create no proof row and sit
 outside these checks by construction, which is a stated gap rather than a silent one.
 
+## Become a Partner: a role is a row an operator approved (migration 0035)
+
+`HOST`, `AGENCY`, `COIN_SELLER` and `BD_MANAGER` are privileges, and before this migration none of
+them was one. An agency existed only if an operator created it in the back office; `users.user_type`
+answered `HOST` for anyone who had ever opened a room, because `room.service.ts` wrote it there on
+`createRoom`; a coin seller was a `business_accounts` row an operator typed by hand. The three
+claims below are what the module changes, and each is a claim a suite now checks rather than a
+convention someone remembers.
+
+**A grant is the `APPROVED` row, never a column.** `role_applications` holds the whole privilege: one
+row per (account, role) that is still live — a partial unique index on
+`(user_id, role) WHERE status IN ('PENDING','INFO_REQUESTED','APPROVED')` is what makes "a second tap
+is the same queue item" true rather than polite — and the readers ask that table. `activeRolesFor` is
+the only way the app learns what an account holds, `user_type` is still written on `createRoom` and is
+still read only to decide whether to raise that marker itself, and a revocation moves the row to
+`REVOKED`, which is why it stops working immediately and why the display marker is left alone.
+
+**The applicant is the token.** `POST /api/role-applications` takes a role and an answer object and
+*nothing else*: there is no `userId` in the body to trust, and the one place a caller can name another
+account is ignored — the suite files an application with `userId`, `user_id` and `id` all pointing at a
+different member and reads back the row's `user_id`. `PATCH /api/auth/me` writes five profile columns
+and `user_type` is not among them, so the self-grant path that a "become a partner" feature invites is
+closed at the route that would have been the obvious way in.
+
+**Approval activates what the role *is*.** `approve` cannot answer 200 and grant nothing, so the
+activation lives beside the decision rather than behind a button an operator can forget: a `HOST`
+approval raises the marker and nothing else; an `AGENCY` approval creates the `agencies` row the
+applicant owns *and* its `fin_accounts` purpose account, refusing first if the name is taken
+(`agency_name_taken`); a `COIN_SELLER` approval opens a partner account under a BD, refuses one with no
+BD above it (`seller_bd_required`) and refuses a seller as its own parent (`invalid_parent`), starting
+it from `partner.sellerLimits` with `password_hash` left NULL because handing over a panel credential
+is a human act; a `BD_MANAGER` approval opens a second office only while `business.bd.multiManager`
+says the platform wants more than one. A refusal leaves no row: every check above is enforced before
+anything is written.
+
+### The four forms are the server's, not the app's
+
+`APPLICATION_FORMS` (`src/services/partner-application.service.ts:93`) describes each role's
+questions — `HOST` asks `fullName`, `country`, `city`, `ageConfirmed`, `experience` and an optional
+`preferredAgencyId`; `AGENCY` a name, an owner, a place, a `teamSize` and a `recruitmentExperience`
+story; `COIN_SELLER` a business, a location, a phone, an optional email, a volume and the rails it gets
+paid over; `BD_MANAGER` a person, a place, an experience, languages, a network and a coverage area — and
+`GET /api/role-applications/roles` ships that spec beside where the calling account stands in each role.
+The Android client renders it instead of keeping its own copy, so a field added here reaches a phone
+without a release, and a required question cannot be a different question on the two sides of the wire.
+
+The same spec is the validator. `submitApplication` normalises every answer against it and refuses
+anything the form did not ask (`unexpected_field`), anything required that is missing
+(`field_required`), an unticked confirmation as a refusal rather than a `false`
+(`confirmation_required`), and a value outside its own bounds or shape (`invalid_country`,
+`invalid_email`, a phone normalised to E.164 or refused). A `preferredAgencyId` has to be a row that
+exists and is recruiting. Five submissions an hour per account are allowed, and a refusal consumes one
+— the limit is on the attempt, because the attempt is the thing being limited.
+
+### The queue and its two permissions
+
+`/api/admin/partner-applications` splits reading from deciding the way `account:read` is split from
+`account:manage` (`src/services/rbac.service.ts:56`): `application:read` goes to `SUPER_ADMIN` and
+`FINANCE_ADMIN` and `OPERATIONS_ADMIN`, `application:review` only to `SUPER_ADMIN` and
+`OPERATIONS_ADMIN`, and a `MODERATOR` gets neither. `GET /` filters by status, role and a search that
+matches a username or the phone behind it; `POST /:id/approve`, `/reject`, `/request-info` and `/revoke`
+are the only writes. A rejection or a revocation without a reason is refused with a 400 — the schema's
+own CHECKs demand the note beside the state, so a decision nobody can explain cannot be stored — and a
+requested-information row goes back to `PENDING` only through the applicant's own
+`POST /api/role-applications/:id/supplement`, which *merges* into the stored answers rather than
+replacing them, so an operator asking one question does not reopen the whole form.
+
+### The two switches
+
+`roles.hostApplicationRequired` (default **off**, `system_config`) turns `assertMayHost` in
+`src/services/room.service.ts:460` into a gate: with it on, an account with no approved partner role is
+refused a room with 403 `role_approval_required`. It ships off on purpose — flipping it on a live
+platform would close every existing host's door in one request, so the queue gets worked through first.
+Any grant passes the gate, not only `HOST`, because an agency owner and a BD manager are already
+trusted with a room and refusing them would be a new rule rather than the one being enforced.
+`business.bd`'s `multiManager` is the other one, and both are read and written over
+`GET|PUT /api/admin/business/config/:key` — the same dial panel the withdrawal fee uses, and the write
+needs `config:manage`.
+
+### What an operator sees afterwards
+
+Every event on either side of the wire lands in `admin_audit` with `target_type = 'role_application'`:
+`ROLE_APPLICATION_SUBMIT`, `..._SUPPLEMENT`, `..._CANCEL` from the applicant's side recorded with
+`admin_id NULL` and `actor_system = 'partner-application'`, and `..._APPROVE`, `..._REJECT`,
+`..._INFO_REQUEST`, `..._REVOKE` each naming the operator who gave it. One application's whole life
+therefore reads back in order from one query — filter `/audit` by the `role_application` target and both
+sides appear — which is what makes the queue auditable after the fact rather than only while it is open.
+Note that the member's own rows surface under actor *System*, not *Partner*: the actor kind is derived
+from which id column is set, and an applicant has neither.
+
+`npm run test:partner` (98) is that suite, and it is the only one that runs on both sides at once.
+
+## Promotional diamonds: the pocket that expires (migrations 0036, 0037)
+
+A member's `diamond_balance` answers one question — how many diamonds — and after a campaign it stops
+answering the two an operator needs: how many of them somebody paid for, and how many are still owed
+back. Minted coins and bought coins in one column means retiring a campaign touches money a member
+bought, and nothing in that column can have a deadline. So diamonds are now two balances.
+
+### A balance is a cache; the grant is the truth
+
+`promo_grants` holds one row per award — `amount`, `remaining`, `expires_at`, a status
+(`ACTIVE / EXHAUSTED / LAPSED / REVERSED`) and the `source_kind` + `source_id` pair naming the check-in,
+quest, campaign or operator action behind it. `users.promo_diamond_balance` is the sum of what is still
+live, kept so every existing read path works unchanged beside `diamond_balance`. Where an id exists the
+pair is unique, which is what lets a reward hook call `grantPromoDiamonds`
+(`src/services/promo-diamond.service.ts:120`) *inside* the transaction that recorded the qualifying
+action: a retry sweeps a check-in twice, the grant lands once. An operator mint carries no id and mints
+every time it is asked — see the panel note below.
+
+A balance cannot expire, a grant can. A member with three grants therefore spends the one nearest its
+death first (`planPromoSpend`, :226), which is the difference between an expiry that costs the member
+nothing and an expiry that quietly eats their bonus.
+
+### Why bonus coins cannot become cash
+
+Not because a rule says so. A member's only exit for diamonds is spending them: withdrawal is priced in
+R-coins (`withdrawal_requests.amount_r_coins`) and `transactions` refuses a row whose sender is also its
+receiver, so bonus coins can be given away or lapse but never laundered into a payout by their own
+holder. What they are *not* is free — a minted coin is a coin the platform owes, so every grant posts
+`PROMO_GRANT` (DEBIT `PROMOTIONAL:PLATFORM`, CREDIT `COIN_LIABILITY`) at the operator's face value and
+every unspent death posts `PROMO_LAPSE` in reverse. Coins minted without a journal line are exactly the
+hole 0034 closed.
+
+0037 exists because 0036 over-built: it had added `PROMO_EXPENSE`/`PROMO_LAPSED` accounts and a
+`promo.diamonds` config key while 0029 had already seeded `PROMOTIONAL:PLATFORM` and
+`accounts.promotional`. Two budgets for one expense, or two dials for one expiry, is how the panel and
+the finance report start disagreeing about the same marketing spend, so the unused rows are deleted and
+`PROMOTIONAL:<user>` accounts got a projection branch that reads `promo_grants` — a bonus pocket with no
+branch would have reported zero, and the view would have presented that as a fact about the member.
+
+### The dial, and what a closed sink does
+
+`accounts.promotional` is the whole configuration: `expiryDays` (default 30, what a mint without an
+explicit number of days gets), `usableFor` (which of `GIFT / BOX / STORE / GAME` a bonus pocket may
+feed) and `welcomeBonusDiamonds`. Read and written over `GET|PUT /api/admin/business/config/accounts.promotional`
+like every other dial; the write needs `config:manage` and replaces the whole blob, so a caller that
+knows two fields must send the others back. A dial naming an unknown sink or an empty list is refused
+with `bad_config_value` rather than widened. `welcomeBonusDiamonds` is validated but nothing grants from
+it yet — it becomes live with the check-in and referral hooks (#62), which is also the first caller that
+will pass a `source_id`.
+
+Switching a sink off does not hide its price. The spend path asks the policy before it counts
+(`src/services/ledger.service.ts:323-351`), so a member holding only bonus coins is quoted the purchase
+as unaffordable — 402 with `promotional: 0` — instead of the order being taken and then failing. Where a
+sink does take bonus coins, the ledger row prices the whole fee and its meta names the split
+(`meta.promoDiamonds`), and `promo_grant_spends` writes one receipt per grant drawn on. A refund goes
+back the way it came: to a live grant it revives it, to a grant whose expiry has passed it lapses on
+arrival (`refundPromoDiamonds`, :315) and releases the liability in the same step, so a dead batch never
+resurrects through a cancelled match.
+
+### Who closes a dead grant
+
+Expiry is a date, not an event. The sweep in `src/index.ts:79` runs every minute, and
+`POST /api/admin/promo-grants/lapse` runs it on demand so finance never waits on the clock: an expired
+remainder is still a liability on the book until something releases it. `GET
+/api/admin/users/:id/promo-grants?includeSpent=true` shows a member's whole grant history, live and dead.
+
+The book is checked, not assumed: `reconciliation.service.ts` carries three promo tie-outs —
+`promo.every_grant_booked` (a grant with no posting against the budget), `promo.cached_balance_matches_grants`
+(the cache out of step with the rows it caches — a present-state invariant, so it names no window) and
+`promo.spend_within_purchase` (a purchase drawing more bonus diamonds than it cost).
+
+### What the two clients show
+
+`GET /api/wallet` returns `promo: { grants, policy }` next to the member's own number, ordered nearest
+expiry first because that is the order the ledger spends in, and the app's wallet screen keeps the
+pockets visibly apart: the bonus card says these are minted, not bought, and can never be withdrawn.
+`wallet:update` carries the pocket's **total**, not the minted grant's remainder — a phone that applied
+one batch as the whole balance would quote 75 where the member holds 660. The panel does the same
+separation in the other direction: the Users table never sums the two pockets into one number, and the
+Bonus dialog re-derives the spendable total from the grant rows rather than trusting the badge.
+`npm run test:promo` (38) walks mint, spend order, split refunds, lapse-on-return, the closed-sink guard
+and the statement identity behind all of it.
+
+## What a member is paid for is a rule, not a code path (migration 0038)
+
+0020 gave the app daily quests and a check-in streak, and both still work — but the figure they pay is an
+XP number on a row that cannot say anything else. There was no way to write "this campaign pays 300 bonus
+diamonds, only to hosts above VIP 3 who are older than a week, twice a day, and only after an operator has
+looked at the screenshot" without shipping code. `earning_rules` / `earning_campaigns` /
+`earning_activities` / `earning_payouts` are that gap, and they are a *data* gap rather than a second money
+system: the coins were built by 0036/0037 and this engine spends them through that module.
+
+Four decisions hold it up, and each one exists because the obvious alternative is a bug in a wallet.
+
+### No number in a payout comes from a request
+
+A phone names a rule and, for the one metric a member can assert, attaches evidence. `target`,
+`reward_amount`, currency, the caps and the restrictions are read off the live rule version *inside the
+transaction that pays*, the same way `commission.service` refuses a client-supplied rate. The rule is
+versioned like `commission_rules`: publishing a reprice closes the previous version's window, and both the
+activity and the payout carry `rule_id` plus `rule_version`, so repricing a live campaign cannot change
+what an in-flight attempt pays or what was already paid. A support answer and a finance report can agree
+because the history says what the rule said that day.
+
+### The reset period is a bucket string, not a job
+
+`DAY`, `WEEK`, `MONTH` or `NEVER` resolve to a `bucket` like `2026-11-08` or `2026-W45`, computed by
+PostgreSQL in `quest_settings.reset_timezone` — the same definition of "today" the quests already use, so
+there is not a second one somebody can get wrong. The activity row is keyed
+`(user_id, rule_id, bucket, occurrence)`, which means a new period simply has no rows: no midnight sweep has
+to succeed for the caps to be right. `occurrence` is what makes "twice a day" a unique constraint instead of
+a `COUNT(*)` that two racing requests can both pass. `earning_payouts UNIQUE (activity_id)` is the same
+argument one level down, and it is why a count cap *is* a value cap: 2 payouts a day at 300 diamonds is 600
+diamonds a day, so there is no separately-raceable "daily amount" column. Campaigns get the one cap an
+individual count cannot express — `budget_diamonds`, the total this campaign may mint before it stops paying
+anyone, checked against the sum of its own payouts while the campaign row is locked.
+
+### A progress value is written by a server hook or by a claim, and the two are not interchangeable
+
+`EARNING_METRIC_CATALOGUE` (`earning-rule.service.ts`) is the list of what the platform can see for itself:
+`GIFT_SENT`, `DIAMONDS_SPENT`, `CHAT_MESSAGE`, `CHECKIN`, `CHECKIN_STREAK`, `DAILY_LOGIN`, `ROOM_JOIN`,
+`GAME_PLAY` and `STORE_PURCHASE` are `countedBy: 'SERVER'`; `SUBMISSION` is the one metric a member may
+claim, and only into a rule an operator marked `requiresApproval`, and every payment from it is signed by a
+human (`user:wallet`). A rule can only be conditioned on what its metric can actually answer —
+`minDiamonds` / `giftCategory` / `luckyBox` on the two spend metrics, `roomCategory` on chat and room joins,
+`minStreakDay` on the check-ins, `itemKind` on the store, `gameKey` on games — and `CHECKIN_STREAK` is
+`progress: 'MAX'` rather than `'ADD'`, because a streak row that summed its days would reach a 7-day target
+in three check-ins. A filter an event cannot answer fails closed: the event is not counted at all.
+
+### The hooks are in the product paths, and none of them can cost the action it counts
+
+| Metric | Fires from | Awaits? |
+| --- | --- | --- |
+| `GIFT_SENT`, `DIAMONDS_SPENT` | `ledger.service.ts:435`, inside the send transaction | yes |
+| `CHECKIN`, `CHECKIN_STREAK` | `quest.service.ts:236`, inside the check-in transaction | yes |
+| `STORE_PURCHASE` | `store.service.ts:543`, inside the purchase transaction | yes |
+| `GAME_PLAY` | `game.service.ts:408`, once per seated player at start | yes |
+| `CHAT_MESSAGE` | `socket.service.ts:319` → `recordChatEarning` | no |
+| `ROOM_JOIN` | `room.controller.ts:240` (the HTTP join only) | no |
+| `DAILY_LOGIN` | `otp.service.ts:103`, after the session token is issued | no |
+
+The four awaited ones already own a transaction, so the payout is committed with the action it describes.
+The three not awaited are on paths a member is waiting on — a chat send, a room entry, a sign-in — and a
+campaign must not add its latency to those or fail them, so their rows land a moment after the response.
+`DAILY_LOGIN` has no last-login state to read and does not need it: the DAY bucket plus the cap is the
+once-a-day answer. `CHAT_MESSAGE` is the one hook that goes looking for a fact only a rule asked for —
+`needsContext('CHAT_MESSAGE')` asks whether any live chat rule carries restrictions, and the room row is
+read only when the answer is yes, so an uncensored deployment pays nothing for the decoration on every
+line of chat.
+
+A mint that lands in the bonus pocket is announced: `announceBonusChange(userIds)` reads
+`promo_diamond_balance` back from the database and emits `wallet:update` after the commit, so the phone is
+never told a number the engine made up.
+
+### Routes and the three permissions
+
+`/api/earnings` (member): `GET /` is the reward board — a flat `rules` list, one entry per live rule with
+this account's attempt folded onto it, plus `buckets` and the payout trail; `POST /claim` names a rule and
+attaches evidence; `GET /payouts` is the member's own history. Nothing on this prefix states a price.
+
+`/api/admin/earning` (operator, mounted behind `requireAdminOperator`): `config:manage` publishes a rule
+(`POST /rules` is the verb for both the first version and a reprice), opens or closes a campaign, flips
+`/active` and runs `/sweep`; `user:wallet` is the only thing that can approve a claim, because that is a
+mint with nothing bought behind it and holds the same bar as a manual balance adjustment; `user:read` covers
+the catalogue, the queue, the trail and the rule history. There is no route that edits an activity, a payout
+or a grant — refusing a claim and retiring a rule are the only verdicts an operator gets.
+
+### What the reconciler says now
+
+Six checks in the new `earning` domain, all counting offending rows rather than a difference somebody could
+explain away: a PAID attempt with no payout beside it, a payout standing on an attempt that is not PAID, a
+bonus payout whose grant is not the same account / source / size, a payout whose user, rule version, bucket,
+occurrence, currency or amount drifted from what the attempt promised, a payout that no longer resolves to
+the rule version it was paid under, and a campaign that minted past its own budget. The last two read without
+a date filter on purpose — a snapshot either exists or does not, and this week's spending against a lifetime
+budget is a different, weaker claim.
+
+### Tests
+
+`npm run test:earning` (92) feeds the engine events directly and proves what it does with them: eligibility,
+windows, caps, buckets, MAX-versus-ADD progress, the budget lock, the approval queue, idempotent replay.
+`npm run test:earning:routes` (38) walks the member board and the operator surface over HTTP, including the
+permission each route needs. `npm run test:earning:hooks` (40) proves the other half — that the platform's
+own paths deliver those events — by doing the real thing over HTTP and a socket: sign in, check in, join a
+PARTY room, send a chat line, give a rose and a pricier gift, buy a frame, start a match, then repeat the
+same facts one notch off every filter and show nothing was counted. It closes on arithmetic rather than on
+the engine's own word: the member's bonus pocket must equal what this deck minted into it minus what
+`promo_grant_spends` records this deck's grants paid out, the purchased balance must pay exactly the rest of
+the spend, and the campaign's budget total must equal the sum of its payouts. Its teardown retires every rule
+it published, and its first act is to retire anything an earlier crashed run left listening.
+
 ## What six simultaneous sends are allowed to do
 
 Every other suite here asks a money path one question at a time. The question a phone always ends up
@@ -1245,6 +1530,38 @@ the `role` claim. The rest cover the roster shape and search, the role catalogue
 second super-admin on either side of it, the schema's own flag/timestamp check, and that every write
 is audited by its own verb with the right actor. It leaves the four operators it created disabled — it
 cannot remove them, which is the reason the feature exists — so run it against a development database.
+
+`npm run test:partner` (98) is the Become a Partner suite, and it is the only one that runs on both
+sides of that door at once: eight member accounts file, withdraw and answer, three operators (one per
+role that the permission split actually separates) read, approve, ask, refuse and revoke, and the
+assertions land on `agencies`, `business_accounts`, `fin_accounts` and `admin_audit` rows rather than on
+the responses that created them. Read the three checks named in *Become a Partner* above first — a body
+that names another account, an approval that must activate exactly the role asked for, and a refusal
+that must file nothing — because the rest of the run is the queue's own behaviour around them: the live
+index, the merge that lets one information request ask for one thing, the note a refusal cannot be
+stored without, and the create-room gate on both sides of its switch. It needs the running stack and a
+development database, and it shapes itself around the five-submissions-an-hour limit rather than
+against it — which is why refusals get their own accounts. Everything it borrows it gives back, on the
+failure path as well as the success one: both switches restored, its open rows withdrawn, its rooms
+closed by the accounts that opened them, its grants revoked, its operators disabled.
+
+`npm run test:promo` (38) is the promotional-diamond suite, and the checks worth reading first are the
+four that keep the two pockets from quietly becoming one: a fee paid from the bonus pocket refunds to
+the bonus pocket, a fee paid from both splits the same way in reverse, a coin returned to a grant whose
+expiry has passed lapses instead of resurrecting, and `PROMOTIONAL:<user>` still reproduces its balance
+from its own statement afterwards. It opens a paid game for the duration, forces all four sinks on at the
+start and puts the dial and the free-to-play rules back on the way out — the settings are applied before
+anything is asserted rather than inherited, so a run interrupted halfway cannot poison the next one.
+Time-stamped accounts, so it needs a development database.
+
+The three earning suites are the 0038 engine seen from three different sides — `npm run test:earning` (92)
+feeds it events directly, `npm run test:earning:routes` (38) walks the member board and the operator surface
+over HTTP, and `npm run test:earning:hooks` (40) proves the platform's own paths deliver those events by
+doing the real thing over HTTP and a socket, then ties the bonus pocket, the purchased balance and the
+campaign budget against the spending each one funded. *What a member is paid for is a rule, not a code path
+(migration 0038)* earlier in this file is where the three are described together, including the two hooks
+deliberately not awaited. The last two need a running stack and a development database; the first is
+self-contained and retires everything it publishes.
 
 `npm run test:revenue` (25) is the 0031 suite, and it is the only one that reads the journal rather than
 the wallet. The checks worth reading first are the two that bookkeeping lives or dies on: that a send

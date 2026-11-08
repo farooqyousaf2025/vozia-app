@@ -53,6 +53,12 @@ export const PERMISSIONS = [
   // deliberately not folded into `config:manage`: an operator who can change the money switches
   // is not thereby entitled to hand out the credential that changes them.
   'operator:manage',
+  // Become a Partner (migration 0035). Reading the queue is one capability and granting a role is
+  // another, split for the same reason `account:read` and `account:manage` are: an operator who can
+  // see that an application is thin is not thereby entitled to approve it. An approval creates no
+  // balance — it opens an agency or a partner account — so neither of these touches money.
+  'application:read',
+  'application:review',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -83,6 +89,8 @@ const ROLE_PERMISSIONS: Record<AdminRole, readonly Permission[]> = {
     // Finance both investigates the book and decides what gets frozen in it.
     'account:read',
     'account:manage',
+    // Sees who is asking for a role; granting it stays with operations.
+    'application:read',
   ],
   OPERATIONS_ADMIN: [
     'dashboard:read',
@@ -99,6 +107,9 @@ const ROLE_PERMISSIONS: Record<AdminRole, readonly Permission[]> = {
     'finance:read',
     // Reads the book to answer a support question; the holds and suspensions are finance's call.
     'account:read',
+    // Running the partner network includes deciding who joins it.
+    'application:read',
+    'application:review',
   ],
   // Legacy rows seeded before this split existed: read-only plus the moderation tools that
   // need no financial judgement.

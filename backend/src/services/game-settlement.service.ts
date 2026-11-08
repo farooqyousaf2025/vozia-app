@@ -233,7 +233,9 @@ export async function settleSession(
  * Give every collected fee back, for the exits the rules say are refundable.
  *
  * A refund is a new GAME_REFUND row beside the GAME_ENTRY it reverses; the entry row is
- * never edited or deleted, because a posted ledger is history, not a draft.
+ * never edited or deleted, because a posted ledger is history, not a draft. The row carries the
+ * entry's id so the ledger can put the bonus part of that fee back on the grants that paid it —
+ * a fee paid with promotional diamonds refunds as promotional diamonds, never as a purchased one.
  */
 export async function refundFees(
   client: PoolClient,
@@ -249,6 +251,7 @@ export async function refundFees(
       type: 'GAME_REFUND' as const,
       userId: p.user_id,
       diamonds: p.entry_fee_diamonds,
+      refundOfTransactionId: p.fee_transaction_id,
       sessionId: session.id,
       roomId: session.room_id,
       note: reason.slice(0, 200),

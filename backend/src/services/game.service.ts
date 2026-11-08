@@ -14,6 +14,7 @@ import {
 } from '../utils/serialize';
 import { driverFor } from '../games/registry';
 import { DriverContext, GameAction, GamePlayer } from '../games/types';
+import { announceBonusChange, earnWithin } from './earning.service';
 import { pinRules, refundFees, settleSession } from './game-settlement.service';
 import { postGameMoves } from './ledger.service';
 import { loadRoom } from './room.service';
@@ -398,9 +399,23 @@ export async function startSession(actorId: string, sessionId: string, opts: { a
     ]);
     await appendEvent(client, sessionId, 'STARTED', actorId, { players: players.length, turnOwner: owner?.userId ?? null, deadline });
 
+    // The match is the qualifying event, not the seat: a table that fills and is abandoned, or one that
+    // never reaches `minPlayers`, paid nobody. Counting here — where `game_participants` flips to
+    // PLAYING — means a GAME_PLAY is a round that really began. `gameKey` is the catalogue key the
+    // rule's condition is matched against, and it is read off the session row rather than a request.
+    const bonusWinners: string[] = [];
+    for (const player of players) {
+      const payouts = await earnWithin(client, player.userId, [
+        { metric: 'GAME_PLAY', amount: 1, context: { gameKey: session.game_key } },
+      ]);
+      if (payouts.some((payout) => payout.currency === 'BONUS_DIAMOND')) bonusWinners.push(player.userId);
+    }
+
     const fresh = await readSession(client, sessionId, false);
-    return { session: fresh, participants: await readParticipants(client, sessionId) };
+    return { session: fresh, participants: await readParticipants(client, sessionId), bonusWinners };
   });
+
+  if (result.bonusWinners.length) await announceBonusChange(result.bonusWinners);
 
   await broadcast(result.session, result.participants, { phase: 'playing' });
   return toGameSession(result.session, result.participants, publicState(result.session.game_key, result.session.state));

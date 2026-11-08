@@ -2,6 +2,7 @@ package com.voiza.app.data.remote
 
 import com.voiza.app.data.remote.dto.AuthResponse
 import com.voiza.app.data.remote.dto.AnnouncementBody
+import com.voiza.app.data.remote.dto.ApplicationFormDto
 import com.voiza.app.data.remote.dto.ApproveSpeakerRequestResponse
 import com.voiza.app.data.remote.dto.BannerTrackBody
 import com.voiza.app.data.remote.dto.BannersResponse
@@ -11,6 +12,7 @@ import com.voiza.app.data.remote.dto.CheckInResponseDto
 import com.voiza.app.data.remote.dto.CreateGameBody
 import com.voiza.app.data.remote.dto.CreateRoomBody
 import com.voiza.app.data.remote.dto.EmojiCatalogueDto
+import com.voiza.app.data.remote.dto.EmptyRequestBody
 import com.voiza.app.data.remote.dto.FollowResponse
 import com.voiza.app.data.remote.dto.GameActionBody
 import com.voiza.app.data.remote.dto.GameCatalogResponse
@@ -25,6 +27,7 @@ import com.voiza.app.data.remote.dto.JoinRoomBody
 import com.voiza.app.data.remote.dto.JoinRoomResponse
 import com.voiza.app.data.remote.dto.LeaderboardResponse
 import com.voiza.app.data.remote.dto.LiveKitTokenDto
+import com.voiza.app.data.remote.dto.MyApplicationsDto
 import com.voiza.app.data.remote.dto.OtpRequestBody
 import com.voiza.app.data.remote.dto.OtpResponse
 import com.voiza.app.data.remote.dto.OkResponse
@@ -35,6 +38,8 @@ import com.voiza.app.data.remote.dto.PkSettingsEnvelope
 import com.voiza.app.data.remote.dto.QuestsTodayDto
 import com.voiza.app.data.remote.dto.RechargeBody
 import com.voiza.app.data.remote.dto.RechargeResponse
+import com.voiza.app.data.remote.dto.RoleApplicationEnvelope
+import com.voiza.app.data.remote.dto.RoleCatalogueDto
 import com.voiza.app.data.remote.dto.RoomDetailResponse
 import com.voiza.app.data.remote.dto.RoomEnvelope
 import com.voiza.app.data.remote.dto.RoomsResponse
@@ -53,6 +58,8 @@ import com.voiza.app.data.remote.dto.SetRoomThemeBody
 import com.voiza.app.data.remote.dto.SendGiftBody
 import com.voiza.app.data.remote.dto.SendGiftResponse
 import com.voiza.app.data.remote.dto.StoreItemBody
+import com.voiza.app.data.remote.dto.SubmitApplicationBody
+import com.voiza.app.data.remote.dto.SupplementApplicationBody
 import com.voiza.app.data.remote.dto.StorePurchaseResponse
 import com.voiza.app.data.remote.dto.StoreResponse
 import com.voiza.app.data.remote.dto.TakeSeatResponse
@@ -67,7 +74,6 @@ import com.voiza.app.data.remote.dto.WithdrawResponse
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
-import retrofit2.http.HTTP
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
@@ -187,8 +193,12 @@ interface VoizaApiService {
         @Body body: SeatMuteBody,
     ): SeatsResponse
 
-    @HTTP(method = "POST", path = "api/rooms/{id}/seat/{index}/kick", hasBody = false)
-    suspend fun kickFromSeat(@Path("id") roomId: String, @Path("index") seatIndex: Int): SeatsResponse
+    @POST("api/rooms/{id}/seat/{index}/kick")
+    suspend fun kickFromSeat(
+        @Path("id") roomId: String,
+        @Path("index") seatIndex: Int,
+        @Body body: EmptyRequestBody,
+    ): SeatsResponse
 
     /**
      * A host seats a member who is already in the audience. The server does the seating and grants
@@ -209,8 +219,11 @@ interface VoizaApiService {
     suspend fun speakerRequests(@Path("id") roomId: String): SpeakerRequestsResponse
 
     /** Clears the caller's own pending request — the way out of a queue nobody answers. */
-    @HTTP(method = "POST", path = "api/rooms/{id}/speaker-requests/cancel", hasBody = false)
-    suspend fun cancelSpeakerRequest(@Path("id") roomId: String): SpeakerCancelResponse
+    @POST("api/rooms/{id}/speaker-requests/cancel")
+    suspend fun cancelSpeakerRequest(
+        @Path("id") roomId: String,
+        @Body body: EmptyRequestBody,
+    ): SpeakerCancelResponse
 
     /** Approval also mints the publisher token; it travels on the private event, not this body. */
     @POST("api/rooms/{id}/speaker-requests/{requestId}/approve")
@@ -433,4 +446,40 @@ interface VoizaApiService {
 
     @POST("api/pk/battles/{id}/cancel")
     suspend fun pkCancel(@Path("id") battleId: String): PkBattleEnvelope
+
+    // ---- Become a Partner ---------------------------------------------------
+
+    /**
+     * The four role forms, and where this account stands against each.
+     *
+     * Nothing in this section names an account: the applicant is the bearer token, and no body
+     * carries a role to be granted. Filing is a request; the grant is an operator's decision made on
+     * `/api/admin/partner-applications`, which this app has no credential for.
+     */
+    @GET("api/role-applications/roles")
+    suspend fun partnerCatalogue(): RoleCatalogueDto
+
+    /** One spec alone, for a client that already knows which role it draws. */
+    @GET("api/role-applications/form/{role}")
+    suspend fun partnerForm(@Path("role") role: String): ApplicationFormDto
+
+    @GET("api/role-applications/mine")
+    suspend fun myRoleApplications(): MyApplicationsDto
+
+    @POST("api/role-applications")
+    suspend fun applyForRole(@Body body: SubmitApplicationBody): RoleApplicationEnvelope
+
+    /** Answers for a request for more information — only the questions being replied to. */
+    @POST("api/role-applications/{id}/supplement")
+    suspend fun supplementApplication(
+        @Path("id") applicationId: String,
+        @Body body: SupplementApplicationBody,
+    ): RoleApplicationEnvelope
+
+    /** Withdraw an open application. The body is empty because the row is found by the caller's token. */
+    @POST("api/role-applications/{id}/cancel")
+    suspend fun cancelRoleApplication(
+        @Path("id") applicationId: String,
+        @Body body: EmptyRequestBody,
+    ): RoleApplicationEnvelope
 }

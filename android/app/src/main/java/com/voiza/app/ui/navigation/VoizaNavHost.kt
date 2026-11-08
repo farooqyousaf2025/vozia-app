@@ -13,6 +13,9 @@ import com.voiza.app.ui.screens.game.GameScreen
 import com.voiza.app.ui.screens.home.CreateRoomScreen
 import com.voiza.app.ui.screens.home.HomeScreen
 import com.voiza.app.ui.screens.pk.PkScreen
+import com.voiza.app.ui.screens.partner.BecomePartnerScreen
+import com.voiza.app.ui.screens.partner.MyApplicationsScreen
+import com.voiza.app.ui.screens.partner.PartnerApplyScreen
 import com.voiza.app.ui.screens.profile.ProfileScreen
 import com.voiza.app.ui.screens.quests.QuestsScreen
 import com.voiza.app.ui.screens.room.PartyRoomScreen
@@ -130,7 +133,36 @@ fun VoizaNavHost(
         }
 
         composable(Routes.WALLET) {
-            WalletScreen(onBack = { navController.popBackStack() })
+            WalletScreen(
+                onBack = { navController.popBackStack() },
+                onOpenPartnerApply = { role -> navController.navigate(Routes.partnerApply(role)) },
+            )
+        }
+
+        composable(Routes.PARTNER) {
+            BecomePartnerScreen(
+                onBack = { navController.popBackStack() },
+                onOpenRole = { role -> navController.navigate(Routes.partnerApply(role)) },
+                onOpenMyApplications = { navController.navigate(Routes.PARTNER_APPLICATIONS) },
+            )
+        }
+
+        composable(Routes.PARTNER_APPLICATIONS) {
+            MyApplicationsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenRole = { role -> navController.navigate(Routes.partnerApply(role)) },
+            )
+        }
+
+        // The one form for all four roles: it renders whatever spec the server returns for this role.
+        composable(
+            route = Routes.PARTNER_APPLY_PATTERN,
+            arguments = listOf(navArgument(Routes.PARTNER_ROLE_ARG) { type = NavType.StringType }),
+        ) { entry ->
+            PartnerApplyScreen(
+                role = entry.arguments?.getString(Routes.PARTNER_ROLE_ARG).orEmpty(),
+                onBack = { navController.popBackStack() },
+            )
         }
 
         composable(Routes.STORE) {
@@ -150,6 +182,7 @@ fun VoizaNavHost(
                 onOpenWallet = { navController.navigate(Routes.WALLET) },
                 onOpenStore = { navController.navigate(Routes.STORE) },
                 onOpenQuests = { navController.navigate(Routes.QUESTS) },
+                onOpenPartner = { navController.navigate(Routes.PARTNER) },
                 onLoggedOut = {
                     navController.navigate(Routes.AUTH) {
                         popUpTo(0) { inclusive = true }

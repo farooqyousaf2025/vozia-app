@@ -116,6 +116,7 @@ import {
   unbanFromRoom,
 } from '../services/room.service';
 import { writeConfig } from '../services/business.service';
+import { grantPromoDiamonds, lapsePromoGrants, listPromoGrants } from '../services/promo-diamond.service';
 import {
   broadcastMicToggle,
   broadcastRoomClosed,
@@ -961,6 +962,75 @@ export const grantItemEndpoint = asyncHandler(async (req: Request, res: Response
     details: { kind, key, days: days === undefined ? 'catalogue period' : days, item },
   });
   res.status(201).json({ item });
+});
+
+// --- Promotional diamonds -------------------------------------------------
+//
+// A bonus grant is the one route that creates diamonds rather than moving them, so it asks for
+// `user:wallet` — the same permission as a manual balance adjustment — and it is written as a grant
+// row with a reason, never as a silent `+N`. The reason is what the audit trail and the member's
+// wallet both quote, and `promo_grants` refuses a row without one.
+
+/**
+ * Award a bonus pocket.
+ *
+ * `days` overrides the expiry dial; omitting it is not an accident but the normal case, so a campaign
+ * that says "30 days" and a campaign that says "until Friday" are the same route with one field
+ * different.
+ */
+export const grantPromoEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireString(req.params.id, 'userId', { min: 36, max: 36 });
+  const amount = requireInt(req.body?.amount, 'amount', { min: 1, max: 10_000_000 });
+  const reason = requireString(req.body?.reason, 'reason', { min: 3, max: 200 });
+  const days = optionalInt(req.body?.days, 'days', { min: 1, max: 3650 });
+  const expiresAt = days == null ? undefined : new Date(Date.now() + days * 86_400_000);
+
+  const { grant, alreadyGranted } = await grantPromoDiamonds(
+    { userId, amount, sourceKind: 'ADMIN', reason, grantedBy: req.admin!.sub, expiresAt },
+  );
+  await logAction(req, {
+    action: 'PROMO_GRANT',
+    targetType: 'user',
+    targetId: userId,
+    summary: `Granted ${grant.amount} bonus diamonds to a member — ${grant.reason} (expires ${grant.expiresAt.slice(0, 10)})`,
+    details: { amount, reason, days: days ?? 'policy default', grant },
+  });
+  // The socket payload is the wallet's total, not this grant's remainder: a member watching their
+  // balance arrive must see what the server now holds, or the phone ends up quoting one batch as the
+  // whole pocket.
+  const holder = await one<{ promo_diamond_balance: number }>(
+    'SELECT promo_diamond_balance FROM users WHERE id = $1',
+    [userId],
+  );
+  emitToUser(userId, 'wallet:update', { promoDiamondBalance: holder!.promo_diamond_balance });
+  res.status(alreadyGranted ? 200 : 201).json({ grant, alreadyGranted });
+});
+
+/** Every grant a member holds — with what is left of each and when it stops being theirs. */
+export const promoGrantsEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireString(req.params.id, 'userId', { min: 36, max: 36 });
+  const includeSpent = req.query.includeSpent === 'true';
+  res.json({ grants: await listPromoGrants(userId, includeSpent) });
+});
+
+/**
+ * Run the expiry sweep now.
+ *
+ * The clock does this every minute; this route exists so finance never waits on it, the same reason
+ * `POST /admin/recharges/expire` does. An expired grant is still a liability until something releases
+ * it, so "close them now" is a reporting action with a journal behind it.
+ */
+export const lapsePromoEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const result = await lapsePromoGrants();
+  if (result.lapsed) {
+    await logAction(req, {
+      action: 'PROMO_LAPSE',
+      targetType: 'system',
+      summary: `Expired ${result.lapsed} promotional grant(s), releasing ${result.diamonds} bonus diamond(s)`,
+      details: result,
+    });
+  }
+  res.json(result);
 });
 
 // --- Chat emoji -----------------------------------------------------------
