@@ -30,19 +30,25 @@ VALUES
 ON CONFLICT (agency_id, host_user_id) DO NOTHING;
 
 -- Rooms -----------------------------------------------------------------------
-INSERT INTO rooms (id, room_number, title, description, host_id, type, seat_capacity, status, category, livekit_room_name, listener_count, total_gift_value)
+-- Room 3 carries a real scrypt hash: a PRIVATE row with a NULL hash can never be entered, because
+-- the join path asks for a password and then verifies it against nothing. The literal below is
+-- `hashSecret('8888')` from backend/src/utils/crypto.ts, so it stops verifying only if that
+-- function's scrypt parameters change — regenerate it with
+--   node -e "console.log(require('./dist/utils/crypto.js').hashSecret('8888'))"
+-- rather than inventing one.
+INSERT INTO rooms (id, room_number, title, description, host_id, type, password_hash, seat_capacity, status, category, livekit_room_name, listener_count, total_gift_value)
 VALUES
   ('22222222-2222-2222-2222-222222222201', 100001, 'Midnight Karaoke Lounge', 'Sing with us, seats open!',
-   '00000000-0000-0000-0000-0000000000a1', 'PUBLIC',  9, 'ACTIVE', 'MUSIC', 'voiza-room-100001', 42, 12800),
+   '00000000-0000-0000-0000-0000000000a1', 'PUBLIC',  NULL, 9, 'ACTIVE', 'MUSIC', 'voiza-room-100001', 42, 12800),
   ('22222222-2222-2222-2222-222222222202', 100002, 'Deep House Vinyl Bar',    'DJ on the mic, requests welcome',
-   '00000000-0000-0000-0000-0000000000a2', 'PUBLIC',  9, 'ACTIVE', 'PARTY', 'voiza-room-100002', 17, 4400),
+   '00000000-0000-0000-0000-0000000000a2', 'PUBLIC',  NULL, 9, 'ACTIVE', 'PARTY', 'voiza-room-100002', 17, 4400),
   ('22222222-2222-2222-2222-222222222203', 100003, 'VIP Truth or Dare',       'Password: 8888',
-   '00000000-0000-0000-0000-0000000000a1', 'PRIVATE', 9, 'ACTIVE', 'CHAT',  'voiza-room-100003', 6, 900)
+   '00000000-0000-0000-0000-0000000000a1', 'PRIVATE',
+   'scrypt$c2b4a4d8541ac2479994df4d9dacaae5$99dce1ebd2c1d96410fc60f0e3899d7e6df1aca27b0b3b600c00570f13ac4be5',
+   9, 'ACTIVE', 'CHAT',  'voiza-room-100003', 6, 900)
 ON CONFLICT (room_number) DO NOTHING;
 
--- Seat rows (0 = host seat, 1..8 speakers). password_hash for room 3 is the
--- scrypt hash for "8888", produced by the backend at runtime — left NULL here so
--- the demo private room is openable; set it via the admin panel to test locking.
+-- Seat rows (0 = host seat, 1..8 speakers).
 DO $$
 DECLARE r RECORD; i INT;
 BEGIN
