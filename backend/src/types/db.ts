@@ -32,6 +32,12 @@ export type UserRow = {
   device_token: string | null;
   last_seen_at: Date | null;
   created_at: Date;
+  /**
+   * Migration 0039. Optional because a lean seat-list SELECT does not read them. `qa_ref` is the
+   * QA team's internal identifier and must never reach the member app — `toUser` omits both.
+   */
+  is_test?: boolean;
+  qa_ref?: string | null;
 };
 
 export type RoomRow = {
@@ -180,6 +186,9 @@ export type AdminRow = {
   is_active: boolean;
   disabled_at: Date | null;
   created_at: Date;
+  /** Migration 0039: a QA operator, so the roster can say who is testing rather than operating. */
+  is_test?: boolean;
+  qa_ref?: string | null;
 };
 
 export type WithdrawalRow = {
@@ -389,6 +398,9 @@ export type BusinessAccountRow = {
   updated_at: Date;
   parent_code?: string | null;
   parent_name?: string | null;
+  /** Migration 0039. */
+  is_test?: boolean;
+  qa_ref?: string | null;
 };
 
 export type CommissionRuleKind = 'SELLER_PERCENT' | 'SELLER_FIXED' | 'SELLER_TIER' | 'BD_PERCENT' | 'BD_FIXED';

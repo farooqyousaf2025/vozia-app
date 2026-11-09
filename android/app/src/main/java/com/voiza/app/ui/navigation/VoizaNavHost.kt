@@ -7,6 +7,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.voiza.app.ui.screens.agency.AgencyDashboardScreen
 import com.voiza.app.ui.screens.auth.AuthScreen
 import com.voiza.app.ui.screens.game.GameLobbyScreen
 import com.voiza.app.ui.screens.game.GameScreen
@@ -165,6 +166,12 @@ fun VoizaNavHost(
             )
         }
 
+        // The agency's own book. Master and sub are the same route: the server's position answer
+        // decides which sections exist, and a member who runs nothing is shown the server's refusal.
+        composable(Routes.AGENCY) {
+            AgencyDashboardScreen(onBack = { navController.popBackStack() })
+        }
+
         composable(Routes.STORE) {
             StoreScreen(
                 onBack = { navController.popBackStack() },
@@ -183,6 +190,7 @@ fun VoizaNavHost(
                 onOpenStore = { navController.navigate(Routes.STORE) },
                 onOpenQuests = { navController.navigate(Routes.QUESTS) },
                 onOpenPartner = { navController.navigate(Routes.PARTNER) },
+                onOpenAgency = { navController.navigate(Routes.AGENCY) },
                 onLoggedOut = {
                     navController.navigate(Routes.AUTH) {
                         popUpTo(0) { inclusive = true }

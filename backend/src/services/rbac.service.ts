@@ -59,6 +59,12 @@ export const PERMISSIONS = [
   // balance — it opens an agency or a partner account — so neither of these touches money.
   'application:read',
   'application:review',
+  // The QA programme (migration 0039). Reading which accounts are test accounts is a finance
+  // question — the book has to be explainable — but deciding that an account *is* a test account
+  // reclassifies its whole financial history, so it sits with one role and is deliberately not
+  // folded into `user:moderate` or `account:manage`.
+  'qa:read',
+  'qa:manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -91,6 +97,9 @@ const ROLE_PERMISSIONS: Record<AdminRole, readonly Permission[]> = {
     'account:manage',
     // Sees who is asking for a role; granting it stays with operations.
     'application:read',
+    // Finance has to be able to say which rows in the book are QA activity. Marking stays with
+    // SUPER_ADMIN: it reclassifies history rather than reading it.
+    'qa:read',
   ],
   OPERATIONS_ADMIN: [
     'dashboard:read',

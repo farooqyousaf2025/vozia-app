@@ -7,10 +7,11 @@ import { GiftDto, ChatMessageDto, RoomDto, SeatDto, WithdrawalDto, toGift, toRoo
 import { BoxOutcome, BoxOutcomeDto, toBoxOutcomeDtos, toBoxOutcomes, validateLuckyBox } from './lucky-box.service';
 import { livekitRooms } from './livekit.service';
 import { fetchParticipants, getRoomDetail, listRoomBans } from './room.service';
+import { excludeTestSql } from './qa.service';
 
 export type AdminUserRow = UserRow & { agency_name: string | null };
 
-export async function dashboardStats(): Promise<{
+export async function dashboardStats(opts: { includeTest?: boolean } = {}): Promise<{
   activeRooms: number;
   onlineUsers: number;
   totalUsers: number;
@@ -21,6 +22,14 @@ export async function dashboardStats(): Promise<{
   withdrawalsPending: number;
   series: Array<{ date: string; diamonds: number; rooms: number }>;
 }> {
+  // Migration 0039: these are the production numbers an operator reads as "how is the platform
+  // doing", so QA activity is out by default. `includeTest` is the deliberate opt-in for a QA
+  // operator who wants to see their own cohort's traffic on the same screen.
+  const giftFilter = opts.includeTest ? '' : ` AND ${excludeTestSql('transactions', ['sender_id', 'receiver_id', 'agency_id'])}`;
+  const userFilter = opts.includeTest ? '' : ' AND NOT is_test';
+  const withdrawalFilter = opts.includeTest
+    ? ''
+    : ' AND NOT EXISTS (SELECT 1 FROM users qu WHERE qu.id = withdrawal_requests.user_id AND qu.is_test)';
   const [totals, online, series] = await Promise.all([
     one<{
       active_rooms: string;
@@ -33,15 +42,15 @@ export async function dashboardStats(): Promise<{
     }>(
       `SELECT
          (SELECT COUNT(*) FROM rooms WHERE status = 'ACTIVE')                              AS active_rooms,
-         (SELECT COUNT(*) FROM users)                                                       AS total_users,
-         (SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('day', now()))           AS new_users_today,
+         (SELECT COUNT(*) FROM users WHERE TRUE${userFilter})                               AS total_users,
+         (SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('day', now())${userFilter}) AS new_users_today,
          (SELECT COALESCE(SUM(amount_diamonds),0) FROM transactions
-           WHERE type = 'GIFT_SENT' AND created_at >= date_trunc('day', now()))              AS diamonds_today,
+           WHERE type = 'GIFT_SENT' AND created_at >= date_trunc('day', now())${giftFilter})  AS diamonds_today,
          (SELECT COALESCE(SUM(amount_r_coins),0) FROM transactions
-           WHERE type IN ('GIFT_SENT','AGENCY_COMMISSION') AND created_at >= date_trunc('day', now())) AS rcoins_today,
+           WHERE type IN ('GIFT_SENT','AGENCY_COMMISSION') AND created_at >= date_trunc('day', now())${giftFilter}) AS rcoins_today,
          (SELECT COALESCE(SUM(quantity),0) FROM transactions
-           WHERE type = 'GIFT_SENT' AND created_at >= date_trunc('day', now()))              AS gifts_today,
-         (SELECT COUNT(*) FROM withdrawal_requests WHERE status = 'PENDING')                 AS withdrawals_pending`,
+           WHERE type = 'GIFT_SENT' AND created_at >= date_trunc('day', now())${giftFilter})  AS gifts_today,
+         (SELECT COUNT(*) FROM withdrawal_requests WHERE status = 'PENDING'${withdrawalFilter}) AS withdrawals_pending`,
     ),
     onlineUserCount().catch(() => 0),
     many<{ d: Date; diamonds: string; rooms: string }>(
@@ -54,7 +63,7 @@ export async function dashboardStats(): Promise<{
          FROM (SELECT generate_series(
                  date_trunc('day', now()) - interval '6 days', now(), interval '1 day')::date AS day) d
          LEFT JOIN (SELECT created_at::date AS day, SUM(amount_diamonds) AS diamonds
-                      FROM transactions WHERE type = 'GIFT_SENT' GROUP BY 1) t ON t.day = d.day
+                      FROM transactions WHERE type = 'GIFT_SENT'${giftFilter} GROUP BY 1) t ON t.day = d.day
          LEFT JOIN (SELECT created_at::date AS day, COUNT(*) AS rooms
                       FROM rooms GROUP BY 1) r ON r.day = d.day
         ORDER BY 1`,
@@ -710,12 +719,16 @@ export type GiftAnalyticsRow = {
   isLuckyBox: boolean;
 };
 
-export async function giftAnalytics(opts: { days?: number } = {}): Promise<{
+export async function giftAnalytics(opts: { days?: number; includeTest?: boolean } = {}): Promise<{
   days: number;
   totals: { sends: number; gifts: number; diamonds: number; rCoins: number; averageDiamondPerGift: number; unattributedDiamonds: number };
   gifts: GiftAnalyticsRow[];
 }> {
   const days = Math.min(Math.max(opts.days ?? 30, 1), 365);
+  // Same rule as the dashboard: a gift a QA account sent is not a sale the platform made.
+  const owners = ['sender_id', 'receiver_id', 'agency_id'] as const;
+  const plainFilter = opts.includeTest ? '' : ` AND ${excludeTestSql('transactions', owners)}`;
+  const aliasedFilter = opts.includeTest ? '' : ` AND ${excludeTestSql('t', owners)}`;
 
   const [totals, rows, unattributed] = await Promise.all([
     one<{ sends: string; gifts: string; diamonds: string; rcoins: string }>(
@@ -725,7 +738,7 @@ export async function giftAnalytics(opts: { days?: number } = {}): Promise<{
               COALESCE(SUM(amount_r_coins), 0)::text AS rcoins
          FROM transactions
         WHERE type = 'GIFT_SENT' AND status = 'COMPLETED'
-          AND created_at >= now() - ($1 || ' days')::interval`,
+          AND created_at >= now() - ($1 || ' days')::interval${plainFilter}`,
       [days],
     ),
     many<{
@@ -749,7 +762,7 @@ export async function giftAnalytics(opts: { days?: number } = {}): Promise<{
          FROM transactions t
          JOIN gifts g ON g.id = t.gift_id
         WHERE t.type = 'GIFT_SENT' AND t.status = 'COMPLETED'
-          AND t.created_at >= now() - ($1 || ' days')::interval
+          AND t.created_at >= now() - ($1 || ' days')::interval${aliasedFilter}
         GROUP BY t.gift_id, g.name, g.icon_url, g.category, g.is_lucky_box
         ORDER BY COALESCE(SUM(t.amount_diamonds), 0) DESC, COUNT(*) DESC
         LIMIT 100`,
@@ -759,7 +772,7 @@ export async function giftAnalytics(opts: { days?: number } = {}): Promise<{
       `SELECT COALESCE(SUM(amount_diamonds), 0)::text AS diamonds
          FROM transactions
         WHERE type = 'GIFT_SENT' AND status = 'COMPLETED' AND gift_id IS NULL
-          AND created_at >= now() - ($1 || ' days')::interval`,
+          AND created_at >= now() - ($1 || ' days')::interval${plainFilter}`,
       [days],
     ),
   ]);

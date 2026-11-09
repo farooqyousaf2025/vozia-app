@@ -1,6 +1,10 @@
 package com.voiza.app.data.remote
 
 import com.voiza.app.data.remote.dto.AuthResponse
+import com.voiza.app.data.remote.dto.AgencyHostsEnvelope
+import com.voiza.app.data.remote.dto.AgencyPositionEnvelope
+import com.voiza.app.data.remote.dto.AgencySettlementsEnvelope
+import com.voiza.app.data.remote.dto.AgencySubsEnvelope
 import com.voiza.app.data.remote.dto.AnnouncementBody
 import com.voiza.app.data.remote.dto.ApplicationFormDto
 import com.voiza.app.data.remote.dto.ApproveSpeakerRequestResponse
@@ -482,4 +486,26 @@ interface VoizaApiService {
         @Path("id") applicationId: String,
         @Body body: EmptyRequestBody,
     ): RoleApplicationEnvelope
+
+    // ---- The agency's own book ------------------------------------------------
+
+    /**
+     * What the roster of hosts this member runs has earned, and what the platform owes it.
+     *
+     * Four GETs, and the member's token is the only argument. `requireAgencyOwner` resolves the agency
+     * from `agencies.owner_user_id`, so nothing here can be pointed at another member's book, and a
+     * member who runs nothing is refused with the server's own sentence rather than an empty payload.
+     * [agencySubAgencies] is master-only: a sub-agency has none, and `requireMasterAgency` says so.
+     */
+    @GET("api/agency/position")
+    suspend fun agencyPosition(): AgencyPositionEnvelope
+
+    @GET("api/agency/hosts")
+    suspend fun agencyHosts(@Query("limit") limit: Int? = null): AgencyHostsEnvelope
+
+    @GET("api/agency/sub-agencies")
+    suspend fun agencySubAgencies(): AgencySubsEnvelope
+
+    @GET("api/agency/settlements")
+    suspend fun agencySettlements(@Query("limit") limit: Int? = null): AgencySettlementsEnvelope
 }

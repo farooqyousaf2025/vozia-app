@@ -260,6 +260,10 @@ Two layers, neither of which needs a third-party account to work:
 `GET /api/role-applications/form/:role`, `GET /api/role-applications/mine`,
 `POST /api/role-applications` (`{role, data}` — the applicant is taken from the token, never from the body),
 `POST /api/role-applications/:id/{supplement,cancel}`
+· the agency desk `GET /api/agency/{position,hosts,settlements}` for the member who runs an agency, and
+`GET /api/agency/sub-agencies` for a master only (migration 0040). There is no agency id in any of these
+paths: the caller's agency is resolved from `agencies.owner_user_id` on every request, so naming another
+agency's uuid reaches nothing, and a sub is refused the sub-agency list rather than shown an empty one
 · room community `GET|POST|DELETE /api/rooms/:id/favorite`, `GET /api/rooms/favorites`,
 `POST /api/rooms/:id/announcement`,
 `POST /api/rooms/:id/{transfer,seat/:index/invite}`,
@@ -269,12 +273,17 @@ Two layers, neither of which needs a third-party account to work:
 `POST /api/admin/withdrawals/:id/{review,pay}`, `PUT /api/admin/config/accounts.withdrawal`,
 `GET /api/admin/agencies` + `/api/admin/agencies/:id`, `PUT /api/admin/agencies/{:id/rate,:id/hosts/:userId/rate}`,
 `POST /api/admin/agencies/:id/settlements` and `/api/admin/agencies/settlements/:id/{approve,pay,void}`,
+`PUT /api/admin/agencies/:id/{parent,override}` (migration 0040 — who a roster's commission is shared with,
+and what that master keeps; both behind `commission:manage`, never reachable from an agency's own token),
 `POST /api/admin/users/:id/vip` and the matching mutation routes for each domain above,
 `POST /api/admin/users/:id/promo-grant` and `POST /api/admin/promo-grants/lapse` (behind `user:wallet`),
 `GET /api/admin/users/:id/promo-grants` (behind `user:read`),
 `GET /api/admin/partner-applications?status=&role=&search=&limit=&offset` — plus `.../forms` and `.../:id` —
 behind `application:read`, and `POST /api/admin/partner-applications/:id/{approve,reject,request-info,revoke}`
-behind `application:review`.
+behind `application:review`,
+`GET /api/admin/qa/{identities,money,money/summary}` behind `qa:read` and
+`POST /api/admin/qa/identities/{mark,cohort}` behind `qa:manage` (migration 0039; `qa_ref` is admin-only
+and never appears in a member payload).
 
 Socket.IO events: client sends `room:join`, `room:leave`, `room:chat`, `room:like`,
 `room:reaction`, `room:raise_hand`; server sends `room:chat_message`, `room:gift_animated`,
@@ -474,6 +483,32 @@ own history (an approval is the one decision that can be filed without one), and
 side lands in `admin_audit`. See `backend/README.md` → *Become a Partner: a role is a row an operator
 approved*.
 
+## Master and sub agencies
+
+An agency can report to another agency. Two columns say so (`agencies.parent_agency_id` and
+`agencies.parent_override_bps`, migration 0040) and there is deliberately no `kind` column: a stored kind
+and a stored parent can disagree, and the screen that read the kind would promise a permission the link
+does not give, so a row is a master or a sub because of who it points at. Depth is two and the database
+enforces it — a trigger refuses a sub taking subs, a self-link, a non-active master and demoting an agency
+that already has children, because that would move existing rows to depth three without their ever being
+validated.
+
+The money is the part worth reading. A sub's commission is accrued **gross** to the sub exactly as 0033
+books it, and the master's share is then moved by a second balanced journal entry — DEBIT the sub's payable,
+CREDIT the master's — keyed on the same commission row under its own source kind. `COMMISSION_EXPENSE` is
+therefore still debited once: the platform promised the commission once, and the split only decides who it
+is owed to. The share is truncated toward the sub, never rounded up, and moving an agency to a different
+master clears the allocation, because a percentage negotiated with one master is not a promise to the next.
+
+Neither half of the relationship is a client's claim. `requireAgencyOwner` re-reads the caller's active
+agency from the token on every request, so there is no agency id to tamper with, and
+`requireMasterAgency` refuses a sub's request for the sub-agency list with 403 `master_only` rather than
+answering it empty — which is what makes "restricted access to Master Agency settings" a testable answer
+instead of a hidden menu item. The Android desk is read-only for the same reason the panel's rate column is:
+an agency cannot set its own percentage or raise its own payout batch, because the person who claims an
+agency's money is not the person who signs it. See `backend/README.md` → *A sub-agency's share is booked to
+two payables*, and `npm run test:agency:hierarchy` (65).
+
 ## Verification
 
 * `cd backend && npm run test:e2e` — 402 checks against a running stack (real Postgres,
@@ -499,7 +534,7 @@ approved*.
   `fetch` replaced by a recorder, so no account is needed: the exact Twilio form POST
   and Basic header, Vonage's `200`-with-`status:"1"` trap, the Stripe intent body, and
   every webhook-signature rejection. Together with the e2e suite that is 447 checks.
-* `cd backend && npm run test:business` (87), `test:games` (69), `test:accounts` (133),
+* `cd backend && npm run test:business` (87), `test:games` (69), `test:accounts` (134),
   `test:operators` (44) and `test:revenue` (25) cover the money book rather than the party: the
   nine-step recharge and its commission versions, the three game drivers and at-most-once
   settlement, the purpose-account projection and its exports, the operator roster's live re-read
@@ -530,6 +565,24 @@ approved*.
   seller account that cannot be approved without the BD it reports to — and that every refusal above
   files no row. It also walks the create-room switch on and back off again, and puts everything it
   borrowed back even when it throws.
+* `cd backend && npm run test:qa` — 55 checks on the QA programme's own record (migration 0039): the
+  database refuses a test account with no internal reference, marking an account reclassifies
+  transactions that *already existed*, unmarking puts them back with the id list byte-identical, journal
+  entries inherit the marking through the row their `source_id` names, the dashboard / gift analytics /
+  member leaderboard all drop a marked account while `?includeTest=true` restores it for a `qa:read`
+  holder, neither `is_test` nor `qa_ref` reaches a member payload, the cohort write is all-or-nothing,
+  and the last production Super Admin cannot be marked out of the programme's own controls. It borrows a
+  real gifter rather than a throwaway, and leaves zero marked accounts, zero test money and no enabled
+  operator behind — on the crash path too.
+* `cd backend && npm run test:agency:hierarchy` — 65 checks on migration 0040, over the running stack and
+  read back through the backend's own pool. The three it exists for are on the split: `COMMISSION_EXPENSE`
+  is still debited exactly once for the gross when a second entry moves part of that money to a master, the
+  sub's payable falls by exactly what the master's rises, and both entries are keyed on the one commission
+  row so a replayed gift posts neither side twice. Around the money it holds the depth rules from both the
+  service and the trigger, the clear-on-re-parent rule, the two new reconciler tie-outs in both breach
+  directions, and the member surface seen as a master's owner, a sub's owner, a member who runs no agency,
+  an operator token and a suspended agency's owner. It stamps every row it writes and leaves them in place,
+  so it is a development-database script.
 * `cd backend && npm run test:social` — 24 checks over the migration-0022 edges with no
   database: the report/status/decision vocabularies, every validator's trim-and-refuse
   behaviour (details, resolution, block reason, announcement, transfer note, UUIDs), and

@@ -16,6 +16,11 @@
 // three speaks next time. `commissionLabel` says so in words because the number alone cannot answer
 // the question an agency actually asks.
 //
+// A master's share of its sub-agency's commission is drawn from the same promise. The sub is accrued
+// gross and the master's allocation is then moved between two payables (0040), so nothing here adds a
+// second commission expense — which is why the split is shown as two coin figures on one row, and the
+// master's own earnings are labelled as taken *in* rather than counted again.
+//
 // Reads need `finance:read`; every write needs `commission:manage`, except the platform default dial,
 // which is `config:manage`. The server decides on each call, so this screen only decides what to draw.
 // ---------------------------------------------------------------------------
@@ -50,11 +55,13 @@ import { formatBps, formatCents, formatDate, formatDateTime, formatNumber, relat
 import type {
   Agency,
   AgencyDetailResult,
+  AgencyKind,
   AgencyRosterRow,
   AgencySettlement,
   AgencySettlementEntry,
   AgencySettlementStatus,
   AgencyStatus,
+  AgencySubAllocation,
   CommissionRateSource,
 } from '../types';
 
@@ -66,6 +73,8 @@ const PAYOUT_METHODS = ['BANK', 'WALLET', 'USDT'];
 const AGENCY_TONES: Record<string, BadgeTone> = { ACTIVE: 'green', PENDING: 'amber', SUSPENDED: 'red' };
 const BATCH_TONES: Record<string, BadgeTone> = { DRAFT: 'amber', APPROVED: 'sky', PAID: 'green', VOID: 'slate' };
 const SOURCE_TONES: Record<CommissionRateSource, BadgeTone> = { HOST: 'violet', AGENCY: 'sky', PLATFORM_DEFAULT: 'slate' };
+/** The parent link, in the words a finance operator reads rather than the column it came from. */
+const KIND_LABELS: Record<AgencyKind, string> = { MASTER: 'master agency', SUB: 'sub-agency' };
 
 const PAGE_SIZE = 25;
 
@@ -93,7 +102,7 @@ export default function AgenciesPage() {
 
   const [tab, setTab] = useState<'roster' | 'batches'>('roster');
 
-  const [filters, setFilters] = useState({ search: '', status: '' });
+  const [filters, setFilters] = useState({ search: '', status: '', kind: '' as '' | AgencyKind });
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(filters.search, 350);
   const [agencies, setAgencies] = useState<Agency[] | null>(null);
@@ -120,6 +129,7 @@ export default function AgenciesPage() {
       const result = await api.agencies({
         search: debouncedSearch.trim() === '' ? undefined : debouncedSearch.trim(),
         status: filters.status === '' ? undefined : filters.status,
+        kind: filters.kind === '' ? undefined : filters.kind,
         page,
         limit: PAGE_SIZE,
       });
@@ -132,7 +142,7 @@ export default function AgenciesPage() {
     } finally {
       setLoadingAgencies(false);
     }
-  }, [debouncedSearch, filters.status, page]);
+  }, [debouncedSearch, filters.status, filters.kind, page]);
 
   const loadBatches = useCallback(async () => {
     setLoadingBatches(true);
@@ -250,6 +260,20 @@ export default function AgenciesPage() {
                 <option key={status} value={status}>{status}</option>
               ))}
             </Select>
+            <Select
+              label="Position"
+              aria-label="Filter agencies by where they sit in the hierarchy"
+              value={filters.kind}
+              onChange={(e) => {
+                setFilters({ ...filters, kind: e.target.value as '' | AgencyKind });
+                setPage(1);
+              }}
+              className="w-44"
+            >
+              <option value="">Masters and subs</option>
+              <option value="MASTER">Master agencies only</option>
+              <option value="SUB">Sub-agencies only</option>
+            </Select>
           </div>
 
           {loadingAgencies && agencies === null ? (
@@ -269,7 +293,9 @@ export default function AgenciesPage() {
             <div className="p-5">
               <EmptyState
                 title="No agencies match"
-                message={filters.search !== '' || filters.status !== '' ? 'Try a different name or status.' : 'An agency appears here when a host is filed on its roster.'}
+                message={filters.search !== '' || filters.status !== '' || filters.kind !== ''
+                  ? 'Try a different name, status or position.'
+                  : 'An agency appears here when a host is filed on its roster.'}
                 icon={<IconCommission className="h-6 w-6" />}
               />
             </div>
@@ -289,13 +315,28 @@ export default function AgenciesPage() {
                   {(agencies ?? []).map((agency) => (
                     <Tr key={agency.id}>
                       <Td>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-ink">{agency.name}</p>
-                          <p className="text-[11px] text-faint">
-                            {agency.contactPhone ?? 'no contact on file'} · added {relativeTime(agency.createdAt)}
+                        <p className="truncate text-sm font-semibold text-ink">{agency.name}</p>
+                        <p className="text-[11px] text-faint">
+                          {agency.contactPhone ?? 'no contact on file'} · added {relativeTime(agency.createdAt)}
+                        </p>
+                        {agency.kind === 'SUB' && (
+                          <p className="truncate text-[11px] text-faint">
+                            under <span className="text-muted">{agency.parentAgencyName ?? 'a master since removed'}</span>
                           </p>
+                        )}
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          <Badge tone={AGENCY_TONES[agency.status] ?? 'slate'}>{agency.status}</Badge>
+                          <span
+                            className="text-[11px] text-faint"
+                            title={
+                              agency.kind === 'MASTER'
+                                ? 'Stands on its own: its roster’s commission is its own, and it can take sub-agencies.'
+                                : 'Reports to a master, which takes the share shown beside its earnings.'
+                            }
+                          >
+                            · {KIND_LABELS[agency.kind]}
+                          </span>
                         </div>
-                        <Badge tone={AGENCY_TONES[agency.status] ?? 'slate'} className="mt-1">{agency.status}</Badge>
                       </Td>
                       <Td>
                         <p className="text-xs text-ink">{agency.commissionLabel}</p>
@@ -312,6 +353,17 @@ export default function AgenciesPage() {
                       <Td align="right" className="tabular-nums text-xs">
                         <span className="font-semibold text-ink">{formatNumber(agency.accruedCoins)}</span>
                         <p className="text-[11px] text-faint">R-coins counted</p>
+                        {agency.overrideCoins > 0 && (
+                          <p className="text-[11px] text-faint">
+                            keeps <span className="text-muted">{formatNumber(agency.retainedCoins)}</span>, master takes{' '}
+                            <span className="text-muted">{formatNumber(agency.overrideCoins)}</span>
+                          </p>
+                        )}
+                        {agency.kind === 'MASTER' && agency.receivedOverrideCoins > 0 && (
+                          <p className="text-[11px] text-faint" title="Taken from its own sub-agencies' commission — a transfer between two payables, not a second commission.">
+                            + <span className="text-muted">{formatNumber(agency.receivedOverrideCoins)}</span> from its subs
+                          </p>
+                        )}
                       </Td>
                       <Td align="right" className="tabular-nums text-xs">
                         {agency.account === null ? (
@@ -734,8 +786,133 @@ function RateEditor({
         )}
       </div>
       <p className={`text-[11px] ${valid ? 'text-faint' : 'text-rose-300'}`}>
-        {valid ? (parsed === null ? inheritNote : `${parsed} bps = ${formatBps(parsed)} · leave empty to inherit`) : 'Whole basis points between 0 and 10000.'}
+        {valid ? (parsed === null ? inheritNote : `${parsed} bps = ${formatBps(parsed)} · ${inheritNote}`) : 'Whole basis points between 0 and 10000.'}
       </p>
+      {error !== null && (
+        <p className="flex items-start gap-1.5 text-[11px] text-rose-300">
+          <IconAlert className="mt-0.5 h-3 w-3 shrink-0" />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Who this agency reports to.
+//
+// Two decisions live here and both are money: which master a roster's commission is shared with, and
+// whether to leave that relationship at all. Releasing a sub stops every future share and rewrites
+// nothing that was already booked, which is why the button says so rather than just clearing a field —
+// and why moving an agency to a different master always starts the new relationship at no share.
+// ---------------------------------------------------------------------------
+function ParentPicker({
+  agency,
+  mayWrite,
+  onSaved,
+}: {
+  agency: Agency;
+  mayWrite: boolean;
+  onSaved: () => Promise<void>;
+}) {
+  const toast = useToast();
+  const [masters, setMasters] = useState<Agency[] | null>(null);
+  const [choice, setChoice] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api
+      .agencies({ kind: 'MASTER', status: 'ACTIVE', limit: 200 })
+      .then((result) => {
+        if (live) setMasters(result.agencies.filter((row) => row.id !== agency.id));
+      })
+      .catch(() => {
+        if (live) setMasters([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [agency.id]);
+
+  const move = async (parentAgencyId: string | null) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.setAgencyParent(agency.id, parentAgencyId);
+      toast.success(
+        parentAgencyId === null
+          ? `${agency.name} stands on its own again. Its roster’s commission is its own from the next gift; accruals already split stay split.`
+          : `${agency.name} is now under ${masters?.find((row) => row.id === parentAgencyId)?.name ?? 'its new master'}. Its master takes nothing until a share is set.`,
+      );
+      setChoice('');
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not change which agency this one reports to.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const isSub = agency.kind === 'SUB';
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {isSub ? (
+          <p className="text-xs text-ink">
+            Reports to <span className="font-semibold">{agency.parentAgencyName ?? 'a master since removed'}</span>
+          </p>
+        ) : (
+          <p className="text-xs text-muted">
+            {agency.subAgencyCount > 0
+              ? `Stands on its own, and ${agency.subAgencyCount} agenc${agency.subAgencyCount === 1 ? 'y reports' : 'ies report'} to it.`
+              : 'Stands on its own — its roster’s commission is entirely its own.'}
+          </p>
+        )}
+        {isSub && mayWrite && (
+          <Button size="sm" onClick={() => void move(null)} loading={busy}>
+            Release
+          </Button>
+        )}
+      </div>
+
+      {mayWrite && (
+        <div className="flex flex-wrap items-end gap-2">
+          <Select
+            label={isSub ? 'Move to another master' : 'Put this agency under a master'}
+            aria-label="Master agency"
+            value={choice}
+            onChange={(e) => setChoice(e.target.value)}
+            className="w-72"
+          >
+            <option value="">{masters === null ? 'Loading agencies…' : 'Choose a master agency'}</option>
+            {(masters ?? []).map((master) => (
+              <option key={master.id} value={master.id}>
+                {master.name} · {master.activeHostCount} host{master.activeHostCount === 1 ? '' : 's'}
+              </option>
+            ))}
+          </Select>
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={choice === ''}
+            loading={busy}
+            onClick={() => void move(choice)}
+          >
+            {isSub ? 'Move' : 'Link'}
+          </Button>
+        </div>
+      )}
+
+      <p className="text-[11px] text-faint">
+        {isSub
+          ? 'Moving to a different master clears the share agreed under this one: a number negotiated with master A is not a promise to master B.'
+          : 'Only an active agency with no master of its own can take sub-agencies, and a master that already has them cannot itself become one.'}
+      </p>
+
       {error !== null && (
         <p className="flex items-start gap-1.5 text-[11px] text-rose-300">
           <IconAlert className="mt-0.5 h-3 w-3 shrink-0" />
@@ -789,7 +966,7 @@ function AgencyDesk({
       subtitle={
         detail === null
           ? 'Loading…'
-          : `${detail.agency.status} · ${detail.agency.activeHostCount} of ${detail.agency.hostCount} hosts active · ${detail.agency.contactPhone ?? 'no contact on file'}`
+          : `${detail.agency.status} · ${KIND_LABELS[detail.agency.kind]} · ${detail.agency.activeHostCount} of ${detail.agency.hostCount} hosts active · ${detail.agency.contactPhone ?? 'no contact on file'}`
       }
       footer={
         <>
@@ -844,6 +1021,14 @@ function AgencyDesk({
             <p className="text-[11px] text-faint">
               Commission counted from gifts is {formatNumber(detail.agency.accruedCoins)} R-coins — the same money, in the
               unit an agency negotiates in.
+              {detail.agency.overrideCoins > 0 && (
+                <> Of that, <span className="text-muted">{formatNumber(detail.agency.overrideCoins)}</span> passed up to
+                its master, so this roster kept <span className="text-muted">{formatNumber(detail.agency.retainedCoins)}</span>.</>
+              )}
+              {detail.agency.receivedOverrideCoins > 0 && (
+                <> It also took <span className="text-muted">{formatNumber(detail.agency.receivedOverrideCoins)}</span>
+                from its own sub-agencies, which is the same money moved between two payables — not a second commission.</>
+              )}
             </p>
           </section>
 
@@ -865,6 +1050,92 @@ function AgencyDesk({
               />
             </div>
           </section>
+
+          {/* the hierarchy (migration 0040): who reports to whom, and what the master keeps */}
+          <section className="space-y-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-faint">Master agency &amp; allocation</h4>
+            <div className="space-y-4 rounded-lg border border-edge/60 bg-elevated/40 p-4">
+              <ParentPicker agency={detail.agency} mayWrite={mayWrite} onSaved={load} />
+              {detail.agency.kind === 'SUB' && (
+                <div className="space-y-2 border-t border-edge/60 pt-3">
+                  <p className="text-[11px] text-faint">
+                    The share of every R-coin this roster earns that its master keeps. The sub is accrued gross and
+                    the share is then moved between the two payables, so it is never a second commission.
+                  </p>
+                  <RateEditor
+                    currentBps={detail.agency.parentOverrideBps}
+                    effectiveLabel={detail.agency.parentOverrideLabel}
+                    inheritNote="empty = no share was agreed, so the master takes nothing"
+                    disabled={!mayWrite}
+                    onSave={async (bps) => {
+                      await api.setAgencyParentOverride(agencyId, bps);
+                      // The share prices every future gift and moves two payables, so both agencies' positions
+                      // are re-read from the server rather than adjusted from this response.
+                      await load();
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          </section>
+
+          {detail.agency.kind === 'MASTER' && detail.subAgencies.length > 0 && (
+            <section className="space-y-2">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-faint">
+                Sub-agencies · {detail.subAgencies.length}
+              </h4>
+              <div className="max-h-[18rem] overflow-auto rounded-lg border border-edge/60">
+                <Table>
+                  <THead>
+                    <Th width="24%">Agency</Th>
+                    <Th align="center">Hosts</Th>
+                    <Th>Its rate</Th>
+                    <Th>Share this master keeps</Th>
+                    <Th align="right">Earned / passed up / keeps</Th>
+                    <Th align="right" className="pr-4">Owed now</Th>
+                  </THead>
+                  <TBody>
+                    {detail.subAgencies.map((sub) => (
+                      <Tr key={sub.id}>
+                        <Td>
+                          <p className="truncate text-sm font-semibold text-ink">{sub.name}</p>
+                          <Badge tone={AGENCY_TONES[sub.status] ?? 'slate'} className="mt-1">{sub.status}</Badge>
+                        </Td>
+                        <Td align="center" className="tabular-nums text-xs">
+                          <span className="text-ink">{sub.activeHostCount}</span>
+                          <span className="text-faint"> / {sub.hostCount}</span>
+                        </Td>
+                        <Td className="text-xs text-ink">{sub.commissionLabel}</Td>
+                        <Td className="text-xs">
+                          <p className="text-ink">{sub.parentOverrideLabel}</p>
+                          <p className="text-[11px] text-faint">
+                            {sub.parentOverrideBps === null ? 'unset' : `set here: ${formatBps(sub.parentOverrideBps)}`}
+                          </p>
+                        </Td>
+                        <Td align="right" className="tabular-nums text-xs">
+                          <p className="text-ink">{formatNumber(sub.accruedCoins)}</p>
+                          <p className="text-[11px] text-faint">
+                            {formatNumber(sub.overrideCoins)} up · keeps {formatNumber(sub.retainedCoins)}
+                          </p>
+                        </Td>
+                        <Td align="right" className="pr-4 tabular-nums text-xs">
+                          {sub.owedMinor === null ? (
+                            <span className="text-faint">no account yet</span>
+                          ) : (
+                            <span className="font-semibold text-ink">{money(sub.owedMinor, sub.currency ?? 'pkr')}</span>
+                          )}
+                        </Td>
+                      </Tr>
+                    ))}
+                  </TBody>
+                </Table>
+              </div>
+              <p className="text-[11px] text-faint">
+                Each row is a payable of its own: what a sub passed up is in this master’s account, and the sub is
+                owed only what it kept. Settling one batch never settles the other.
+              </p>
+            </section>
+          )}
 
           {/* roster */}
           <section className="space-y-2">

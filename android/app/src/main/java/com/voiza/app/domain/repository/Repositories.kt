@@ -1,6 +1,10 @@
 package com.voiza.app.domain.repository
 
 import com.voiza.app.data.remote.ApiResult
+import com.voiza.app.domain.model.AgencyHostRow
+import com.voiza.app.domain.model.AgencyPosition
+import com.voiza.app.domain.model.AgencySettlementRow
+import com.voiza.app.domain.model.AgencySubRow
 import com.voiza.app.domain.model.ApplicationForm
 import com.voiza.app.domain.model.BannerPlacement
 import com.voiza.app.domain.model.ChatMessage
@@ -404,4 +408,28 @@ interface RoleApplicationRepository {
 
     /** Take an open application back out of the queue. */
     suspend fun cancel(applicationId: String): ApiResult<RoleApplication>
+}
+
+/**
+ * The agency's own book (`/api/agency`, migrations 0033 and 0040): what a roster of hosts earned, how
+ * much of it went to a master, and which payout batches exist.
+ *
+ * No method takes an agency id. The server reads the signed-in member and answers with the one agency
+ * they own, so a uuid cannot be pasted into any of these calls and a member who runs nothing is
+ * refused by all four. [subAgencies] is refused for a sub-agency by `requireMasterAgency` — the
+ * brief's "verify restricted access to Master Agency settings" is that answer, not a menu item this
+ * app chooses to hide.
+ */
+interface AgencyBookRepository {
+    /** Name, position in the hierarchy, the split, and what is owed in the account's own currency. */
+    suspend fun position(): ApiResult<AgencyPosition>
+
+    /** The hosts this agency is responsible for, newest first. */
+    suspend fun hosts(limit: Int = 50): ApiResult<List<AgencyHostRow>>
+
+    /** This agency's sub-agencies and their allocations. Master only. */
+    suspend fun subAgencies(): ApiResult<List<AgencySubRow>>
+
+    /** The batches raised for this agency, newest first, without the operators behind them. */
+    suspend fun settlements(limit: Int = 20): ApiResult<List<AgencySettlementRow>>
 }

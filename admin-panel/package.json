@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "capture:panel": "node scripts/capture-panel.cjs",
+    "capture:qa": "node scripts/capture-panel.cjs --walk scripts/walks/qa.cjs"
   },
   "dependencies": {
     "lottie-web": "^5.12.2",

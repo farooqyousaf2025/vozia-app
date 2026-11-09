@@ -46,6 +46,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.voiza.app.domain.model.User
@@ -61,13 +63,14 @@ import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.RCoinGreen
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
+import com.voiza.app.viewmodel.AgencyAccessViewModel
 import com.voiza.app.viewmodel.AuthViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
 
 /**
  * Profile: identity header (agency/host badges), wallet link, lifetime gift
- * stats, the Become a Partner entry, edit-profile dialog (PATCH /api/auth/me)
- * and logout.
+ * stats, the Become a Partner entry, the agency desk for a member who runs one,
+ * edit-profile dialog (PATCH /api/auth/me) and logout.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,13 +80,22 @@ fun ProfileScreen(
     onOpenStore: () -> Unit,
     onOpenQuests: () -> Unit,
     onOpenPartner: () -> Unit,
+    onOpenAgency: () -> Unit,
     onLoggedOut: () -> Unit,
     viewModel: AuthViewModel = viewModel(
         factory = voizaViewModelFactory { AuthViewModel() },
     ),
+    agencyViewModel: AgencyAccessViewModel = viewModel(
+        factory = voizaViewModelFactory { AgencyAccessViewModel() },
+    ),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val user = state.loggedInUser
+    val runsAgency by agencyViewModel.runsAgency.collectAsStateWithLifecycle()
+
+    // The server answers whether this member runs an agency, and it answers again every time the tab is
+    // opened: a grant, a revoke or a suspension all change the entry without a reinstall.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { agencyViewModel.check() }
 
     var editOpen by remember { mutableStateOf(false) }
     var logoutOpen by remember { mutableStateOf(false) }
@@ -213,6 +225,25 @@ fun ProfileScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
         )
+        // The agency desk, offered to a member the platform's own route claims as an agency owner.
+        //
+        // This is the only entry in the app gated on a role, and it gates presentation, not permission:
+        // every `/api/agency` route re-reads `agencies.owner_user_id` on the request whatever this button
+        // decided. It asks the server rather than reading `userType` because that column is raised when an
+        // operator approves an AGENCY application and never lowered, and an agency created any other way
+        // leaves it at USER — so it both hides the desk from real owners and keeps offering it to
+        // withdrawn ones. The answer is the same lookup the desk is served by.
+        if (runsAgency == true) {
+            Spacer(Modifier.height(8.dp))
+            VoizaButton(
+                text = "Agency desk",
+                onClick = onOpenAgency,
+                gradient = Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670))),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+            )
+        }
         Spacer(Modifier.height(8.dp))
         VoizaSecondaryButton(
             text = "Logout",

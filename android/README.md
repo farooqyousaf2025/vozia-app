@@ -537,6 +537,31 @@ valid cert, or `adb reverse` for local testing).
   `partnerApply/HOST` and `partnerApply/COIN_SELLER` — the contextual entry an applicant who arrived
   wondering how to earn is actually looking for. Both are navigation callbacks; neither checks a role
   before showing itself, because nothing here has a privilege to check.
+- `ui/screens/agency` — the agency desk, one screen (`AgencyDashboardScreen`) over one repository
+  (`AgencyBookRepository`) and two view models, and it is read-only by design: the four GETs under
+  `/api/agency` are the whole surface, and the two things the brief asks a master to do that are *not*
+  here are the server's decisions rather than this build's omissions. An agency cannot set a rate and
+  cannot raise a payout batch — `commission:manage` agrees a number, and the operator route refuses to
+  let the person who raised a batch sign it — so the batches card says in plain words that a batch is
+  raised by the platform's finance desk and this screen only shows what has been claimed and paid,
+  rather than hiding a button that would 403. The screen is the same position the server answers with,
+  in the units the server named: coins for what a roster earned (`Commission counted`, `Passed to your
+  master`, `You keep`, and for a master the share *taken in* from its subs shown beside its own, never
+  added to it), money for what is owed (`Available`, `Claimed by open batches`), and the master's
+  agreement as its own sentence (`Master keeps 25% — this agency keeps 75%`) because a bare percentage
+  cannot answer whose rate it was. **A sub never sees the allocation table**: the route refuses it with
+  403 `master_only`, and the view model asks for `/sub-agencies` only when the position it just read
+  says `MASTER`, so the restricted surface is a request that is not made rather than an empty section.
+  Every refusal is drawn as the server's own sentence with a *Try again*, including the 403 a member
+  who runs no agency gets — which is also why the entry point works the way it does.
+  `AgencyAccessViewModel` asks the server, not the profile: it calls `position()` on resume and shows
+  **Agency desk** only when that call succeeded. `users.user_type` cannot answer this question. It is
+  written as a display marker whenever the room service opens a room, is "raised, never lowered" on an
+  approval, and is left at `USER` for an agency created without walking the partner queue — gating on it
+  hid the desk from three real agency owners during the device walk while showing it to a member who ran
+  nothing. A call that never reached the API (no network) leaves the last answer alone rather than
+  guessing.
 - `ui/screens/profile` — identity header with HOST/AGENCY badges plus a gold
   `VIP n` pill whenever the spend tier is above 0, lifetime
-  stats, edit-profile dialog (`PATCH /api/auth/me`), wallet link, logout.
+  stats, edit-profile dialog (`PATCH /api/auth/me`), wallet link, logout, and — for the member the
+  server says runs an active agency — **Agency desk**.

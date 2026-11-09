@@ -146,6 +146,19 @@ import { AuditEntry, listAudit, recordAudit } from '../services/audit.service';
 import { adminPermissions } from '../services/rbac.service';
 
 /**
+ * Whether `?includeTest=true` is honoured (migration 0039).
+ *
+ * The production aggregates exclude QA activity for everyone. Asking to see it back in is a
+ * question about the test programme, so it takes `qa:read` — an operator without it gets the
+ * production number whether they asked for the other one or not, rather than a 403 that would
+ * tell them the filter exists.
+ */
+function maySeeTestMoney(req: Request): boolean {
+  if (req.query?.includeTest !== 'true') return false;
+  return adminPermissions(req.adminRow?.role ?? 'MODERATOR').includes('qa:read');
+}
+
+/**
  * Every admin mutation drops one line here before it responds. The write is deliberately
  * non-fatal: the balance has already moved, and an audit outage must not tempt anyone into
  * replaying a payout. Failures are loud in the server log instead.
@@ -158,8 +171,8 @@ async function logAction(req: Request, entry: Omit<AuditEntry, 'adminId'>): Prom
   }
 }
 
-export const stats = asyncHandler(async (_req: Request, res: Response) => {
-  res.json(await dashboardStats());
+export const stats = asyncHandler(async (req: Request, res: Response) => {
+  res.json(await dashboardStats({ includeTest: maySeeTestMoney(req) }));
 });
 
 export const users = asyncHandler(async (req: Request, res: Response) => {
@@ -653,7 +666,7 @@ export const deleteGiftCategoryEndpoint = asyncHandler(async (req: Request, res:
 
 export const giftAnalyticsEndpoint = asyncHandler(async (req: Request, res: Response) => {
   const days = optionalInt(req.query.days, 'days', { min: 1, max: 365 });
-  res.json(await giftAnalytics({ days }));
+  res.json(await giftAnalytics({ days, includeTest: maySeeTestMoney(req) }));
 });
 
 // --- Uploaded media -------------------------------------------------------

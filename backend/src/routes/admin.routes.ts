@@ -7,6 +7,7 @@ import * as partnerApplication from '../controllers/partner-application.controll
 import agencyRoutes from './agency-admin.routes';
 import earningRoutes from './earning-admin.routes';
 import partnerRoutes from './partner-admin.routes';
+import qaRoutes from './qa.routes';
 import { requireAdminOperator, requirePermission } from '../middleware/auth';
 
 /**
@@ -244,6 +245,11 @@ router.post('/partner-applications/:id/request-info', requirePermission('applica
 // and the rules it publishes are not about a user, a room or an account in any of the senses the
 // blocks above are.
 router.use('/earning', earningRoutes);
+
+// The QA programme's record (migration 0039): which accounts are test accounts, and which financial
+// rows that makes test activity. Its own sub-router because marking reclassifies history rather than
+// editing a balance, so it answers to `qa:manage` and not to any of the permissions above.
+router.use('/qa', qaRoutes);
 
 // Only an approved grant can be revoked, so this is the removal half of `application:review` rather
 // than a third permission — and it is the only place in the product a privileged role is taken away.

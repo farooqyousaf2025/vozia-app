@@ -521,6 +521,54 @@ const CHECKS: CheckDefinition[] = [
          group by p.campaign_id, c.budget_diamonds
       ) x where x.paid > x.budget_diamonds`,
   },
+  {
+    key: 'commission.agency_override_posted',
+    domain: 'commission',
+    label: 'Every master allocation a commission row promises is in the book, routed and sized',
+    unit: 'commission rows whose override is missing, misrouted or mis-sized',
+    expected: '0',
+    // Migration 0040 lets a sub-agency's master take a share, and the split is written twice — once
+    // as coins on the commission row's meta (what was agreed) and once as a journal entry (what is
+    // owed). The comparison is a ratio rather than a number of cents, because the entry was priced at
+    // the coin face value of its own day and a later change to that dial must not read as a breach.
+    // Routing is checked too: an override credited to the wrong agency is the same total and a
+    // different, unhonest book.
+    sql: `
+      select count(*)
+        from transactions t
+        join fin_journal_entries ce on ce.source_kind = 'AGENCY_COMMISSION' and ce.source_id = t.id::text
+        join fin_journal_lines cl on cl.entry_id = ce.id and cl.direction = 'CREDIT'
+         and cl.account_code = 'AGENCY:' || t.agency_id::text
+        left join fin_journal_entries oe on oe.source_kind = 'AGENCY_OVERRIDE' and oe.source_id = t.id::text
+        left join fin_journal_lines od on od.entry_id = oe.id and od.direction = 'DEBIT'
+        left join fin_journal_lines oc on oc.entry_id = oe.id and oc.direction = 'CREDIT'
+       where t.type = 'AGENCY_COMMISSION' and t.status = 'COMPLETED'
+         and (t.created_at >= coalesce($1, t.created_at)) and (t.created_at <= coalesce($2, t.created_at))
+         and coalesce((t.meta->>'overrideCoins')::bigint, 0) > 0
+         and (   oe.id is null
+              or od.account_code is distinct from 'AGENCY:' || t.agency_id::text
+              or oc.account_code is distinct from 'AGENCY:' || (t.meta->>'parentAgencyId')
+              or oc.amount_cents * t.amount_r_coins <> cl.amount_cents * (t.meta->>'overrideCoins')::bigint)`,
+  },
+  {
+    key: 'commission.agency_override_authorised',
+    domain: 'commission',
+    label: 'No master allocation is booked that its commission row did not agree',
+    unit: 'override postings with no agreeing commission row',
+    expected: '0',
+    // The mirror of the check above. A rate changed after a gift landed must not move money that was
+    // already described, and an entry written without a ledger row behind it is exactly the kind of
+    // posting an agency cannot be shown a reason for. Deliberately unwindowed on the journal side:
+    // an authorisation that does not exist is missing now, whatever period is being asked about.
+    sql: `
+      select count(*)
+        from (select source_id from fin_journal_entries where source_kind = 'AGENCY_OVERRIDE') x
+        left join transactions t on t.id::text = x.source_id
+       where t.id is null
+          or t.type <> 'AGENCY_COMMISSION'
+          or t.status <> 'COMPLETED'
+          or coalesce((t.meta->>'overrideCoins')::bigint, 0) <= 0`,
+  },
 ];
 
 export async function reconciliationReport(from?: Date, to?: Date): Promise<ReconciliationReport> {

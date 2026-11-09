@@ -3,6 +3,7 @@ import adminRoutes from './admin.routes';
 import authRoutes from './auth.routes';
 import bannerRoutes from './banner.routes';
 import businessRoutes from './business.routes';
+import agencyOwnerRoutes from './agency-owner.routes';
 import earningRoutes from './earning.routes';
 import emojiRoutes from './emoji.routes';
 import gameRoutes from './game.routes';
@@ -53,6 +54,9 @@ router.use('/admin', adminRoutes);
 // Partner panel: BD representatives and coin sellers. Its own prefix, because a partner
 // credential must never be able to reach an operator route.
 router.use('/business', businessRoutes);
+// An agency's own book, read by the member who runs it. Separate from `/business` because an agency
+// is not a business account: it owns a roster of hosts, and its credential is an ordinary member token.
+router.use('/agency', agencyOwnerRoutes);
 // Become a Partner, from the applicant's side. Deliberately not under `/business`, which a partner
 // credential owns: this router is for an account that does not have a role yet.
 router.use('/role-applications', partnerApplicationRoutes);

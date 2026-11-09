@@ -45,12 +45,32 @@ export const MAX_COMMISSION_BPS = 10_000;
 
 export type RateSource = 'HOST' | 'AGENCY' | 'PLATFORM_DEFAULT';
 
+/** Derived from the parent link, never stored beside it (migration 0040). */
+export type AgencyKind = 'MASTER' | 'SUB';
+
 export type CommissionMembership = {
   agencyId: string;
   agencyName: string;
   commissionBps: number;
   rateSource: RateSource;
+  /** The master this agency reports to, and the share of its commission that master keeps. */
+  parentAgencyId: string | null;
+  parentAgencyName: string | null;
+  parentOverrideBps: number | null;
 };
+
+/**
+ * The master's share of one accrual, in coins.
+ *
+ * Exported because two callers need the same number for two different purposes: the gift path writes
+ * it into the commission row's `meta` so reporting can attribute it without re-deriving a rate that
+ * may since have changed, and `accrueAgencyCommission` prices it into the journal. One implementation
+ * means the figure on the ledger row and the figure in the book cannot drift apart.
+ */
+export function overrideCoinsFor(coins: number, overrideBps: number | null): number {
+  if (coins <= 0 || overrideBps === null || overrideBps <= 0) return 0;
+  return Math.floor((coins * overrideBps) / MAX_COMMISSION_BPS);
+}
 
 /**
  * The platform-wide default.
@@ -100,10 +120,15 @@ export async function commissionMembership(
     agency_name: string;
     host_bps: number | null;
     agency_bps: number | null;
+    parent_agency_id: string | null;
+    parent_name: string | null;
+    parent_override_bps: number | null;
   }>(
-    `SELECT ah.agency_id, a.name AS agency_name, ah.commission_bps AS host_bps, a.commission_bps AS agency_bps
+    `SELECT ah.agency_id, a.name AS agency_name, ah.commission_bps AS host_bps, a.commission_bps AS agency_bps,
+            a.parent_agency_id, p.name AS parent_name, a.parent_override_bps
        FROM agency_hosts ah
        JOIN agencies a ON a.id = ah.agency_id
+       LEFT JOIN agencies p ON p.id = a.parent_agency_id
       WHERE ah.host_user_id = $1 AND ah.status = 'ACTIVE'
       LIMIT 1`,
     [hostUserId],
@@ -111,7 +136,14 @@ export async function commissionMembership(
   const row = rows.rows[0];
   if (!row) return null;
   const rate = resolveCommissionRate(row.host_bps, row.agency_bps, fallback);
-  return { agencyId: row.agency_id, agencyName: row.agency_name, ...rate };
+  return {
+    agencyId: row.agency_id,
+    agencyName: row.agency_name,
+    ...rate,
+    parentAgencyId: row.parent_agency_id,
+    parentAgencyName: row.parent_name,
+    parentOverrideBps: row.parent_override_bps,
+  };
 }
 
 /**
@@ -134,6 +166,22 @@ export function commissionBpsLabel(
 }
 
 /**
+ * What the parent link means for the money, in one line an operator can read without dividing bps.
+ *
+ * A master has no override to give, so its label says what it keeps rather than printing a dash that
+ * could be read as "zero percent agreed". A sub prints both halves of the same split, because the
+ * number that matters to the sub is the one it is left with.
+ */
+export function overrideLabel(overrideBps: number | null, isSub: boolean): string {
+  if (!isSub) return 'Keeps its own roster’s commission';
+  if (overrideBps === null || overrideBps <= 0) return 'Master takes nothing — keeps 100%';
+  const taken = overrideBps / 100;
+  const kept = (MAX_COMMISSION_BPS - overrideBps) / 100;
+  const trim = (n: number) => n.toFixed(2).replace(/\.?0+$/, '');
+  return `Master keeps ${trim(taken)}% — this agency keeps ${trim(kept)}%`;
+}
+
+/**
  * Book what the platform owes an agency for one gift.
  *
  * Keyed on the commission ledger row, so the same send describes its share once: a replayed gift is
@@ -151,11 +199,22 @@ export async function accrueAgencyCommission(
     agencyId: string;
     coins: number;
     memo: string;
+    /** Set when the accruing agency is a sub and its master takes a share (0040). */
+    parentAgencyId?: string | null;
+    parentAgencyName?: string | null;
+    parentOverrideBps?: number | null;
   },
-): Promise<{ posted: boolean; amountMinor: number }> {
-  if (opts.coins <= 0) return { posted: false, amountMinor: 0 };
+): Promise<{
+  posted: boolean;
+  amountMinor: number;
+  overridePosted: boolean;
+  overrideAmountMinor: number;
+  overrideCoins: number;
+}> {
+  const nothing = { posted: false, amountMinor: 0, overridePosted: false, overrideAmountMinor: 0, overrideCoins: 0 };
+  if (opts.coins <= 0) return nothing;
   const face = await coinFaceMinor(client);
-  if (face <= 0) return { posted: false, amountMinor: 0 };
+  if (face <= 0) return nothing;
   const amountMinor = opts.coins * face;
 
   const category: AccountCategory = 'AGENCY';
@@ -170,7 +229,38 @@ export async function accrueAgencyCommission(
       { accountCode: accountCodeFor(category, opts.agencyId), direction: 'CREDIT', amountCents: amountMinor },
     ],
   });
-  return { posted: entry.posted, amountMinor };
+
+  // The master's allocation is a transfer between two payables, not a second expense: the platform
+  // promised `coins` once, and `COMMISSION_EXPENSE` was debited for all of it above. Debiting the
+  // sub and crediting the master moves the same money to whoever negotiated it, and because an
+  // AGENCY position is derived from journal lines both payables follow with no stored balance to
+  // update. Keyed on the same commission row under its own source kind, so a replayed gift finds
+  // both entries rather than writing either twice.
+  const overrideCoins = opts.parentAgencyId
+    ? overrideCoinsFor(opts.coins, opts.parentOverrideBps ?? null)
+    : 0;
+  if (!opts.parentAgencyId || overrideCoins <= 0) {
+    return { posted: entry.posted, amountMinor, overridePosted: false, overrideAmountMinor: 0, overrideCoins: 0 };
+  }
+  const overrideAmountMinor = overrideCoins * face;
+  await ensureOwnerAccount(client, category, opts.parentAgencyId);
+  const share = await postJournal(client, {
+    sourceKind: 'AGENCY_OVERRIDE',
+    sourceId: opts.commissionTransactionId,
+    memo: `${opts.parentAgencyName ?? 'Master agency'} keeps ${((opts.parentOverrideBps ?? 0) / 100).toFixed(2)}% of ${opts.memo}`.slice(0, 300),
+    currency: 'pkr',
+    lines: [
+      { accountCode: accountCodeFor(category, opts.agencyId), direction: 'DEBIT', amountCents: overrideAmountMinor },
+      { accountCode: accountCodeFor(category, opts.parentAgencyId), direction: 'CREDIT', amountCents: overrideAmountMinor },
+    ],
+  });
+  return {
+    posted: entry.posted,
+    amountMinor,
+    overridePosted: share.posted,
+    overrideAmountMinor,
+    overrideCoins,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -182,8 +272,20 @@ export async function accrueAgencyCommission(
 // screen that showed only the total cannot answer "why is this mine".
 // ---------------------------------------------------------------------------
 
+/** The parent link and the owner, as the guard on an agency's own routes reads them. */
+export type AgencyOwnerRow = {
+  id: string;
+  name: string;
+  status: AgencyStatus;
+  parent_agency_id: string | null;
+  parent_override_bps: number | null;
+  owner_user_id: string | null;
+};
+
 export const AGENCY_STATUSES = ['PENDING', 'ACTIVE', 'SUSPENDED'] as const;
 export type AgencyStatus = (typeof AGENCY_STATUSES)[number];
+/** Not a column: which side of the parent link a row sits on (0040). */
+export const AGENCY_KINDS = ['MASTER', 'SUB'] as const;
 export const AGENCY_SETTLEMENT_STATUSES = ['DRAFT', 'APPROVED', 'PAID', 'VOID'] as const;
 /** The same three the withdrawal sheet accepts: one server-owned list, not one per screen. */
 export const AGENCY_PAYOUT_METHODS = ['BANK', 'WALLET', 'USDT'] as const;
@@ -197,15 +299,50 @@ export type AgencyDto = {
   /** The agency's own rate. `null` inherits the platform default, which is the point of 0033. */
   commissionBps: number | null;
   commissionLabel: string;
+  /** MASTER when there is no parent link, SUB when there is one. Derived, never stored (0040). */
+  kind: AgencyKind;
+  parentAgencyId: string | null;
+  parentAgencyName: string | null;
+  /** The share of this sub's commission its master keeps. Null on a master, which has none to give. */
+  parentOverrideBps: number | null;
+  parentOverrideLabel: string;
+  subAgencyCount: number;
   hostCount: number;
   activeHostCount: number;
-  /** Lifetime commission counted in coins — the unit an agency negotiates in. */
+  /** Lifetime commission counted in coins — the unit an agency negotiates in. Gross, before any override. */
   accruedCoins: number;
+  /** Of that gross, what was passed up to the master. Zero on a master. */
+  overrideCoins: number;
+  /** What this agency keeps of its own roster's gross: accrued minus passed up. */
+  retainedCoins: number;
+  /** What it took in from its own sub-agencies' overrides. Zero on a sub, which has none. */
+  receivedOverrideCoins: number;
   openBatches: number;
   paidBatches: number;
   createdAt: string;
   /** null when the account was never opened, which the reconciliation report also says. */
   account: PurposeAccountDto | null;
+};
+
+/** One row of a master's sub-agency allocation table. */
+export type AgencySubRow = {
+  id: string;
+  name: string;
+  status: AgencyStatus;
+  hostCount: number;
+  activeHostCount: number;
+  /** The sub's own rate — what a new host on its roster is taken at. */
+  commissionBps: number | null;
+  commissionLabel: string;
+  parentOverrideBps: number | null;
+  parentOverrideLabel: string;
+  accruedCoins: number;
+  overrideCoins: number;
+  retainedCoins: number;
+  /** The sub's payable in minor units, and the currency it is held in. Null when never opened. */
+  owedMinor: number | null;
+  currency: string | null;
+  createdAt: string;
 };
 
 export type AgencyRosterRow = {
@@ -252,10 +389,16 @@ type AgencyRow = {
   contact_phone: string | null;
   owner_user_id: string | null;
   commission_bps: number | null;
+  parent_agency_id: string | null;
+  parent_override_bps: number | null;
+  parent_agency_name: string | null;
   created_at: Date;
   host_count: string | number;
   active_host_count: string | number;
+  sub_agency_count: string | number;
   accrued_coins: string | number;
+  override_coins: string | number;
+  received_override_coins: string | number;
   open_batches: string | number;
   paid_batches: string | number;
 };
@@ -327,6 +470,9 @@ function toAgencyDto(row: AgencyRow, account: PurposeAccountDto | null, fallback
   // The label describes the agency's own level, so it is resolved with no host rate — which is what
   // "what will a new host on this agency be taken at" means on this screen.
   const rate = resolveCommissionRate(null, row.commission_bps, fallbackBps);
+  const isSub = row.parent_agency_id !== null;
+  const accrued = minor(row.accrued_coins);
+  const passedUp = minor(row.override_coins);
   return {
     id: row.id,
     name: row.name,
@@ -335,9 +481,18 @@ function toAgencyDto(row: AgencyRow, account: PurposeAccountDto | null, fallback
     ownerUserId: row.owner_user_id,
     commissionBps: row.commission_bps,
     commissionLabel: commissionBpsLabel(rate),
+    kind: isSub ? 'SUB' : 'MASTER',
+    parentAgencyId: row.parent_agency_id,
+    parentAgencyName: row.parent_agency_name,
+    parentOverrideBps: row.parent_override_bps,
+    parentOverrideLabel: overrideLabel(row.parent_override_bps, isSub),
+    subAgencyCount: minor(row.sub_agency_count),
     hostCount: minor(row.host_count),
     activeHostCount: minor(row.active_host_count),
-    accruedCoins: minor(row.accrued_coins),
+    accruedCoins: accrued,
+    overrideCoins: passedUp,
+    retainedCoins: accrued - passedUp,
+    receivedOverrideCoins: minor(row.received_override_coins),
     openBatches: minor(row.open_batches),
     paidBatches: minor(row.paid_batches),
     createdAt: new Date(row.created_at).toISOString(),
@@ -346,13 +501,22 @@ function toAgencyDto(row: AgencyRow, account: PurposeAccountDto | null, fallback
 }
 
 const AGENCY_AGGREGATES = `
+       (SELECT p.name FROM agencies p WHERE p.id = a.parent_agency_id) AS parent_agency_name,
+       (SELECT COUNT(*) FROM agencies c WHERE c.parent_agency_id = a.id) AS sub_agency_count,
        (SELECT COUNT(*) FROM agency_hosts h WHERE h.agency_id = a.id) AS host_count,
        (SELECT COUNT(*) FROM agency_hosts h WHERE h.agency_id = a.id AND h.status = 'ACTIVE') AS active_host_count,
        (SELECT COUNT(*) FROM agency_settlements s WHERE s.agency_id = a.id
          AND s.status IN ('DRAFT','APPROVED')) AS open_batches,
        (SELECT COUNT(*) FROM agency_settlements s WHERE s.agency_id = a.id AND s.status = 'PAID') AS paid_batches,
        COALESCE((SELECT SUM(t.amount_r_coins) FROM transactions t
-                  WHERE t.agency_id = a.id AND t.type = 'AGENCY_COMMISSION' AND t.status = 'COMPLETED'), 0) AS accrued_coins`;
+                  WHERE t.agency_id = a.id AND t.type = 'AGENCY_COMMISSION' AND t.status = 'COMPLETED'), 0) AS accrued_coins,
+       -- The override is read from the commission row's own meta, not re-derived from today's rate:
+       -- the split was agreed when the gift landed, and a rate changed since must not rewrite it.
+       COALESCE((SELECT SUM((t.meta->>'overrideCoins')::bigint) FROM transactions t
+                  WHERE t.agency_id = a.id AND t.type = 'AGENCY_COMMISSION' AND t.status = 'COMPLETED'), 0) AS override_coins,
+       COALESCE((SELECT SUM((t.meta->>'overrideCoins')::bigint) FROM transactions t
+                  WHERE t.meta->>'parentAgencyId' = a.id::text
+                    AND t.type = 'AGENCY_COMMISSION' AND t.status = 'COMPLETED'), 0) AS received_override_coins`;
 
 /** Escape the LIKE wildcards instead of deleting them: an agency name may legitimately contain one. */
 function likePattern(term: string): string {
@@ -362,6 +526,8 @@ function likePattern(term: string): string {
 export async function listAgencies(opts: {
   search?: string;
   status?: string;
+  kind?: string;
+  parentAgencyId?: string;
   limit: number;
   offset: number;
 }): Promise<{ agencies: AgencyDto[]; total: number }> {
@@ -373,6 +539,10 @@ export async function listAgencies(opts: {
   };
   if (opts.status) where.push(`a.status = ${bind(opts.status)}::agency_status`);
   if (opts.search) where.push(`a.name ILIKE ${bind(likePattern(opts.search))} ESCAPE '\\'`);
+  // Kind is the parent link, so the filter is the link — there is no stored column to disagree with it.
+  if (opts.kind === 'MASTER') where.push('a.parent_agency_id IS NULL');
+  if (opts.kind === 'SUB') where.push('a.parent_agency_id IS NOT NULL');
+  if (opts.parentAgencyId) where.push(`a.parent_agency_id = ${bind(opts.parentAgencyId)}::uuid`);
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const limit = Math.max(1, Math.min(opts.limit || 25, 200));
   const offset = Math.max(0, opts.offset || 0);
@@ -401,6 +571,7 @@ export async function listAgencies(opts: {
 export async function agencyDetail(agencyId: string): Promise<{
   agency: AgencyDto;
   roster: AgencyRosterRow[];
+  subAgencies: AgencySubRow[];
   settlements: AgencySettlementDto[];
 }> {
   const [row, account, fallbackBps] = await Promise.all([
@@ -441,8 +612,42 @@ export async function agencyDetail(agencyId: string): Promise<{
     ),
   ]);
 
+  const subRows = await many<AgencyRow>(
+    `SELECT a.*, ${AGENCY_AGGREGATES} FROM agencies a WHERE a.parent_agency_id = $1 ORDER BY a.name`,
+    [agencyId],
+  );
+  const subAccounts = subRows.length
+    ? await many<BalanceRow>('SELECT * FROM purpose_account_balances WHERE account_code = ANY($1::text[])', [
+        subRows.map((sub) => accountCodeFor('AGENCY', sub.id)),
+      ])
+    : [];
+  const subByOwner = new Map(subAccounts.map((account) => [account.owner_id, account]));
+
   return {
     agency,
+    subAgencies: subRows.map((sub) => {
+      const subRate = resolveCommissionRate(null, sub.commission_bps, fallbackBps);
+      const position = subByOwner.get(sub.id);
+      const gross = minor(sub.accrued_coins);
+      const up = minor(sub.override_coins);
+      return {
+        id: sub.id,
+        name: sub.name,
+        status: sub.status,
+        hostCount: minor(sub.host_count),
+        activeHostCount: minor(sub.active_host_count),
+        commissionBps: sub.commission_bps,
+        commissionLabel: commissionBpsLabel(subRate),
+        parentOverrideBps: sub.parent_override_bps,
+        parentOverrideLabel: overrideLabel(sub.parent_override_bps, true),
+        accruedCoins: gross,
+        overrideCoins: up,
+        retainedCoins: gross - up,
+        owedMinor: position ? minor(position.available_minor) : null,
+        currency: position?.currency ?? null,
+        createdAt: new Date(sub.created_at).toISOString(),
+      };
+    }),
     roster: rosterRows.map((row) => {
       const rate = resolveCommissionRate(row.host_bps, row.agency_bps, fallbackBps);
       return {
@@ -655,6 +860,157 @@ export async function setHostRate(
 
 function describeRate(bps: number | null): string {
   return bps === null ? 'inherited' : `${(bps / 100).toFixed(2)}%`;
+}
+
+/** The row as a screen reads it, after a write changed it. */
+async function readAgencyDto(agencyId: string): Promise<AgencyDto> {
+  const [row, account, fallback] = await Promise.all([
+    one<AgencyRow>(`SELECT a.*, ${AGENCY_AGGREGATES} FROM agencies a WHERE a.id = $1`, [agencyId]),
+    one<BalanceRow>('SELECT * FROM purpose_account_balances WHERE account_code = $1', [
+      accountCodeFor('AGENCY', agencyId),
+    ]),
+    defaultCommissionBps(),
+  ]);
+  if (!row) throw ApiError.notFound('Agency not found', 'agency_not_found');
+  return toAgencyDto(row, account ? toAccountDto(account) : null, fallback);
+}
+
+/**
+ * Put an agency under a master, or release it to stand on its own.
+ *
+ * The relationship is a money decision, so it is taken here and never inferred from a name or a
+ * screen: the same checks the 0040 trigger makes are made first, in words an operator can act on,
+ * and the trigger remains the backstop for anything that writes the column directly.
+ *
+ * Changing a parent always clears the override. The share was negotiated with the master it was
+ * agreed under, and carrying it to a different master would book money nobody agreed to — the new
+ * master takes nothing until an operator sets a rate for this sub explicitly. History is untouched:
+ * overrides already posted stay posted, because they describe gifts that landed under the old link.
+ */
+export async function setAgencyParent(
+  adminId: string,
+  agencyId: string,
+  parentAgencyId: string | null,
+): Promise<AgencyDto> {
+  if (parentAgencyId === agencyId) {
+    throw ApiError.badRequest('An agency cannot be its own master', 'self_parent');
+  }
+  await withTransaction(async (client) => {
+    const current = await client.query<{
+      name: string;
+      parent_agency_id: string | null;
+      parent_override_bps: number | null;
+    }>('SELECT name, parent_agency_id, parent_override_bps FROM agencies WHERE id = $1 FOR UPDATE', [agencyId]);
+    const agency = current.rows[0];
+    if (!agency) throw ApiError.notFound('Agency not found', 'agency_not_found');
+    if (agency.parent_agency_id === parentAgencyId) return;
+
+    let parentName: string | null = null;
+    if (parentAgencyId !== null) {
+      // Child before parent: the only other write that locks two agency rows is this one, and a
+      // grandchild is refused, so the order cannot invert into a deadlock.
+      const parent = await client.query<{ name: string; status: AgencyStatus; parent_agency_id: string | null }>(
+        'SELECT name, status, parent_agency_id FROM agencies WHERE id = $1 FOR UPDATE',
+        [parentAgencyId],
+      );
+      const master = parent.rows[0];
+      if (!master) throw ApiError.notFound('That master agency does not exist', 'parent_not_found');
+      if (master.parent_agency_id !== null) {
+        throw ApiError.badRequest(`${master.name} is itself a sub-agency and cannot take sub-agencies`, 'parent_not_master');
+      }
+      if (master.status !== 'ACTIVE') {
+        throw ApiError.badRequest(`${master.name} is ${master.status.toLowerCase()} and cannot take sub-agencies`, 'parent_inactive');
+      }
+      const children = await client.query<{ n: string }>(
+        'SELECT COUNT(*)::text AS n FROM agencies WHERE parent_agency_id = $1',
+        [agencyId],
+      );
+      if (Number(children.rows[0]?.n ?? 0) > 0) {
+        throw ApiError.badRequest(
+          `${agency.name} already has ${children.rows[0].n} sub-agencies and cannot itself become one`,
+          'agency_has_children',
+        );
+      }
+      parentName = master.name;
+    }
+
+    const fromName = agency.parent_agency_id
+      ? (await client.query<{ name: string }>('SELECT name FROM agencies WHERE id = $1', [agency.parent_agency_id])).rows[0]?.name ?? null
+      : null;
+
+    await client.query('UPDATE agencies SET parent_agency_id = $2, parent_override_bps = NULL WHERE id = $1', [
+      agencyId,
+      parentAgencyId,
+    ]);
+    await recordAudit(
+      {
+        adminId,
+        action: 'AGENCY_PARENT_UPDATE',
+        targetType: 'agency',
+        targetId: agencyId,
+        summary: `${agency.name}: master ${fromName ?? 'none'} → ${parentName ?? 'none (stands alone)'}`,
+        details: {
+          from: agency.parent_agency_id,
+          to: parentAgencyId,
+          clearedOverrideBps: agency.parent_override_bps,
+        },
+      },
+      client,
+    );
+  });
+  return readAgencyDto(agencyId);
+}
+
+/**
+ * Set, change or clear the share a sub-agency's master keeps of its commission.
+ *
+ * Only a sub has a master to allocate to, so this refuses on a master rather than storing a number
+ * that would never be read — the same reason the trigger refuses the column there. `null` and `0`
+ * both stop the split; `null` records that no share was agreed, `0` that one was and it is nothing.
+ */
+export async function setParentOverride(
+  adminId: string,
+  agencyId: string,
+  overrideBps: number | null,
+): Promise<AgencyDto> {
+  if (overrideBps !== null && (!Number.isInteger(overrideBps) || overrideBps < 0 || overrideBps > MAX_COMMISSION_BPS)) {
+    throw ApiError.badRequest(
+      `An override must be a whole number of basis points between 0 and ${MAX_COMMISSION_BPS}`,
+      'bad_rate',
+    );
+  }
+  await withTransaction(async (client) => {
+    const current = await client.query<{
+      name: string;
+      parent_agency_id: string | null;
+      parent_override_bps: number | null;
+    }>('SELECT name, parent_agency_id, parent_override_bps FROM agencies WHERE id = $1 FOR UPDATE', [agencyId]);
+    const agency = current.rows[0];
+    if (!agency) throw ApiError.notFound('Agency not found', 'agency_not_found');
+    if (agency.parent_agency_id === null) {
+      throw ApiError.badRequest(
+        `${agency.name} is a master agency: put it under a master before allocating a share of its commission`,
+        'override_needs_parent',
+      );
+    }
+    await client.query('UPDATE agencies SET parent_override_bps = $2 WHERE id = $1', [agencyId, overrideBps]);
+    await recordAudit(
+      {
+        adminId,
+        action: 'AGENCY_OVERRIDE_UPDATE',
+        targetType: 'agency',
+        targetId: agencyId,
+        summary: `${agency.name} master allocation ${describeRate(agency.parent_override_bps)} → ${describeRate(overrideBps)}`,
+        details: {
+          parentAgencyId: agency.parent_agency_id,
+          from: agency.parent_override_bps,
+          to: overrideBps,
+        },
+      },
+      client,
+    );
+  });
+  return readAgencyDto(agencyId);
 }
 
 // ---------------------------------------------------------------------------
@@ -921,4 +1277,235 @@ export async function voidAgencySettlement(adminId: string, settlementId: string
     );
     return readSettlement(client, settlementId);
   });
+}
+
+// ---------------------------------------------------------------------------
+// The agency's own side: what the member who runs it is allowed to see.
+//
+// Deliberately its own shapes rather than a filter over `agencyDetail`. The operator's desk carries
+// the things a partner must not read — another operator's username on a batch, a payout reference
+// from the platform's bank rails, a host's phone number — and a screen that hid them client-side
+// would still be sending them. Everything below is derived from the agency's own rows, addressed by
+// the owner link alone, and priced in the two units an agency actually negotiates in: coins earned
+// and money owed.
+// ---------------------------------------------------------------------------
+
+export type AgencySelfDto = {
+  id: string;
+  name: string;
+  kind: AgencyKind;
+  status: AgencyStatus;
+  createdAt: string;
+  /** What a new host on this roster is taken at, and which level decided it. */
+  commissionLabel: string;
+  hostCount: number;
+  activeHostCount: number;
+  subAgencyCount: number;
+  /** The master this agency reports to. Null for a master, which has none. */
+  master: { id: string; name: string; overrideBps: number | null; overrideLabel: string } | null;
+  earnings: {
+    /** Lifetime commission counted on this agency's own roster, gross of any override. */
+    accruedCoins: number;
+    /** Of that, passed up to the master. */
+    overrideCoins: number;
+    /** What this agency keeps. */
+    retainedCoins: number;
+    /** Taken in from this agency's own sub-agencies. Zero for a sub. */
+    receivedOverrideCoins: number;
+    /** The last thirty days, so a monthly figure is readable without the operator's book. */
+    last30dCoins: number;
+    last30dOverrideCoins: number;
+  };
+  account: {
+    currency: string;
+    /** Settled and claimable. */
+    availableMinor: number;
+    /** Claimed by a batch that has not been paid yet. */
+    pendingMinor: number;
+    frozenMinor: number;
+  } | null;
+};
+
+export type AgencySelfHost = {
+  username: string;
+  avatarUrl: string | null;
+  status: AgencyStatus;
+  joinedAt: string;
+  commissionLabel: string;
+  accruedCoins: number;
+  last30dCoins: number;
+};
+
+export type AgencySelfSub = {
+  id: string;
+  name: string;
+  status: AgencyStatus;
+  hostCount: number;
+  activeHostCount: number;
+  parentOverrideBps: number | null;
+  parentOverrideLabel: string;
+  accruedCoins: number;
+  overrideCoins: number;
+  retainedCoins: number;
+};
+
+export type AgencySelfSettlement = {
+  reference: string;
+  amount: number;
+  currency: string;
+  status: string;
+  periodFrom: string;
+  periodTo: string;
+  entryCount: number;
+  createdAt: string;
+  paidAt: string | null;
+};
+
+/** What one agency's position is, in the units its owner reads it in. */
+export async function agencySelfPosition(agencyId: string): Promise<AgencySelfDto> {
+  const [row, recent, account, fallback] = await Promise.all([
+    one<AgencyRow>(`SELECT a.*, ${AGENCY_AGGREGATES} FROM agencies a WHERE a.id = $1`, [agencyId]),
+    one<{ coins: string | number; override_coins: string | number }>(
+      `SELECT COALESCE(SUM(t.amount_r_coins), 0) AS coins,
+              COALESCE(SUM((t.meta->>'overrideCoins')::bigint), 0) AS override_coins
+         FROM transactions t
+        WHERE t.agency_id = $1 AND t.type = 'AGENCY_COMMISSION' AND t.status = 'COMPLETED'
+          AND t.created_at >= now() - INTERVAL '30 days'`,
+      [agencyId],
+    ),
+    one<BalanceRow>('SELECT * FROM purpose_account_balances WHERE account_code = $1', [
+      accountCodeFor('AGENCY', agencyId),
+    ]),
+    defaultCommissionBps(),
+  ]);
+  if (!row) throw ApiError.notFound('Agency not found', 'agency_not_found');
+
+  const rate = resolveCommissionRate(null, row.commission_bps, fallback);
+  const isSub = row.parent_agency_id !== null;
+  const accrued = minor(row.accrued_coins);
+  const passedUp = minor(row.override_coins);
+  return {
+    id: row.id,
+    name: row.name,
+    kind: isSub ? 'SUB' : 'MASTER',
+    status: row.status,
+    createdAt: new Date(row.created_at).toISOString(),
+    commissionLabel: commissionBpsLabel(rate),
+    hostCount: minor(row.host_count),
+    activeHostCount: minor(row.active_host_count),
+    subAgencyCount: minor(row.sub_agency_count),
+    master: isSub
+      ? {
+          id: row.parent_agency_id as string,
+          name: row.parent_agency_name ?? '',
+          overrideBps: row.parent_override_bps,
+          overrideLabel: overrideLabel(row.parent_override_bps, true),
+        }
+      : null,
+    earnings: {
+      accruedCoins: accrued,
+      overrideCoins: passedUp,
+      retainedCoins: accrued - passedUp,
+      receivedOverrideCoins: minor(row.received_override_coins),
+      last30dCoins: minor(recent?.coins ?? 0),
+      last30dOverrideCoins: minor(recent?.override_coins ?? 0),
+    },
+    account: account
+      ? {
+          currency: account.currency,
+          availableMinor: minor(account.available_minor),
+          pendingMinor: minor(account.pending_minor),
+          frozenMinor: minor(account.frozen_minor),
+        }
+      : null,
+  };
+}
+
+/**
+ * The hosts this agency is responsible for.
+ *
+ * No phone and no membership id: a roster is a list of people, and the two things an operator needs
+ * in order to act on a row are not things a partner needs in order to read it.
+ */
+export async function agencySelfRoster(agencyId: string, limit: number): Promise<AgencySelfHost[]> {
+  const fallback = await defaultCommissionBps();
+  const rows = await many<{
+    username: string;
+    avatar_url: string | null;
+    status: AgencyStatus;
+    joined_at: Date;
+    host_bps: number | null;
+    agency_bps: number | null;
+    accrued_coins: string | number;
+    recent_coins: string | number;
+  }>(
+    `SELECT u.username, u.avatar_url, ah.status, ah.joined_at,
+            ah.commission_bps AS host_bps, a.commission_bps AS agency_bps,
+            COALESCE((SELECT SUM(t.amount_r_coins) FROM transactions t
+                       WHERE t.agency_id = $1 AND t.receiver_id = ah.host_user_id
+                         AND t.type = 'AGENCY_COMMISSION' AND t.status = 'COMPLETED'), 0) AS accrued_coins,
+            COALESCE((SELECT SUM(t.amount_r_coins) FROM transactions t
+                       WHERE t.agency_id = $1 AND t.receiver_id = ah.host_user_id
+                         AND t.type = 'AGENCY_COMMISSION' AND t.status = 'COMPLETED'
+                         AND t.created_at >= now() - INTERVAL '30 days'), 0) AS recent_coins
+       FROM agency_hosts ah
+       JOIN users u ON u.id = ah.host_user_id
+       JOIN agencies a ON a.id = ah.agency_id
+      WHERE ah.agency_id = $1
+      ORDER BY ah.joined_at DESC
+      LIMIT ${Math.max(1, Math.min(limit, 200))}`,
+    [agencyId],
+  );
+  return rows.map((row) => ({
+    username: row.username,
+    avatarUrl: row.avatar_url,
+    status: row.status,
+    joinedAt: new Date(row.joined_at).toISOString(),
+    commissionLabel: commissionBpsLabel(resolveCommissionRate(row.host_bps, row.agency_bps, fallback)),
+    accruedCoins: minor(row.accrued_coins),
+    last30dCoins: minor(row.recent_coins),
+  }));
+}
+
+/** A master's allocation table: each sub-agency, and what it keeps after its share comes up. */
+export async function agencySelfSubs(agencyId: string): Promise<AgencySelfSub[]> {
+  const rows = await many<AgencyRow>(
+    `SELECT a.*, ${AGENCY_AGGREGATES} FROM agencies a WHERE a.parent_agency_id = $1 ORDER BY a.name`,
+    [agencyId],
+  );
+  return rows.map((sub) => {
+    const gross = minor(sub.accrued_coins);
+    const up = minor(sub.override_coins);
+    return {
+      id: sub.id,
+      name: sub.name,
+      status: sub.status,
+      hostCount: minor(sub.host_count),
+      activeHostCount: minor(sub.active_host_count),
+      parentOverrideBps: sub.parent_override_bps,
+      parentOverrideLabel: overrideLabel(sub.parent_override_bps, true),
+      accruedCoins: gross,
+      overrideCoins: up,
+      retainedCoins: gross - up,
+    };
+  });
+}
+
+/** The batches raised for this agency, without the operator or the bank detail beside them. */
+export async function agencySelfSettlements(agencyId: string, limit: number): Promise<AgencySelfSettlement[]> {
+  const rows = await many<SettlementRow>(
+    `${SETTLEMENT_SELECT} WHERE s.agency_id = $1 ORDER BY s.created_at DESC LIMIT ${Math.max(1, Math.min(limit, 100))}`,
+    [agencyId],
+  );
+  return rows.map((row) => ({
+    reference: row.reference,
+    amount: minor(row.amount_minor),
+    currency: row.currency,
+    status: row.status,
+    periodFrom: new Date(row.period_from).toISOString(),
+    periodTo: new Date(row.period_to).toISOString(),
+    entryCount: Number(row.entry_count ?? 0),
+    createdAt: new Date(row.created_at).toISOString(),
+    paidAt: row.paid_at ? new Date(row.paid_at).toISOString() : null,
+  }));
 }

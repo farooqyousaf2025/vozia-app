@@ -86,6 +86,15 @@ import type {
   PublishedBanner,
   PublishedEmojiCatalogue,
   PublishedLadder,
+  QaCohortEntry,
+  QaCohortResult,
+  QaIdentity,
+  QaIdentityListResult,
+  QaIdentityQuery,
+  QaMarkBody,
+  QaMoneyListResult,
+  QaMoneyQuery,
+  QaMoneySummary,
   QuestInput,
   QuestSettings,
   QuestSettingsInput,
@@ -1298,12 +1307,14 @@ export const api = {
    * rather than raising a second batch over the same accruals.
    */
   agencies(
-    params: { search?: string; status?: string; page?: number; limit?: number } = {},
+    params: { search?: string; status?: string; kind?: string; parentAgencyId?: string; page?: number; limit?: number } = {},
   ): Promise<AgencyListResult> {
     return request<AgencyListResult>(
       `/api/admin/agencies${query({
         search: params.search,
         status: params.status,
+        kind: params.kind,
+        parentAgencyId: params.parentAgencyId,
         page: params.page ?? 1,
         limit: params.limit ?? 25,
       })}`,
@@ -1319,6 +1330,27 @@ export const api = {
     return request<{ agency: Agency }>(`/api/admin/agencies/${encodeURIComponent(id)}/rate`, {
       method: 'PUT',
       body: { commissionBps },
+    });
+  },
+
+  /**
+   * Put an agency under a master, or release it (`null`).
+   *
+   * The field is always sent, because the server refuses an omitted one rather than reading it as
+   * "detach" — and detaching is a real decision here, not a no-op: it stops every future share.
+   */
+  setAgencyParent(id: string, parentAgencyId: string | null): Promise<{ agency: Agency }> {
+    return request<{ agency: Agency }>(`/api/admin/agencies/${encodeURIComponent(id)}/parent`, {
+      method: 'PUT',
+      body: { parentAgencyId },
+    });
+  },
+
+  /** The share of a sub-agency's commission its master keeps. `null` means no share was ever agreed. */
+  setAgencyParentOverride(id: string, parentOverrideBps: number | null): Promise<{ agency: Agency }> {
+    return request<{ agency: Agency }>(`/api/admin/agencies/${encodeURIComponent(id)}/override`, {
+      method: 'PUT',
+      body: { parentOverrideBps },
     });
   },
 
@@ -1599,6 +1631,48 @@ export const api = {
     return request<{ key: string; value: Record<string, unknown>; updatedAt: string }>(
       `/api/admin/business/config/${encodeURIComponent(key)}`,
       { method: 'PUT', body: { value } },
+    );
+  },
+
+  // ---- the QA programme (migration 0039) ------------------------------------
+  // Reading is `qa:read`, marking is `qa:manage`. Neither moves a balance: marking reclassifies an
+  // account's financial history through a derived view, so the server answers retroactively and the
+  // panel never sends a flag for a money row.
+  qaIdentities(params: QaIdentityQuery = {}): Promise<QaIdentityListResult> {
+    return request<QaIdentityListResult>(
+      `/api/admin/qa/identities${query({
+        ownerKind: params.ownerKind,
+        country: params.country,
+        search: params.search,
+        includeProduction: params.includeProduction ? 'true' : undefined,
+        page: params.page ?? 1,
+        limit: params.limit ?? 25,
+      })}`,
+    );
+  },
+
+  markQaIdentity(body: QaMarkBody): Promise<QaIdentity> {
+    return request<QaIdentity>('/api/admin/qa/identities/mark', { method: 'POST', body });
+  },
+
+  markQaCohort(accounts: QaCohortEntry[]): Promise<QaCohortResult> {
+    return request<QaCohortResult>('/api/admin/qa/identities/cohort', { method: 'POST', body: { accounts } });
+  },
+
+  qaMoneySummary(): Promise<QaMoneySummary> {
+    return request<QaMoneySummary>('/api/admin/qa/money/summary');
+  },
+
+  qaMoney(params: QaMoneyQuery = {}): Promise<QaMoneyListResult> {
+    return request<QaMoneyListResult>(
+      `/api/admin/qa/money${query({
+        isTest: params.isTest === undefined ? undefined : String(params.isTest),
+        sourceTable: params.sourceTable,
+        from: params.from,
+        to: params.to,
+        page: params.page ?? 1,
+        limit: params.limit ?? 25,
+      })}`,
     );
   },
 

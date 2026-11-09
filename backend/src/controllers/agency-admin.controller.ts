@@ -11,6 +11,7 @@ import {
   requireUuid,
 } from '../utils/http';
 import {
+  AGENCY_KINDS,
   AGENCY_PAYOUT_METHODS,
   AGENCY_SETTLEMENT_STATUSES,
   AGENCY_STATUSES,
@@ -22,8 +23,10 @@ import {
   listAgencySettlements,
   payAgencySettlement,
   raiseAgencySettlement,
+  setAgencyParent,
   setAgencyRate,
   setHostRate,
+  setParentOverride,
   voidAgencySettlement,
 } from '../services/agency.service';
 import { claimIdempotency, completeIdempotency } from '../services/purpose-account.service';
@@ -84,7 +87,9 @@ export const agencies = asyncHandler(async (req: Request, res: Response) => {
   const { limit, offset, page: pageNumber } = page(req);
   const search = typeof req.query?.search === 'string' && req.query.search.trim() ? req.query.search.trim() : undefined;
   const status = optionalEnum(req.query?.status, 'status', AGENCY_STATUSES);
-  const result = await listAgencies({ search, status, limit, offset });
+  const kind = optionalEnum(req.query?.kind, 'kind', AGENCY_KINDS);
+  const parentAgencyId = req.query?.parentAgencyId ? requireUuid(req.query.parentAgencyId, 'parentAgencyId') : undefined;
+  const result = await listAgencies({ search, status, kind, parentAgencyId, limit, offset });
   res.json({ ...result, page: pageNumber, limit });
 });
 
@@ -95,6 +100,29 @@ export const agency = asyncHandler(async (req: Request, res: Response) => {
 export const putAgencyRate = asyncHandler(async (req: Request, res: Response) => {
   const agencyId = requireUuid(req.params.id, 'agencyId');
   res.json({ agency: await setAgencyRate(adminId(req), agencyId, rateField(req.body, 'commissionBps')) });
+});
+
+/**
+ * Put an agency under a master, or release it.
+ *
+ * `parentAgencyId` must be present, like a rate: a PUT that silently changed nothing when the
+ * operator meant to detach would leave a sub-agency allocating commission to a master it was
+ * supposed to have left.
+ */
+export const putAgencyParent = asyncHandler(async (req: Request, res: Response) => {
+  const agencyId = requireUuid(req.params.id, 'agencyId');
+  if (!req.body || !('parentAgencyId' in req.body)) {
+    throw ApiError.badRequest('parentAgencyId is required: send a uuid, or null to release the agency', 'parent_required');
+  }
+  const raw = req.body.parentAgencyId;
+  const parentAgencyId = raw === null ? null : requireUuid(raw, 'parentAgencyId');
+  res.json({ agency: await setAgencyParent(adminId(req), agencyId, parentAgencyId) });
+});
+
+/** The share a master keeps of its sub-agency's commission. */
+export const putAgencyOverride = asyncHandler(async (req: Request, res: Response) => {
+  const agencyId = requireUuid(req.params.id, 'agencyId');
+  res.json({ agency: await setParentOverride(adminId(req), agencyId, rateField(req.body, 'parentOverrideBps')) });
 });
 
 export const putHostRate = asyncHandler(async (req: Request, res: Response) => {

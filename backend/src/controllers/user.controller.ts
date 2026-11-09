@@ -15,6 +15,7 @@ import {
   unblockUser,
 } from '../services/social.service';
 import { emitToUser } from '../services/socket.service';
+import { excludeTestSql } from '../services/qa.service';
 import { RoomRow, UserRow } from '../types/db';
 import { ApiError, asyncHandler, optionalInt, requireInt, requireString } from '../utils/http';
 import { toRoom, toUser } from '../utils/serialize';
@@ -147,6 +148,9 @@ export const leaderboard = asyncHandler(async (req: Request, res: Response) => {
   const boardKey: BoardKey = req.query.role === 'senders' ? 'senders' : 'receivers';
   const board = BOARDS[boardKey];
 
+  // Migration 0039: a QA account never appears on a member-facing board, and a gift it sent never
+  // puts a real member on one. Both halves matter — excluding only the marked user would let a
+  // tester's spending crown a production host.
   const rows = await many<{
     id: string;
     username: string;
@@ -161,6 +165,8 @@ export const leaderboard = asyncHandler(async (req: Request, res: Response) => {
        FROM transactions t
        JOIN users u ON u.id = ${board.column}
       WHERE t.type = 'GIFT_SENT' AND t.created_at >= now() - $1::interval
+        AND NOT u.is_test
+        AND ${excludeTestSql('t', ['sender_id', 'receiver_id', 'agency_id'])}
       GROUP BY u.id, u.username, u.avatar_url, u.user_type, u.is_verified, u.xp
       ORDER BY earned DESC LIMIT $2`,
     [interval, limit],

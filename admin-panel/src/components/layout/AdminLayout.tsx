@@ -67,6 +67,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/finance', label: 'Finance book', icon: <IconBook className="h-5 w-5" />, permission: 'finance:read' },
   { to: '/accounts', label: 'Purpose accounts', icon: <IconScales className="h-5 w-5" />, permission: 'account:read' },
   { to: '/operators', label: 'Operators', icon: <IconKey className="h-5 w-5" />, permission: 'operator:manage' },
+  { to: '/qa', label: 'QA programme', icon: <IconShieldCheck className="h-5 w-5" />, permission: 'qa:read' },
   { to: '/audit', label: 'Audit', icon: <IconAudit className="h-5 w-5" />, permission: 'audit:read' },
 ];
 

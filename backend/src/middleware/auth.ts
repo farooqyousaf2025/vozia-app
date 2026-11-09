@@ -3,6 +3,7 @@ import { one } from '../config/db';
 import { findAdminById } from '../services/admin.service';
 import { AdminRow, BusinessAccountRow } from '../types/db';
 import { BusinessPermission, Permission, adminHasPermission, businessHasPermission } from '../services/rbac.service';
+import { AgencyOwnerRow } from '../services/agency.service';
 import {
   AccessTokenPayload,
   AdminTokenPayload,
@@ -21,6 +22,8 @@ declare global {
       /** Loaded on demand by requirePermission / requireBusiness; never taken from the token. */
       adminRow?: AdminRow | null;
       businessRow?: BusinessAccountRow | null;
+      /** Loaded on demand by requireAgencyOwner; the agency the signed-in member runs. */
+      agencyRow?: AgencyOwnerRow | null;
     }
   }
 }
@@ -123,3 +126,50 @@ export const requireBusiness = (...permissions: BusinessPermission[]) =>
       }
     }
   });
+
+/**
+ * The member who runs an agency, with that agency's row.
+ *
+ * An agency is not an operator and not a business account: it is a `users` row the partner queue
+ * promoted (0035), so the credential is an ordinary member token and the scope is decided by the
+ * database rather than by anything the client sends. The row is re-read on every request for the
+ * same reason `requirePermission` re-reads an operator: a twelve-hour token cannot be allowed to
+ * outlive a revoke, and an agency suspended since signing in must not keep reading its book.
+ *
+ * `owner_user_id` is the whole authorisation. There is no agency id in a path or a body, so a member
+ * cannot ask for another agency's roster by naming its uuid.
+ */
+export const requireAgencyOwner = guard(async (req) => {
+  const payload = verifyToken(bearer(req));
+  if (payload.scope !== 'user') throw ApiError.forbidden('Member token required', 'member_token_required');
+  req.user = payload;
+  const row = await one<AgencyOwnerRow>(
+    `SELECT id, name, status, parent_agency_id, parent_override_bps, owner_user_id
+       FROM agencies
+      WHERE owner_user_id = $1 AND status = 'ACTIVE'
+      ORDER BY created_at
+      LIMIT 1`,
+    [payload.sub],
+  );
+  if (!row) {
+    throw ApiError.forbidden('This member does not run an active agency', 'agency_not_found');
+  }
+  req.agencyRow = row;
+});
+
+/**
+ * A master's own routes: the sub-agency roster and the allocations under it.
+ *
+ * A sub-agency reaches its own position through `requireAgencyOwner` and is refused here, which is
+ * what makes the brief's "restricted access to Master Agency settings" a testable answer rather than
+ * a hidden menu item. It runs the owner lookup itself so a route cannot mount the refusal without
+ * the authentication.
+ */
+export const requireMasterAgency = [
+  requireAgencyOwner,
+  guard(async (req) => {
+    if (req.agencyRow && req.agencyRow.parent_agency_id !== null) {
+      throw ApiError.forbidden('A sub-agency has no sub-agencies of its own', 'master_only');
+    }
+  }),
+];

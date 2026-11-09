@@ -6,6 +6,7 @@ import com.voiza.app.data.notifications.VoizaNotifier
 import com.voiza.app.data.remote.NetworkModule
 import com.voiza.app.data.remote.SessionManager
 import com.voiza.app.data.remote.VoizaApiService
+import com.voiza.app.data.repository.AgencyBookRepositoryImpl
 import com.voiza.app.data.repository.AuthRepositoryImpl
 import com.voiza.app.data.repository.BannerRepositoryImpl
 import com.voiza.app.data.repository.GameRepositoryImpl
@@ -18,6 +19,7 @@ import com.voiza.app.data.repository.SocialRepositoryImpl
 import com.voiza.app.data.repository.StoreRepositoryImpl
 import com.voiza.app.data.repository.WalletRepositoryImpl
 import com.voiza.app.data.socket.VoizaSocketClient
+import com.voiza.app.domain.repository.AgencyBookRepository
 import com.voiza.app.domain.repository.AuthRepository
 import com.voiza.app.domain.repository.BannerRepository
 import com.voiza.app.domain.repository.GiftRepository
@@ -79,6 +81,10 @@ object ServiceLocator {
     lateinit var roleApplicationRepository: RoleApplicationRepository
         private set
 
+    /** The book of the agency this member runs, if any: earnings, the split, roster and batches. */
+    lateinit var agencyBookRepository: AgencyBookRepository
+        private set
+
     /** Follows, blocks and reports between members — the card opened from a roster row or a chat line. */
     lateinit var socialRepository: SocialRepository
         private set
@@ -127,6 +133,7 @@ object ServiceLocator {
             questRepository = QuestRepositoryImpl(apiService, sessionManager)
             pkRepository = PkRepositoryImpl(apiService)
             roleApplicationRepository = RoleApplicationRepositoryImpl(apiService)
+            agencyBookRepository = AgencyBookRepositoryImpl(apiService)
             socialRepository = SocialRepositoryImpl(apiService)
 
             joinRoomUseCase = JoinRoomUseCase(roomRepository) { roomId ->

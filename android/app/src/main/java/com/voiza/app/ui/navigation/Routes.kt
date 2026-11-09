@@ -28,6 +28,11 @@ object Routes {
     const val PARTNER_APPLY_BASE = "partnerApply"
     const val PARTNER_APPLY_PATTERN = "$PARTNER_APPLY_BASE/{$PARTNER_ROLE_ARG}"
 
+    // The agency desk. One route, no id: `/api/agency/*` resolves the agency from the member's token,
+    // so there is nothing to carry in a path and nothing to forge. A master and a sub read the same
+    // route and get the book their own position describes.
+    const val AGENCY = "agency"
+
     // Nested under the room path so opening the desk never pops the room entry, which
     // keeps PartyRoomViewModel (and the LiveKit voice connection it owns) alive.
     const val GAME_LOBBY_PATTERN = "$ROOM_PATTERN/games"

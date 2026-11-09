@@ -5,7 +5,7 @@ import { many, one, query, withTransaction } from '../config/db';
 import { rateLimit, redis } from '../config/redis';
 import { GiftBoxOutcomeRow, GiftRow, TransactionRow, UserRow, WithdrawalRow } from '../types/db';
 import { ApiError } from '../utils/http';
-import { accrueAgencyCommission, commissionBpsLabel, commissionMembership } from './agency.service';
+import { accrueAgencyCommission, commissionBpsLabel, commissionMembership, overrideCoinsFor } from './agency.service';
 import { readConfig } from './business.service';
 import { FIN_ACCOUNTS, postCoinSpread, postJournal } from './finance-journal.service';
 import { announceBonusChange, earnWithin } from './earning.service';
@@ -456,6 +456,12 @@ export async function sendGift(input: {
     if (membership && totalRCoins > 0) {
       const commissionAmount = Math.floor((totalRCoins * membership.commissionBps) / 10_000);
       if (commissionAmount > 0) {
+        // The master's share is decided from the same read that decided the host's rate, and written
+        // onto the commission row so reporting can attribute a split that was agreed when the gift
+        // landed rather than re-deriving it from a rate that may since have changed.
+        const overrideCoins = membership.parentAgencyId
+          ? overrideCoinsFor(commissionAmount, membership.parentOverrideBps)
+          : 0;
         const rows = await client.query<TransactionRow>(
           `INSERT INTO transactions (type, status, receiver_id, amount_r_coins, room_id, agency_id, meta)
            VALUES ('AGENCY_COMMISSION','COMPLETED',$1,$2,$3,$4,$5) RETURNING *`,
@@ -468,6 +474,9 @@ export async function sendGift(input: {
               sourceGiftId: gift.id,
               commissionBps: membership.commissionBps,
               rateSource: membership.rateSource,
+              parentAgencyId: membership.parentAgencyId,
+              overrideBps: membership.parentOverrideBps,
+              overrideCoins,
             }),
           ],
         );
@@ -477,6 +486,9 @@ export async function sendGift(input: {
           agencyId: membership.agencyId,
           coins: commissionAmount,
           memo: `${membership.agencyName} — ${commissionBpsLabel(membership)} of ${gift.name} x${input.quantity} (${commissionAmount} R-coins)`,
+          parentAgencyId: membership.parentAgencyId,
+          parentAgencyName: membership.parentAgencyName,
+          parentOverrideBps: membership.parentOverrideBps,
         });
       }
     }

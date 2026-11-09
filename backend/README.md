@@ -1357,6 +1357,205 @@ the engine's own word: the member's bonus pocket must equal what this deck minte
 the spend, and the campaign's budget total must equal the sum of its payouts. Its teardown retires every rule
 it published, and its first act is to retire anything an earlier crashed run left listening.
 
+## QA marking: the flag is derived, never copied (migration 0039)
+
+The delivery brief asks for two things that pull in opposite directions. Test accounts and test
+transactions must be unmistakable in the backend record, and the people doing the testing must appear
+in the app under their real approved display names. So the marker lives *beside* the identity and never
+inside it: `is_test` says "this row belongs to the QA programme", `qa_ref` is the internal identifier the
+QA team tracks (`PK-HOST-01`, `QA-8NHP2Y-GIFTER`), and `username` / `display_name` / `name` keep holding
+what the member or partner is actually called. Nothing in this migration renames anybody, and neither
+column is read by `toUser`, so no member-facing payload can carry one.
+
+`qa_ref` is enforced by a CHECK, not by form validation: `<table>_test_needs_ref CHECK (NOT is_test OR
+qa_ref IS NOT NULL)`. A test account nobody can name is a test account that will be mistaken for a real
+one in six months, and a script that skips the form must still be refused. A partial unique index keeps
+one reference meaning one account for the life of the programme; a partial index on the flag keeps the
+production read cheap, because almost every row is production and holds no reference at all.
+
+### Why the money rows carry no flag of their own
+
+The obvious design is `is_test` on `transactions`, `payment_proofs`, `recharge_orders` and the rest,
+copied from the owner at insert. It is wrong for this product, because accounts get marked *after* they
+have transacted — which is exactly what happens when an existing demo account is adopted into the QA
+programme. A copied flag would leave every earlier row looking like production money, and the only way
+to repair it would be to rewrite financial history.
+
+So the marking is derived once, in the `qa_money_marking` view: a money row is test activity when any
+account it belongs to is test activity. It cannot drift, it needs no trigger, and it answers
+retroactively the moment an account is marked. `test_refs` names whose test it was, so a report can say
+which cohort produced the number rather than just that it is excluded. `qa_production_money` is the
+read the reports and the QA export actually run.
+
+Eleven tables are covered: `transactions`, `payment_proofs`, `recharge_orders`, `withdrawal_requests`,
+`promo_grants`, `earning_payouts`, `commission_entries`, `commission_settlements`, `agency_settlements`,
+`game_settlements` and `fin_journal_entries`. A game settlement has no `id` — it is keyed by
+`session_id`, and the money belongs to everyone who sat at it, so its owners come from
+`game_participants`.
+
+Journal entries need both halves of the answer. Their *lines* post to platform accounts
+(`COIN_LIABILITY`, the tax and commission accounts) which have no owner at all, so reading only the
+lines would call every gift's entry production money even when a QA account sent the gift. The entry
+therefore also inherits from the row its `source_id` names. That id is either a bare UUID or
+`prefix:UUID` (a reversal names `commission:<id>`), so the last 36 characters are taken and UUID-checked
+before the cast, then looked up in the same owner CTE rather than switched on `source_kind`. A new
+financial table joins the marking by being added to that CTE — there is no second list of kinds to keep
+in step.
+
+The acting operator is deliberately **not** an owner. A QA-flagged admin who approves a real partner's
+withdrawal has not made that withdrawal test money; the money still belongs to the partner. Who acted
+is `admin_audit`'s job.
+
+### The endpoints, and the two permissions
+
+`qa:read` and `qa:manage` are separate, and `qa:manage` is not a balance adjustment — marking
+reclassifies an account's whole financial history, which is a bigger claim than moving one number.
+`SUPER_ADMIN` holds both; `FINANCE_ADMIN` holds `qa:read` only, because finance needs to see what the
+exclusion did to its own totals without being able to cause it.
+
+| Route | Permission |
+| --- | --- |
+| `GET /api/admin/qa/identities` | `qa:read` |
+| `GET /api/admin/qa/money/summary` | `qa:read` |
+| `GET /api/admin/qa/money` | `qa:read` |
+| `POST /api/admin/qa/identities/mark` | `qa:manage` |
+| `POST /api/admin/qa/identities/cohort` | `qa:manage` |
+
+`mark` locks the row `FOR UPDATE`, refuses the last active production `SUPER_ADMIN`
+(`last_production_super_admin` — the programme must not be able to lock itself out of its own controls),
+keeps the reference when unmarking so the audit trail still names the cohort, and writes `QA_MARK` /
+`QA_UNMARK` to `admin_audit` inside the same transaction. `cohort` takes up to 200 accounts, rejects a
+duplicate `kind:id` pair, and is all-or-nothing: one bad id rolls the whole batch back rather than
+leaving half a country marked.
+
+### What production reports now exclude
+
+`dashboardStats` and `giftAnalytics` take `includeTest`, and the member leaderboard filters
+unconditionally. The exclusion is on *every* owner of a gift, not just the row's user: a tester's
+spending must not crown a production host, so the leaderboard drops a send whose sender, receiver or
+agency is marked. `excludeTestSql` is a `NOT EXISTS`, not a join, so an ownerless platform row stays
+production instead of vanishing.
+
+`?includeTest=true` is honoured only for an operator who actually holds `qa:read`. One without it gets
+the production number whether they asked for the other one or not, rather than a 403 that would tell
+them the filter exists.
+
+### Tests
+
+`npm run test:qa` (55) needs the running stack and a development database. The three checks worth
+reading first guard the design decision above: marking an account reclassifies transactions that
+already existed, unmarking puts them back with the transaction id list byte-identical (no financial row
+rewritten), and neither column ever reaches a member profile or the leaderboard payload. The rest is
+the schema's own refusals, the reference rules, the audit rows, journal inheritance, the report
+exclusions on both settings, the permission split seen from four different tokens, the cohort's
+atomicity, and the super-admin lockout guard. It marks real accounts and unmarks them again before it
+exits, disables the two operators it creates, and asserts on the way out that zero test money is left
+behind — on the crash path too, by reference prefix.
+
+## A sub-agency's share is booked to two payables (migration 0040)
+
+The delivery brief asks for a Master Agency that manages sub-agency relationships and sees "Sub-Agency
+allocation", and a Sub-Agency that sees its own hosts and *its own* allocation while being refused the
+master's screens. Until this migration `agencies` was flat: every row was a top-level roster, and the only
+hierarchy in the product was the BD/seller one in `business_accounts` (0004, corrected by 0006).
+
+**Two columns, and no `kind` column.** `parent_agency_id` is the relationship — NULL means master, a value
+means sub — and `parent_override_bps` is the allocation: the share of *this sub's* accrued commission its
+master keeps. A stored kind and a stored parent can disagree, and the screen that read the kind would then
+promise a permission the link does not give, so kind is derived exactly as 0039 derives a money row's test
+status from its owners. The override lives on the sub, not the master, for the same reason
+`agency_hosts.commission_bps` lives on the membership: two subs under one master are two negotiations, and
+one dial on the master could not say that. `NULL` and `0` both stop the split but are not the same decision —
+`NULL` is "no share was ever agreed", `0` is "agreed, and it is nothing" — so the column keeps both, the
+panel prints `unset` against `set here: 0.00%`, and the audit row records which of the two an operator
+wrote; `overrideLabel` collapses them into one sentence ("Master takes nothing — keeps 100%") because a
+member reading their position is asking the same question either way.
+
+**Depth is two, and the database says so.** The brief names exactly two levels. A CHECK cannot read the
+parent row, so, following 0006, the rule is the `agency_parent_rule` trigger: a parent must itself be a
+master and must be `ACTIVE`, an agency cannot be its own master, and — the shape the "parent must be a
+master" rule alone misses — an agency that already has children cannot be demoted into being somebody's
+sub, which would put those children at depth three without their rows ever being validated. The FK is
+`ON DELETE RESTRICT` because deleting a master must not silently promote its subs and erase the allocation
+they were negotiated under; nothing in the product deletes an agency (revoke suspends), so this costs no
+behaviour and closes the hole for whatever does. Suspending a master is deliberately *not* blocked here:
+suspension is a decision about that agency, and the existing gift path does not read `agencies.status` when
+it accrues, so this migration does not quietly change what a suspension means. That asymmetry is a known
+gap, not an oversight — a suspended master still receives its subs' shares until the accrual path learns to
+ask.
+
+**The split is a transfer between two payables, not a second expense.** `accrueAgencyCommission` posts
+0033's entry first — DEBIT `COMMISSION_EXPENSE` / CREDIT `AGENCY:<sub>` for the whole gross amount — and
+then, when the accruing agency has a parent and an agreed rate, a second balanced entry: DEBIT
+`AGENCY:<sub>` / CREDIT `AGENCY:<master>`. The platform promised the commission once, so `COMMISSION_EXPENSE`
+is debited once; the second entry only moves the money to whoever negotiated it. It is keyed
+`(AGENCY_OVERRIDE, transactions.id)` — the *same* commission row as the accrual, under its own source kind —
+so a replayed gift finds both entries rather than writing either twice, and because `purpose_account_balances`
+derives an AGENCY position from journal lines rather than storing one, both payables move with no view change
+and no second source of truth. The share is `floor(coins × bps / 10000)`: truncated toward the sub, never
+rounded up, and `overrideCoinsFor` is exported so the gift path can write the same number into the
+commission row's `meta` — one implementation, so the figure on the ledger row and the figure in the book
+cannot drift.
+
+**Re-parenting always clears the allocation.** The share was negotiated with the master it was agreed under;
+carrying it to a different master would book money nobody agreed to, so `setAgencyParent` nulls
+`parent_override_bps` in the same statement and the new master takes nothing until an operator sets a rate
+for this sub explicitly. History is untouched — overrides already posted stay posted, because they describe
+gifts that landed under the old link. The service repeats the trigger's checks in words an operator can act
+on (`self_parent`, `parent_not_found`, `parent_not_master`, `parent_inactive`, `agency_has_children`) and
+locks child-then-parent; that order cannot invert into a deadlock because it is the only write that locks two
+agency rows and a grandchild is refused. Every relationship decision is its own audit verb —
+`AGENCY_PARENT_UPDATE` and `AGENCY_OVERRIDE_UPDATE` — beside 0033's `AGENCY_RATE_UPDATE`.
+
+### The agency's own desk (`/api/agency`)
+
+The brief's Master and Sub dashboards read the member surface, and its authorisation is one query:
+`requireAgencyOwner` re-reads `agencies … WHERE owner_user_id = <token sub> AND status = 'ACTIVE'` on every
+request and there is **no agency id in any path or body**, so a uuid pasted into a URL reaches nothing and a
+twelve-hour token cannot outlive a revoke. `requireMasterAgency` runs that lookup first and then refuses a
+row with a parent — 403 `master_only`, "A sub-agency has no sub-agencies of its own" — which is what makes
+"restricted access to Master Agency settings" a testable answer rather than a hidden menu item. A sub is
+refused the sub-agency list rather than shown an empty one it cannot act on.
+
+Two absences on that surface are decisions, recorded in `agency-owner.routes.ts`:
+
+- **A member cannot set a rate** — not their own, not their master's, not their host's. The accrual is money
+  the platform owes, and `commission:manage` is what agrees a number (0033's rule, carried into 0040's
+  override). A screen that let an agency pick its own percentage is a wallet with no owner.
+- **A member cannot raise a settlement batch.** Raising one claims accruals and holds the agency's own
+  payable, and the operator route refuses to let the person who raised a batch approve it; a
+  partner-initiated batch would need a second approval step it does not have or would break that guard. So
+  the request stays with finance, and the desk shows the agency exactly what it is owed and what has already
+  been claimed against it — the Android screen says so in those words rather than hiding a button.
+
+| Route | Who | Notes |
+|---|---|---|
+| `GET /api/agency/position` | `requireAgencyOwner` | kind, status, its own rate label, host and sub counts, the master it reports to with that agreement's words, lifetime `accrued / override / retained` plus `receivedOverride` and the last 30 days, and the payable in money with what is claimed or frozen |
+| `GET /api/agency/hosts` | `requireAgencyOwner` | `limit` 1–200, default 50 — username, avatar, status, joined date, rate label, coins lifetime and in 30 days. No phone, no membership id |
+| `GET /api/agency/settlements` | `requireAgencyOwner` | `limit` 1–100, default 25 — reference, amount, status, period, entry count, dates. The raising and approving operators and the bank reference are not sent |
+| `GET /api/agency/sub-agencies` | `requireMasterAgency` | per sub: hosts, the rate the master keeps, and gross / share / kept beside it |
+| `PUT /admin/agencies/:id/parent` | `commission:manage` | `{ parentAgencyId }`, `null` stands the agency alone; clears the override and says so in the audit summary |
+| `PUT /admin/agencies/:id/override` | `commission:manage` | `{ parentOverrideBps }` 0–10000 or `null`; refused on a master, which has no parent to give a share to |
+
+**What the reconciler asks now.** Two checks beside 0033's pair, both scoped to the whole book:
+`commission.agency_override_posted` (a commission row whose `meta` promises a share must have that
+`AGENCY_OVERRIDE` entry) and `commission.agency_override_authorised` (an override entry must have a
+commission row behind it that still promises it). A split written by hand, or a promise the book never
+kept, is a breach — the hierarchy suite proves both directions by editing one description and putting it
+back.
+
+### Tests
+
+`npm run test:agency:hierarchy` (65) drives a running backend over HTTP and reads the book back through the
+backend's own pool. The checks worth reading first are on the split itself: the expense is debited exactly
+once for the gross, the sub's payable falls by exactly what the master's rises, both entries are keyed on the
+one commission row, and an awkward rate truncates in the sub's favour while the book still agrees with the
+arithmetic. Then the shape around the money — the depth and demotion refusals from both the service and the
+trigger, the audit rows, clearing on re-parent, the roster filters, the label a master reads being not the
+label a sub reads, and the whole member surface seen with a master token, a sub token, a member who runs no
+agency, an operator token and a suspended agency's owner. It names every row it writes with a stamp and leaves
+them in place, so it is a development-database script.
+
 ## What six simultaneous sends are allowed to do
 
 Every other suite here asks a money path one question at a time. The question a phone always ends up
@@ -1498,7 +1697,7 @@ reversals and reconciliation, with the revenue account pinned to holding only th
 0034 — the liability pinned to exactly the cents every `payment_proofs` row collected, whichever of the two
 kinds posted it.
 
-`npm run test:accounts` (133) and `npm run test:operators` (44) need that stack running too. The
+`npm run test:accounts` (134) and `npm run test:operators` (44) need that stack running too. The
 accounts suite walks the whole book rather than a page of it: the projection identity
 `opening + ΣIN − ΣOUT = balance` on a 926-movement account, one statement leg per currency rule, the
 reconciliation findings a clean database should not raise, idempotent hold create/release including
@@ -1544,6 +1743,22 @@ development database, and it shapes itself around the five-submissions-an-hour l
 against it — which is why refusals get their own accounts. Everything it borrows it gives back, on the
 failure path as well as the success one: both switches restored, its open rows withdrawn, its rooms
 closed by the accounts that opened them, its grants revoked, its operators disabled.
+
+`npm run test:qa` (55) is the 0039 suite, described with the marking design above. It is the one that
+borrows a *real* account rather than a time-stamped one: it picks the heaviest recent gifter, marks it,
+watches the dashboard, the gift analytics and the member leaderboard all drop it, then unmarks it and
+compares the transaction id list to prove nothing was rewritten. Because the account is reused on every
+run, its audit assertions are deltas rather than totals. It needs the running stack and a development
+database, and it leaves zero marked accounts, zero test money and no enabled operator behind.
+
+`npm run test:agency:hierarchy` (65) is the 0040 suite, described with the split above. It is the only suite
+here that judges a *journal shape* rather than a balance: the checks it cares most about are that
+`COMMISSION_EXPENSE` is still debited once when a second entry moves part of that same money to a master, and
+that both entries are keyed on the one commission row so a replayed gift cannot post either side twice. It
+also reads the member surface as five different credentials — a master's owner, a sub's owner, a member who
+runs no agency, an operator token and a suspended agency's owner — because the brief's "restricted access to
+Master Agency settings" is only evidence if the refusal is the server's. It stamps and keeps every row it
+writes, so it is a development-database script and the dev book accumulates its agencies.
 
 `npm run test:promo` (38) is the promotional-diamond suite, and the checks worth reading first are the
 four that keep the two pockets from quietly becoming one: a fee paid from the bonus pocket refunds to

@@ -1697,6 +1697,8 @@ export interface OperatorRoleInfo {
 
 export type AgencyStatus = 'PENDING' | 'ACTIVE' | 'SUSPENDED';
 export type AgencySettlementStatus = 'DRAFT' | 'APPROVED' | 'PAID' | 'VOID';
+/** Which side of the parent link an agency sits on (migration 0040) — derived, never a stored flag. */
+export type AgencyKind = 'MASTER' | 'SUB';
 
 /** Which of the three levels a host's rate actually came from — the answer to "why this number". */
 export type CommissionRateSource = 'HOST' | 'AGENCY' | 'PLATFORM_DEFAULT';
@@ -1714,10 +1716,24 @@ export interface Agency {
   ownerUserId: string | null;
   commissionBps: number | null;
   commissionLabel: string;
+  /** MASTER when there is no parent link, SUB when there is one. */
+  kind: AgencyKind;
+  parentAgencyId: string | null;
+  parentAgencyName: string | null;
+  /** The share of this sub's commission its master keeps. Null on a master, which has none to give. */
+  parentOverrideBps: number | null;
+  parentOverrideLabel: string;
+  subAgencyCount: number;
   hostCount: number;
   activeHostCount: number;
   /** Lifetime commission counted in coins — the unit an agency negotiates in, not the money it is owed. */
   accruedCoins: number;
+  /** Of that gross, passed up to the master. Zero on a master. */
+  overrideCoins: number;
+  /** What this agency keeps of its own roster's gross. */
+  retainedCoins: number;
+  /** What it took in from its own sub-agencies. Zero on a sub, which has none. */
+  receivedOverrideCoins: number;
   openBatches: number;
   paidBatches: number;
   createdAt: string;
@@ -1757,7 +1773,34 @@ export interface AgencyRosterRow {
 export interface AgencyDetailResult {
   agency: Agency;
   roster: AgencyRosterRow[];
+  subAgencies: AgencySubAllocation[];
   settlements: AgencySettlement[];
+}
+
+/**
+ * One row of a master's allocation table (migration 0040).
+ *
+ * The three coin figures are the whole point of the row: what the sub's roster earned, what the
+ * master's agreed share took, and what the sub is therefore left with. `owedMinor` is the same
+ * position in money — the sub's own payable, not the master's — so an operator can see that a big
+ * gross and a small payable are the same fact twice, not two books disagreeing.
+ */
+export interface AgencySubAllocation {
+  id: string;
+  name: string;
+  status: AgencyStatus;
+  hostCount: number;
+  activeHostCount: number;
+  commissionBps: number | null;
+  commissionLabel: string;
+  parentOverrideBps: number | null;
+  parentOverrideLabel: string;
+  accruedCoins: number;
+  overrideCoins: number;
+  retainedCoins: number;
+  owedMinor: number | null;
+  currency: string | null;
+  createdAt: string;
 }
 
 /**
@@ -1806,4 +1849,99 @@ export interface AgencySettlementEntry {
 export interface AgencySettlementEntriesResult {
   settlement: AgencySettlement;
   entries: AgencySettlementEntry[];
+}
+
+// ---------------------------------------------------------------------------
+// The QA programme's record (migration 0039).
+//
+// `displayName` is what the member app shows — the real approved name. `qaRef` is the internal
+// identifier the QA team tracks and is never sent to a member client. The money rows carry no flag
+// of their own on the server: `isTest` here is read from the `qa_money_marking` derivation, so it
+// answers retroactively when an account is marked and cannot drift from the identity it came from.
+// ---------------------------------------------------------------------------
+
+export type QaOwnerKind = 'USER' | 'BUSINESS' | 'AGENCY' | 'ADMIN';
+
+export interface QaIdentity {
+  ownerKind: QaOwnerKind;
+  ownerId: string;
+  isTest: boolean;
+  qaRef: string | null;
+  displayName: string;
+  /** QA cohort label only — a selected country does not establish residence. */
+  country: string | null;
+  createdAt: string;
+}
+
+export interface QaIdentityListResult {
+  identities: QaIdentity[];
+  total: number;
+  page: number;
+  limit: number;
+  /** How many of the filtered rows are marked, so the header can say it without a second call. */
+  markedTotal: number;
+}
+
+export interface QaIdentityQuery {
+  ownerKind?: QaOwnerKind;
+  country?: string;
+  search?: string;
+  includeProduction?: boolean;
+  page?: number;
+  limit?: number;
+}
+
+export interface QaMarkBody {
+  ownerKind: QaOwnerKind;
+  ownerId: string;
+  isTest: boolean;
+  qaRef?: string;
+}
+
+export interface QaCohortEntry {
+  ownerKind: QaOwnerKind;
+  ownerId: string;
+  qaRef: string;
+}
+
+export interface QaCohortResult {
+  accounts: QaIdentity[];
+}
+
+export interface QaMoneyRow {
+  sourceTable: string;
+  sourceId: string;
+  occurredAt: string;
+  isTest: boolean;
+  testRefs: string[];
+}
+
+export interface QaMoneyListResult {
+  rows: QaMoneyRow[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface QaMoneyQuery {
+  isTest?: boolean;
+  sourceTable?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface QaMoneyTableSummary {
+  sourceTable: string;
+  total: number;
+  testRows: number;
+  productionRows: number;
+}
+
+export interface QaMoneySummary {
+  tables: QaMoneyTableSummary[];
+  totalRows: number;
+  testRows: number;
+  productionRows: number;
 }

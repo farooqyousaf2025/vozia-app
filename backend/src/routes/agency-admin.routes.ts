@@ -28,6 +28,11 @@ router.post('/settlements/:id/void', requirePermission('commission:manage'), age
 router.get('/', requirePermission('finance:read'), agency.agencies);
 router.get('/:id', requirePermission('finance:read'), agency.agency);
 router.put('/:id/rate', requirePermission('commission:manage'), agency.putAgencyRate);
+// The parent link and the share it carries are the same kind of decision as a rate — a money term
+// agreed in advance for gifts that have not happened yet — so they sit behind the same permission
+// and are never reachable from an agency's own credential.
+router.put('/:id/parent', requirePermission('commission:manage'), agency.putAgencyParent);
+router.put('/:id/override', requirePermission('commission:manage'), agency.putAgencyOverride);
 // A host's rate is only editable through the agency they belong to, which is the same relationship
 // the accrual reads: there is no route that moves a host between rosters.
 router.put('/:id/hosts/:userId/rate', requirePermission('commission:manage'), agency.putHostRate);

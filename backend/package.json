@@ -26,6 +26,8 @@
     "test:earning:hooks": "node scripts/earning-hooks-e2e.cjs",
     "test:operators": "node scripts/operator-e2e.cjs",
     "test:partner": "node scripts/partner-e2e.cjs",
+    "test:agency:hierarchy": "node scripts/agency-hierarchy-e2e.cjs",
+    "test:qa": "node scripts/qa-e2e.cjs",
     "test:revenue": "node scripts/revenue-e2e.cjs",
     "test:concurrency": "node scripts/concurrency-e2e.cjs",
     "test:games": "node scripts/games-e2e.cjs",

@@ -49,6 +49,10 @@ export type JournalInput = {
     // Recording that an agency batch was actually paid, which is when its payable leaves the book
     // (0033). Keyed on the settlement, so replaying the pay step describes the transfer once.
     | 'AGENCY_SETTLEMENT'
+    // A master agency's allocation of its sub-agency's commission (0040). A transfer between two
+    // payables, not a second expense: DEBIT the sub, CREDIT the master. Keyed on the same commission
+    // transaction as the accrual under its own kind, so a replayed gift finds both entries.
+    | 'AGENCY_OVERRIDE'
     // Promotional diamonds (0036, booked on 0029's PROMOTIONAL:PLATFORM budget by 0037): coins the
     // platform gave rather than sold, and the same coins released unspent when their grant expired.
     // Keyed on the grant, so a retried reward posts once and a swept expiry cannot book the same

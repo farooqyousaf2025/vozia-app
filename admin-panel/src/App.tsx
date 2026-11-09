@@ -23,6 +23,7 @@ import OverviewPage from './pages/OverviewPage';
 import OperatorsPage from './pages/OperatorsPage';
 import PartnersPage from './pages/PartnersPage';
 import QuestsPage from './pages/QuestsPage';
+import QaProgrammePage from './pages/QaProgrammePage';
 import RanksPage from './pages/RanksPage';
 import RechargesPage from './pages/RechargesPage';
 import RoomConsolePage from './pages/RoomConsolePage';
@@ -106,6 +107,7 @@ export default function App() {
             </RequirePermission>
           }
         />
+        <Route path="qa" element={<RequirePermission permission="qa:read"><QaProgrammePage /></RequirePermission>} />
         <Route path="audit" element={<RequirePermission permission="audit:read"><AuditPage /></RequirePermission>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
