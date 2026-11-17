@@ -303,13 +303,15 @@ export default function UsersPage() {
                         >
                           Level
                         </Button>
-                        <Button
-                          size="sm"
-                          icon={<IconGift className="h-3.5 w-3.5" />}
-                          onClick={() => setGrantTarget(user)}
-                        >
-                          Grant
-                        </Button>
+                        {can('user:wallet') && (
+                          <Button
+                            size="sm"
+                            icon={<IconGift className="h-3.5 w-3.5" />}
+                            onClick={() => setGrantTarget(user)}
+                          >
+                            Grant
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           icon={<IconSpark className="h-3.5 w-3.5" />}
@@ -369,7 +371,7 @@ export default function UsersPage() {
         />
       )}
 
-      {grantTarget !== null && (
+      {can('user:wallet') && grantTarget !== null && (
         <GrantItemModal
           user={grantTarget}
           onClose={() => setGrantTarget(null)}
@@ -909,7 +911,7 @@ type GrantEntry = {
   kind: StoreItemKind;
   key: string;
   name: string;
-  art: string;
+  art?: string;
   priceDiamonds: number;
   periodDays: number | null;
 };
@@ -918,6 +920,8 @@ const GRANT_KIND_LABELS: Record<StoreItemKind, string> = {
   FRAME: 'Avatar ring',
   THEME: 'Room theme',
   EFFECT: 'Entry flourish',
+  RIDE: 'Entrance ride',
+  BUBBLE: 'Chat bubble',
 };
 
 interface GrantItemModalProps {
@@ -950,6 +954,20 @@ function GrantItemModal({ user, onClose, onGranted }: GrantItemModalProps) {
             art: frame.art,
             priceDiamonds: frame.priceDiamonds,
             periodDays: frame.periodDays,
+          })),
+          ...(catalogue.bubbles ?? []).map((bubble) => ({
+            kind: 'BUBBLE' as const,
+            key: bubble.key,
+            name: bubble.name,
+            priceDiamonds: bubble.priceDiamonds,
+            periodDays: bubble.periodDays,
+          })),
+          ...(catalogue.rides ?? []).map((ride) => ({
+            kind: 'RIDE' as const,
+            key: ride.key,
+            name: ride.name,
+            priceDiamonds: ride.priceDiamonds,
+            periodDays: ride.periodDays,
           })),
           ...catalogue.themes.map((theme) => ({
             kind: 'THEME' as const,
@@ -1090,7 +1108,7 @@ function GrantItemModal({ user, onClose, onGranted }: GrantItemModalProps) {
 
           {selected !== null && (
             <div className="flex items-center gap-3 rounded-lg border border-edge/60 bg-elevated/40 p-3">
-              {selected.kind === 'EFFECT' ? (
+              {selected.kind === 'EFFECT' || selected.kind === 'RIDE' || selected.kind === 'BUBBLE' ? (
                 <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-violet-500/10 text-violet-300">
                   <IconSpark className="h-5 w-5" />
                 </span>

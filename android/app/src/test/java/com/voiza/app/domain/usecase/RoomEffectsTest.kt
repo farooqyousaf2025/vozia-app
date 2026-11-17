@@ -169,4 +169,35 @@ class RoomEffectsTest {
 
         assertEquals(listOf("m4", "m5", "m6"), kept.map { it.id })
     }
+
+    @Test
+    fun `history recovery preserves live arrivals and restores missed lines in order`() {
+        val lines = (1..4).map {
+            ChatMessage("m$it", null, "c$it", MessageType.TEXT, "2026-11-17T00:00:0$it.000Z")
+        }
+        val merged = RoomEffects.mergeChatHistory(listOf(lines[0], lines[3]), lines.take(3), 10)
+        assertEquals(lines, merged)
+    }
+
+    @Test
+    fun `history recovery keeps send-time bubbles when current art changes`() {
+        val bubble = com.voiza.app.domain.model.BubbleStyle(
+            "bubble-midnight", "Midnight Spark", "#202746", "#94B6FF", "#F5F7FF", "SPARKLE",
+        )
+        val styled = ChatMessage("m1", null, "before", MessageType.TEXT, "2026-11-17T00:00:01.000Z", bubble)
+        val plain = ChatMessage("m2", null, "after", MessageType.TEXT, "2026-11-17T00:00:02.000Z")
+        val merged = RoomEffects.mergeChatHistory(listOf(plain), listOf(styled, plain), 10)
+        assertEquals(listOf(styled, plain), merged)
+        assertEquals(bubble, merged.first().bubble)
+        assertEquals(null, merged.last().bubble)
+    }
+
+    @Test
+    fun `history recovery caps the combined window at the newest messages`() {
+        val lines = (1..5).map {
+            ChatMessage("m$it", null, "c$it", MessageType.TEXT, "2026-11-17T00:00:0$it.000Z")
+        }
+        val merged = RoomEffects.mergeChatHistory(lines.takeLast(2), lines.take(4), 3)
+        assertEquals(lines.takeLast(3), merged)
+    }
 }

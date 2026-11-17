@@ -1,5 +1,12 @@
 package com.voiza.app.ui.components
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -9,11 +16,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -23,6 +32,7 @@ import coil.compose.AsyncImage
 import com.voiza.app.domain.model.ProfileFrame
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.VoizaAccentGradient
+import com.voiza.app.ui.theme.WarningAmber
 
 /**
  * Circular avatar with Coil network image + initials fallback, and an optional
@@ -90,6 +100,52 @@ fun Avatar(
             }
         }
         if (frame != null) {
+            // Live rings (migration 0043): a rotating sweep aura in the ring's own accent, pulsing
+            // behind the still PNG. Legendary adds a counter-rotating gold thread. Nothing here is
+            // drawn for a plain ring, so the cheap path stays cheap.
+            if (frame.animated) {
+                val transition = rememberInfiniteTransition(label = "frameAura")
+                val angle by transition.animateFloat(
+                    initialValue = 0f,
+                    targetValue = 360f,
+                    animationSpec = infiniteRepeatable(tween(6000, easing = LinearEasing), RepeatMode.Restart),
+                    label = "auraAngle",
+                )
+                val pulse by transition.animateFloat(
+                    initialValue = 0.30f,
+                    targetValue = 0.75f,
+                    animationSpec = infiniteRepeatable(tween(1500, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                    label = "auraPulse",
+                )
+                val accent = accentColor(frame.accent, OnDarkHigh)
+                Box(
+                    modifier = Modifier
+                        .size(size * 1.18f)
+                        .graphicsLayer {
+                            rotationZ = angle
+                            alpha = pulse
+                        }
+                        .clip(CircleShape)
+                        .background(
+                            Brush.sweepGradient(
+                                listOf(accent, Color.Transparent, accent.copy(alpha = 0.55f), Color.Transparent, accent),
+                            ),
+                        ),
+                )
+                if (frame.tier == "LEGENDARY") {
+                    Box(
+                        modifier = Modifier
+                            .size(size * 1.10f)
+                            .graphicsLayer { rotationZ = -angle * 0.6f }
+                            .clip(CircleShape)
+                            .border(
+                                1.5.dp,
+                                Brush.sweepGradient(listOf(WarningAmber, Color.Transparent, WarningAmber, Color.Transparent, WarningAmber)),
+                                CircleShape,
+                            ),
+                    )
+                }
+            }
             // Fallback first: an accent circle that is already the right shape when the PNG is late.
             Box(
                 modifier = Modifier

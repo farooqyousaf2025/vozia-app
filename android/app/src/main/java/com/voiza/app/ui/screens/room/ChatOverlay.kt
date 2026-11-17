@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,6 +53,7 @@ import com.voiza.app.domain.model.EmojiOption
 import com.voiza.app.domain.model.FALLBACK_EMOJI_CODE_PATTERN
 import com.voiza.app.domain.model.MessageType
 import com.voiza.app.ui.components.Avatar
+import com.voiza.app.ui.components.ChatBubblePanel
 import com.voiza.app.ui.components.asAssetUrl
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.Fuchsia
@@ -208,29 +210,24 @@ private fun ChatRow(
 ) {
     val isGift = msg.type == MessageType.GIFT
     val isSystem = msg.type == MessageType.SYSTEM
-    val bubbleShape = RoundedCornerShape(12.dp)
+    // Only the message snapshot styles these words; the author's current equipment is irrelevant.
+    val bubble = msg.bubble.takeIf { msg.type == MessageType.TEXT }
     // Only a member's own words carry codes; gift and system lines are written by the server.
     val line = rememberEmojiMessage(msg.content, if (isGift || isSystem) emptyList() else emojis, codePattern)
     // The one account behind this line, when there is one. Its face and its name are the handles that
     // mean "this person", so either opens that person's card; a line the server wrote has nobody.
     val author = msg.user?.takeIf { !isSystem }
 
-    Box(
-        modifier = Modifier
-            .padding(horizontal = 8.dp, vertical = 1.dp)
-            .clip(bubbleShape)
-            .background(
-                when {
-                    isGift -> Color(0x40FF6EC7)
-                    isSystem -> Color(0x3322D3EE)
-                    else -> Color(0x26000000)
-                }
-            ),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
+    ChatBubblePanel(
+        style = bubble,
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
+        plainBackground = when {
+            isGift -> Color(0x40FF6EC7)
+            isSystem -> Color(0x3322D3EE)
+            else -> Color(0x26000000)
+        },
+    ) { textColor, accent ->
+        Row(verticalAlignment = Alignment.Top) {
             if (author != null) {
                 Box(
                     modifier = Modifier
@@ -247,7 +244,7 @@ private fun ChatRow(
                     Text(
                         text = author.username,
                         modifier = Modifier.clickable { onOpenMember(author.id) },
-                        color = if (isGift) GiftPink else Cyan,
+                        color = if (isGift) GiftPink else accent,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                     )
@@ -255,12 +252,12 @@ private fun ChatRow(
                 BasicText(
                     text = line.text,
                     inlineContent = line.inlineContent,
-                    style = TextStyle(
-                        color = OnDarkHigh,
+                    style = (if (bubble != null) MaterialTheme.typography.bodySmall else TextStyle.Default).copy(
+                        color = textColor,
                         fontSize = 12.sp,
                         fontWeight = if (isGift) FontWeight.SemiBold else FontWeight.Normal,
                     ),
-                    maxLines = 3,
+                    maxLines = if (bubble != null) Int.MAX_VALUE else 3,
                     overflow = TextOverflow.Ellipsis,
                 )
             }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,12 +22,16 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
@@ -64,10 +69,15 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.voiza.app.domain.model.BannerPlacement
+import com.voiza.app.domain.model.RankingLeader
+import com.voiza.app.domain.model.RankingPeriod
 import com.voiza.app.domain.model.RoomCategory
 import com.voiza.app.domain.model.RoomSort
 import com.voiza.app.domain.model.RoomSummary
@@ -81,17 +91,22 @@ import com.voiza.app.ui.components.ListenerBadge
 import com.voiza.app.ui.components.LoadingProgress
 import com.voiza.app.ui.components.VoizaTextButton
 import com.voiza.app.ui.components.banner.PromoBannerStrip
+import com.voiza.app.ui.screens.quests.DailyRewardDialog
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.DangerRed
 import com.voiza.app.ui.theme.Fuchsia
+import com.voiza.app.ui.theme.GiftPink
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.VoizaAccentGradient
 import com.voiza.app.ui.theme.VoizaHeroGradient
 import com.voiza.app.ui.theme.VoizaSurface
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
+import com.voiza.app.ui.theme.WarningAmber
 import com.voiza.app.ui.util.label
 import com.voiza.app.viewmodel.HomeViewModel
+import com.voiza.app.viewmodel.QuestsViewModel
+import com.voiza.app.viewmodel.RankingsViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
 
 /**
@@ -107,11 +122,24 @@ fun HomeScreen(
     onOpenWallet: () -> Unit,
     onOpenStore: () -> Unit,
     onOpenProfile: () -> Unit,
+    onOpenRankings: () -> Unit,
     viewModel: HomeViewModel = viewModel(
         factory = voizaViewModelFactory { HomeViewModel() },
     ),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val questsViewModel: QuestsViewModel = viewModel(factory = voizaViewModelFactory { QuestsViewModel() })
+    val questsState by questsViewModel.state.collectAsStateWithLifecycle()
+    // The entry card's avatars are the server's own monthly top three, not a local guess.
+    val rankingsPreview: RankingsViewModel = viewModel(
+        factory = voizaViewModelFactory { RankingsViewModel(initialPeriod = RankingPeriod.MONTH) },
+    )
+    val previewState by rankingsPreview.state.collectAsStateWithLifecycle()
+    var rewardOpen by remember { mutableStateOf(false) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        questsViewModel.refresh()
+        rankingsPreview.refresh()
+    }
 
     // Quick Join is answered by the server, so the screen only follows the id it hands back.
     LaunchedEffect(state.quickJoinRoomId) {
@@ -160,7 +188,22 @@ fun HomeScreen(
             HomeTopBar(
                 user = state.user,
                 onWalletClick = onOpenWallet,
+                rewardAvailable = questsState.snapshot?.checkIn?.available == true,
+                onOpenReward = { rewardOpen = true },
             )
+            if (rewardOpen) {
+                questsState.snapshot?.let { snapshot ->
+                    snapshot.checkIn?.let { checkIn ->
+                        DailyRewardDialog(
+                            checkIn = checkIn,
+                            resetTimezone = snapshot.resetTimezone,
+                            claiming = questsState.claiming,
+                            onClaim = questsViewModel::checkIn,
+                            onDismiss = { rewardOpen = false },
+                        )
+                    }
+                }
+            }
 
             val tabs = listOf(RoomCategory.POPULAR, RoomCategory.PARTY, RoomCategory.MUSIC)
             TabRow(
@@ -204,6 +247,11 @@ fun HomeScreen(
                 onSelectSort = viewModel::selectSort,
                 onToggleMyRooms = viewModel::toggleMyRooms,
                 onQuickJoin = viewModel::quickJoin,
+            )
+
+            RankingsEntryCard(
+                leaders = previewState.data?.leaders?.take(3) ?: emptyList(),
+                onClick = onOpenRankings,
             )
 
             // What the operator is running on the wall right now, above the grid rather than inside
@@ -398,10 +446,80 @@ private fun DiscoveryRow(
     }
 }
 
+/**
+ * The landing's door into the three boards. The faces are the server's own monthly top three —
+ * while the answer is still in flight the card simply carries the title and the More affordance.
+ */
+@Composable
+private fun RankingsEntryCard(
+    leaders: List<RankingLeader>,
+    onClick: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(VoizaSurfaceHigh)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Default.EmojiEvents,
+            contentDescription = null,
+            tint = WarningAmber,
+            modifier = Modifier.size(26.dp),
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Rankings",
+                color = OnDarkHigh,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = leaders.firstOrNull()?.let { "This month \u00b7 ${it.user.username} leads" }
+                    ?: "Host, rich and gifter boards",
+                color = OnDarkMedium,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (leaders.isNotEmpty()) {
+            Box(modifier = Modifier.width(28.dp + 18.dp * (leaders.size - 1))) {
+                leaders.forEachIndexed { index, leader ->
+                    Avatar(
+                        url = leader.user.avatarUrl,
+                        name = leader.user.username,
+                        size = 28.dp,
+                        ringBrush = Brush.linearGradient(listOf(WarningAmber, GiftPink)),
+                        modifier = Modifier
+                            .offset(x = 18.dp * index)
+                            .zIndex((leaders.size - index).toFloat()),
+                    )
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(text = "More", color = OnDarkMedium, fontSize = 12.sp)
+        Icon(
+            imageVector = Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = OnDarkMedium,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
 @Composable
 private fun HomeTopBar(
     user: com.voiza.app.domain.model.User?,
     onWalletClick: () -> Unit,
+    rewardAvailable: Boolean,
+    onOpenReward: () -> Unit,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -431,6 +549,32 @@ private fun HomeTopBar(
                 fontSize = 11.sp,
             )
         }
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(VoizaSurfaceHigh)
+                .clickable(onClick = onOpenReward),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.CardGiftcard,
+                contentDescription = "Daily reward",
+                tint = GiftPink,
+                modifier = Modifier.size(20.dp),
+            )
+            if (rewardAvailable) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(2.dp)
+                        .size(9.dp)
+                        .clip(CircleShape)
+                        .background(GiftPink),
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
         DiamondChip(
             balance = user?.diamondBalance,
             onClick = onWalletClick,

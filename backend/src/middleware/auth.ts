@@ -52,6 +52,19 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
   next();
 }
 
+/**
+ * Public reads that personalise when a member is signed in (the ranking boards' own row).
+ * No header means anonymous; a header that is present must still be a valid user token, so a
+ * stale or forged one is refused rather than silently downgraded to a stranger's view.
+ */
+export function optionalUser(req: Request, _res: Response, next: NextFunction): void {
+  if (!req.headers.authorization) return next();
+  const payload = verifyToken(bearer(req));
+  if (payload.scope !== 'user') throw ApiError.forbidden('User token required');
+  req.user = payload;
+  next();
+}
+
 export function requireAdmin(req: Request, _res: Response, next: NextFunction): void {
   const payload = verifyToken(bearer(req));
   if (payload.scope !== 'admin') throw ApiError.forbidden('Admin token required');

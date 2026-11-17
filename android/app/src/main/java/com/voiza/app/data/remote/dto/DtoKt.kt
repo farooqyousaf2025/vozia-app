@@ -34,6 +34,20 @@ data class FrameArtDto(
     @SerializedName("name") val name: String? = null,
     @SerializedName("art") val art: String? = null,
     @SerializedName("accent") val accent: String? = null,
+    // Migration 0043; nullable because an older backend omits them and Gson's Unsafe allocator
+    // leaves an absent key null. The mapper owns the COMMON / false fallback.
+    @SerializedName("tier") val tier: String? = null,
+    @SerializedName("animated") val animated: Boolean? = null,
+)
+
+/** Same style shape on the catalogue, equipped account and top-level message snapshot. */
+data class BubbleStyleDto(
+    @SerializedName("key") val key: String? = null,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("background") val background: String? = null,
+    @SerializedName("accent") val accent: String? = null,
+    @SerializedName("textColor") val textColor: String? = null,
+    @SerializedName("motif") val motif: String? = null,
 )
 
 data class MiniUserDto(
@@ -107,6 +121,7 @@ data class UserDto(
     // The account's own ride, always sent on this DTO (null when nothing is worn or the copy
     // lapsed) — the profile screen previews it so the owner sees what the room will see.
     @SerializedName("entryRide") val entryRide: RideArtDto? = null,
+    @SerializedName("chatBubble") val chatBubble: BubbleStyleDto? = null,
 )
 
 data class AuthResponse(
@@ -622,6 +637,7 @@ data class ChatMessageDto(
     @SerializedName("content") val content: String,
     @SerializedName("type") val type: String = "TEXT",
     @SerializedName("createdAt") val createdAt: String = "",
+    @SerializedName("bubble") val bubble: BubbleStyleDto? = null,
 )
 
 /** One row of GET /api/users/top; `earned` is r-coins or diamonds per board. */
@@ -664,12 +680,16 @@ data class StoreItemDto(
     // older backend that omits these reads as "anybody can buy, not recommended" rather than a lie.
     @SerializedName("minVipLevel") val minVipLevel: Int? = null,
     @SerializedName("recommended") val recommended: Boolean? = null,
+    // FRAME rows only (migration 0043); same nullable-DTO rule as the two above.
+    @SerializedName("tier") val tier: String? = null,
+    @SerializedName("animated") val animated: Boolean? = null,
     // RIDE rows only, and nullable for both reasons: the other three catalogues never send them,
     // and Gson's Unsafe allocator leaves an absent key null rather than running the Kotlin
     // default. The mapper owns the fallbacks (LOTTIE for an unknown/missing format, 0 for a
     // missing duration), so an older backend that has no rides still parses every row it does send.
     @SerializedName("animationFormat") val animationFormat: String? = null,
     @SerializedName("durationMs") val durationMs: Int? = null,
+    @SerializedName("bubble") val bubble: BubbleStyleDto? = null,
 )
 
 /** What the member holds, including rows an operator has since retired from the shop. */

@@ -13,6 +13,7 @@ import com.voiza.app.domain.model.User
 import com.voiza.app.domain.repository.AuthRepository
 import com.voiza.app.domain.repository.RoomRepository
 import com.voiza.app.domain.repository.StoreRepository
+import com.voiza.app.domain.repository.WalletRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +34,7 @@ class StoreViewModel(
     private val storeRepository: StoreRepository = ServiceLocator.storeRepository,
     private val roomRepository: RoomRepository = ServiceLocator.roomRepository,
     private val authRepository: AuthRepository = ServiceLocator.authRepository,
+    private val walletRepository: WalletRepository = ServiceLocator.walletRepository,
 ) : ViewModel() {
 
     data class StoreUiState(
@@ -50,6 +52,7 @@ class StoreViewModel(
          */
         val themeRooms: List<RoomSummary>? = null,
         val roomsLoading: Boolean = false,
+        val promoUsableFor: List<String> = emptyList(),
     ) {
         /** Rows of the selected catalogue, in the order the server sorted them. */
         val items: List<StoreItem> get() = snapshot?.itemsOf(tab).orEmpty()
@@ -58,12 +61,15 @@ class StoreViewModel(
         val retiredOwned: List<OwnedStoreItem>
             get() = snapshot?.owned.orEmpty().filter { it.kind == tab && !it.onSale }
 
-        val balance: Int get() = user?.diamondBalance ?: 0
+        val eligibleBonus: Int
+            get() = if ("STORE" in promoUsableFor) user?.promoDiamondBalance ?: 0 else 0
+
+        val balance: Long get() = (user?.diamondBalance ?: 0).toLong() + eligibleBonus
 
         fun canAfford(item: StoreItem): Boolean = balance >= item.priceDiamonds
 
         /** How many diamonds short a purchase is; zero when it is affordable. */
-        fun shortfall(item: StoreItem): Int = (item.priceDiamonds - balance).coerceAtLeast(0)
+        fun shortfall(item: StoreItem): Long = (item.priceDiamonds - balance).coerceAtLeast(0L)
 
         /**
          * Display courtesy only: whether this member's tier is below the row's buy gate. The
@@ -99,6 +105,15 @@ class StoreViewModel(
             // The first load owns the spinner; a refresh after a purchase must not blank the grid.
             val firstLoad = _state.value.snapshot == null
             _state.update { it.copy(loading = firstLoad, error = null) }
+            when (val wallet = walletRepository.getWallet()) {
+                is ApiResult.Success -> _state.update {
+                    it.copy(user = wallet.data.user, promoUsableFor = wallet.data.promo?.usableFor.orEmpty())
+                }
+                is ApiResult.Failure -> {
+                    _state.update { it.copy(loading = false, error = wallet.message, promoUsableFor = emptyList()) }
+                    return@launch
+                }
+            }
             when (val result = storeRepository.catalogue()) {
                 is ApiResult.Success -> _state.update {
                     it.copy(snapshot = result.data, loading = false, error = null)

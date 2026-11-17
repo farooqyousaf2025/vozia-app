@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -31,6 +30,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,14 +46,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.voiza.app.domain.model.CheckInState
 import com.voiza.app.domain.model.DailyQuest
 import com.voiza.app.domain.model.QuestsToday
 import com.voiza.app.ui.components.EmptyState
 import com.voiza.app.ui.components.LoadingProgress
 import com.voiza.app.ui.components.VoizaButton
 import com.voiza.app.ui.components.VoizaCard
-import com.voiza.app.ui.components.VoizaSecondaryButton
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.DangerRed
 import com.voiza.app.ui.theme.Mint
@@ -81,6 +81,7 @@ fun QuestsScreen(
     ),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var rewardOpen by remember { mutableStateOf(false) }
     // A gift sent in a room or midnight passing in the reset zone both change today's status while
     // this screen is off-screen, so it is re-read whenever it returns to the front.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refresh() }
@@ -144,13 +145,7 @@ fun QuestsScreen(
                     ) {
                         item { SummaryCard(snapshot) }
                         snapshot.checkIn?.let { checkIn ->
-                            item {
-                                CheckInCard(
-                                    checkIn = checkIn,
-                                    claiming = state.claiming,
-                                    onCheckIn = viewModel::checkIn,
-                                )
-                            }
+                            item { DailyRewardEntry(checkIn = checkIn, onOpen = { rewardOpen = true }) }
                         }
                         item {
                             Text(
@@ -181,6 +176,17 @@ fun QuestsScreen(
                                 color = OnDarkMuted,
                                 fontSize = 10.sp,
                                 modifier = Modifier.padding(top = 8.dp),
+                            )
+                        }
+                    }
+                    if (rewardOpen) {
+                        snapshot.checkIn?.let { checkIn ->
+                            DailyRewardDialog(
+                                checkIn = checkIn,
+                                resetTimezone = snapshot.resetTimezone,
+                                claiming = state.claiming,
+                                onClaim = viewModel::checkIn,
+                                onDismiss = { rewardOpen = false },
                             )
                         }
                     }
@@ -250,97 +256,10 @@ private fun SummaryCard(snapshot: QuestsToday) {
 }
 
 /**
- * The check-in. The lit dots are the streak the server computed, not a count this screen keeps;
- * after a claim the whole status is replaced with the server's copy.
+ * The check-in lives in [DailyRewardDialog]; this screen only lists the day's quests and opens
+ * the modal from the entry card. The lit days and the paid xp are the server's streak, never a
+ * count kept here.
  */
-@Composable
-private fun CheckInCard(
-    checkIn: CheckInState,
-    claiming: Boolean,
-    onCheckIn: () -> Unit,
-) {
-    VoizaCard(backgroundColor = VoizaSurfaceHigh, modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Daily check-in", color = OnDarkHigh, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    text = if (checkIn.done) {
-                        "Checked in today \u00B7 +${checkIn.xpAwardedToday} XP"
-                    } else if (checkIn.streakDay > 0) {
-                        "Day ${checkIn.nextStreakDay} of your streak \u00B7 +${checkIn.nextRewardXp} XP"
-                    } else {
-                        "Start a streak \u00B7 +${checkIn.nextRewardXp} XP"
-                    },
-                    color = if (checkIn.done) Mint else OnDarkMedium,
-                    fontSize = 11.sp,
-                )
-            }
-            StreakPill(streakDay = checkIn.litDays, cap = checkIn.maxStreakDays)
-        }
-
-        if (checkIn.maxStreakDays > 0) {
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                repeat(checkIn.maxStreakDays) { index ->
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(5.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                if (index < checkIn.litDays) VoizaAccentGradient
-                                else Brush.horizontalGradient(listOf(VoizaSurfaceVariant, VoizaSurfaceVariant)),
-                            ),
-                    )
-                }
-            }
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "Each day in a row adds +${checkIn.streakStepXp} XP, up to day ${checkIn.maxStreakDays}. " +
-                    "A missed day starts again at day 1.",
-                color = OnDarkMuted,
-                fontSize = 10.sp,
-            )
-        }
-
-        Spacer(Modifier.height(10.dp))
-        if (checkIn.available) {
-            VoizaButton(
-                text = if (claiming) "Checking in\u2026" else "Check in \u00B7 +${checkIn.nextRewardXp} XP",
-                onClick = onCheckIn,
-                enabled = !claiming,
-                height = 46,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        } else {
-            VoizaSecondaryButton(
-                text = "Already checked in today",
-                onClick = {},
-                enabled = false,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-    }
-}
-
-@Composable
-private fun StreakPill(streakDay: Int, cap: Int) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(Color(0x33FFC246))
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-    ) {
-        Text(
-            text = if (cap > 0) "Day $streakDay / $cap" else "Day $streakDay",
-            color = WarningAmber,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-        )
-    }
-}
-
-/** One quest: what to do, how far along, and what finishing it paid or will pay. */
 @Composable
 private fun QuestRow(quest: DailyQuest) {
     VoizaCard(backgroundColor = VoizaSurfaceHigh, modifier = Modifier.fillMaxWidth()) {

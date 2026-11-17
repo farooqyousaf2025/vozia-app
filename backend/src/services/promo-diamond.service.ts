@@ -33,7 +33,7 @@ export const PROMO_CONFIG_KEY = 'accounts.promotional';
 export type PromoPurpose = 'GIFT' | 'BOX' | 'STORE' | 'GAME';
 
 /** Closed list, mirrored by the CHECK on `promo_grants.source_kind`. */
-export const PROMO_SOURCE_KINDS = ['CHECKIN', 'QUEST', 'CAMPAIGN', 'REFERRAL', 'EVENT', 'ACHIEVEMENT', 'ADMIN'] as const;
+export const PROMO_SOURCE_KINDS = ['CHECKIN', 'QUEST', 'CAMPAIGN', 'REFERRAL', 'EVENT', 'ACHIEVEMENT', 'ADMIN', 'RANKING'] as const;
 export type PromoSourceKind = (typeof PROMO_SOURCE_KINDS)[number];
 
 type PromoGrantRow = {

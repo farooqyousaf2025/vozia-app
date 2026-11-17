@@ -19,7 +19,7 @@ import { ApiError } from '../utils/http';
 export const MEDIA_KINDS = ['GIFT_ICON', 'GIFT_ANIMATION', 'GIFT_SOUND', 'EFFECT', 'RIDE', 'BANNER', 'BADGE', 'WALLPAPER', 'EMOJI'] as const;
 export type MediaKind = (typeof MEDIA_KINDS)[number];
 
-type Format = 'png' | 'gif' | 'webp' | 'jpeg' | 'lottie' | 'svga' | 'mp4' | 'wav' | 'mp3' | 'm4a';
+type Format = 'png' | 'gif' | 'webp' | 'jpeg' | 'lottie' | 'svga' | 'mp4' | 'wav' | 'mp3' | 'm4a' | 'pdf';
 
 const FORMATS: Record<Format, { contentType: string; ext: string }> = {
   png: { contentType: 'image/png', ext: 'png' },
@@ -34,6 +34,10 @@ const FORMATS: Record<Format, { contentType: string; ext: string }> = {
   wav: { contentType: 'audio/wav', ext: 'wav' },
   mp3: { contentType: 'audio/mpeg', ext: 'mp3' },
   m4a: { contentType: 'audio/mp4', ext: 'm4a' },
+  // A document, not art. No `POLICY` row accepts it, so nothing in the media library can take a
+  // PDF; `receipt.service.ts` reads it through `sniffFormat` for the bank slips people photograph
+  // or print, and serves it only through a permission-checked route.
+  pdf: { contentType: 'application/pdf', ext: 'pdf' },
 };
 
 /**
@@ -65,6 +69,17 @@ const POLICY: Record<MediaKind, Partial<Record<Format, number>>> = {
   // A picker of 60 tiles loads on a phone keyboard tap, so each glyph stays tiny.
   EMOJI: { png: 256 * 1024, gif: 256 * 1024, webp: 256 * 1024 },
 };
+
+/**
+ * The extension and content type this server decided for a sniffed format, for the one caller
+ * that is not the media library. `receipt.service.ts` needs the answer without needing `POLICY`,
+ * because a bank slip is not a slot in an art catalogue.
+ */
+export function formatMeta(format: Format): { contentType: string; ext: string } {
+  return FORMATS[format];
+}
+
+export type { Format };
 
 const MAX_FILE_NAME_LENGTH = 120;
 
@@ -110,8 +125,11 @@ const REFERENCE_SITES: ReadonlyArray<{ table: string; column: string; label: str
  * Magic bytes only. A `.png` containing a script, an HTML document or a zip is rejected here,
  * and the extension written to disk is the one this function decided — so the stored name can
  * never disagree with the content the browser is told to expect.
+ *
+ * Exported for `receipt.service.ts`, which stores documents the media library must not accept:
+ * the format is still read from the bytes there, and the byte budget is its own.
  */
-function sniff(buffer: Buffer): Format | null {
+export function sniff(buffer: Buffer): Format | null {
   const starts = (offset: number, bytes: number[], mask?: number[]) =>
     buffer.length >= offset + bytes.length &&
     bytes.every((byte, i) => (mask ? (buffer[offset + i] & mask[i]) === byte : buffer[offset + i] === byte));
@@ -132,6 +150,10 @@ function sniff(buffer: Buffer): Format | null {
   // MPEG-1/2 Layer III frame sync: 11 set bits across the first two bytes.
   if (starts(0, [0xff, 0xe0], [0xff, 0xe0])) return 'mp3';
   if (starts(4, [0x66, 0x74, 0x79, 0x70])) return isoBrand(buffer);
+  // "%PDF-" — the only document format here, and the shape a bank statement takes when nobody
+  // photographed it. A PDF is opaque bytes to this app: nothing renders it, the receipts route
+  // hands it back with its content type and the browser decides what it is.
+  if (starts(0, [0x25, 0x50, 0x44, 0x46, 0x2d])) return 'pdf';
   if (isSvga(buffer)) return 'svga';
   if (isLottie(buffer)) return 'lottie';
   return null;

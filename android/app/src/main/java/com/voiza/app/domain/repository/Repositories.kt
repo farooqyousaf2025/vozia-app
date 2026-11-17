@@ -38,6 +38,10 @@ import com.voiza.app.domain.model.StoreItemKind
 import com.voiza.app.domain.model.StorePurchase
 import com.voiza.app.domain.model.StoreSnapshot
 import com.voiza.app.domain.model.ThemeCatalogue
+import com.voiza.app.domain.model.RankingBoard
+import com.voiza.app.domain.model.RankingBoardKind
+import com.voiza.app.domain.model.RankingClaimResult
+import com.voiza.app.domain.model.RankingPeriod
 import com.voiza.app.domain.model.Transaction
 import com.voiza.app.domain.model.User
 import com.voiza.app.domain.model.WalletSnapshot
@@ -432,4 +436,20 @@ interface AgencyBookRepository {
 
     /** The batches raised for this agency, newest first, without the operators behind them. */
     suspend fun settlements(limit: Int = 20): ApiResult<List<AgencySettlementRow>>
+}
+
+/**
+ * The landing rankings (`/api/rankings`, migration 0045). Public reads — a guest sees the same
+ * boards — but a signed-in caller also gets their own row and their podium reward state.
+ *
+ * No method takes a score, a place or an amount. The board is the server's aggregation over the
+ * ledger, and a claim sends only which board and period: the position is recomputed server-side
+ * and paid once through the promotional rail.
+ */
+interface RankingsRepository {
+    /** One board over one window. `settled` reads the finished window; the default is the live one. */
+    suspend fun board(board: RankingBoardKind, period: RankingPeriod, settled: Boolean = false): ApiResult<RankingBoard>
+
+    /** Collect the finished window's podium reward. Idempotent: a second tap returns the first claim. */
+    suspend fun claim(board: RankingBoardKind, period: RankingPeriod): ApiResult<RankingClaimResult>
 }

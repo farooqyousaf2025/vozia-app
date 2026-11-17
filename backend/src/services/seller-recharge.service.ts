@@ -13,14 +13,17 @@ import { RechargeOrderDto, toRechargeOrder } from '../utils/serialize';
 import { recordAudit } from './audit.service';
 import { emitToUser } from './socket.service';
 import { postLedgerMoves, settlePaymentOnClient } from './ledger.service';
+import { countReceiptsForOrder } from './receipt.service';
 import { ensureRankRegistry } from './rank.service';
 import {
   accrueOrderCommissions,
+  commissionSummary,
   planOrderCommissions,
   recordRulesSnapshot,
   reverseOrderCommissions,
 } from './commission.service';
 import { FIN_ACCOUNTS, postJournal } from './finance-journal.service';
+import { PAYOUT_REFERENCE_SQL } from './payout.service';
 
 /**
  * The seller-initiated recharge (§22), end to end.
@@ -366,13 +369,6 @@ export async function markOrderPaid(
 ): Promise<RechargeOrderDto> {
   const config = await rechargeConfig();
   const evidence = input.evidence ?? {};
-  const hasEvidence = Object.keys(evidence).length > 0;
-  if (config.manualEvidenceRequired && !hasEvidence) {
-    throw ApiError.badRequest(
-      'Attach the payment evidence (receipt, transaction id, or operator note) before marking an order paid',
-      'evidence_required',
-    );
-  }
   const paymentRef = input.paymentRef.trim();
   if (paymentRef.length < 4) throw ApiError.badRequest('The payment reference is too short to be useful', 'bad_payment_ref');
 
@@ -383,11 +379,22 @@ export async function markOrderPaid(
       throw ApiError.conflict(`Order ${current.reference} is already ${current.status}`, 'invalid_state');
     }
 
+    // A receipt counts as evidence — that is the whole point of migration 0041 — and it is counted
+    // here rather than trusted from the body, so "I attached a slip" means a document is on this
+    // order and not a sentence about one. Counted inside the lock for the same reason the credit is.
+    const receipts = await countReceiptsForOrder(orderId, client);
+    if (config.manualEvidenceRequired && Object.keys(evidence).length === 0 && receipts === 0) {
+      throw ApiError.badRequest(
+        'Attach the payment evidence (receipt, transaction id, or operator note) before marking an order paid',
+        'evidence_required',
+      );
+    }
+
     const updated = await client.query<RechargeOrderRow>(
       `UPDATE recharge_orders
           SET status = 'AWAITING_VERIFICATION', payment_ref = $2, evidence = $3
         WHERE id = $1 RETURNING *`,
-      [orderId, paymentRef, JSON.stringify({ ...evidence, paymentRef })],
+      [orderId, paymentRef, JSON.stringify({ ...evidence, paymentRef, receiptCount: receipts })],
     );
     await recordAudit(
       {
@@ -397,7 +404,7 @@ export async function markOrderPaid(
         targetType: 'recharge_order',
         targetId: orderId,
         summary: `${seller.code} claims ${paymentRef} paid for ${current.reference} — awaiting verification`,
-        details: { paymentRef, evidenceKeys: Object.keys(evidence) },
+        details: { paymentRef, evidenceKeys: Object.keys(evidence), receiptCount: receipts },
       },
       client,
     );
@@ -608,8 +615,9 @@ async function creditOrder(
     })),
   });
 
-  // The collection is booked against the coin liability it created, never as revenue: coins are
-  // a service still owed (§25). Fees and commission sit on their own accounts.
+  // The cash is the seller's to hand over, so the asset is what that seller owes the platform
+  // (0042) rather than money a provider holds. Coins are still a service owed (§25): the liability
+  // is the gross, never revenue, and the rail cost — 0 on a manual rail — sits on its own account.
   await postJournal(client, {
     sourceKind: 'RECHARGE_ORDER',
     sourceId: order.id,
@@ -617,7 +625,7 @@ async function creditOrder(
     currency: order.currency,
     createdBy: opts.byAdmin,
     lines: [
-      { accountCode: FIN_ACCOUNTS.providerCollections, direction: 'DEBIT', amountCents: amountCents - feeCents },
+      { accountCode: FIN_ACCOUNTS.sellerReceivable, direction: 'DEBIT', amountCents: amountCents - feeCents },
       { accountCode: FIN_ACCOUNTS.providerFees, direction: 'DEBIT', amountCents: feeCents },
       { accountCode: FIN_ACCOUNTS.coinLiability, direction: 'CREDIT', amountCents },
     ],
@@ -739,7 +747,7 @@ export async function reverseOrder(
         createdBy: adminId,
         lines: [
           { accountCode: FIN_ACCOUNTS.coinLiability, direction: 'DEBIT', amountCents: refundCents },
-          { accountCode: FIN_ACCOUNTS.providerCollections, direction: 'CREDIT', amountCents: refundCents - feePortion },
+          { accountCode: FIN_ACCOUNTS.sellerReceivable, direction: 'CREDIT', amountCents: refundCents - feePortion },
           { accountCode: FIN_ACCOUNTS.providerFees, direction: 'CREDIT', amountCents: feePortion },
         ],
       });
@@ -979,5 +987,137 @@ export async function rechargeStats(opts: { sellerId?: string; bdTerritoryId?: s
     processedDiamonds: n('processed_diamonds'),
     collectedCents: n('collected_cents'),
     netCollectedCents: n('net_collected_cents'),
+  };
+}
+
+/**
+ * What one coin seller holds for the platform, and what they have handed out (0042).
+ *
+ * The seller is an agent: the rupees a member paid them are the platform's money sitting in the
+ * seller's pocket, so the book carries them as `SELLER_RECEIVABLE` and every line on that account
+ * naming this seller is theirs. A refund they gave back and the commission they keep out of what
+ * they collected both reduce it; `remittanceCents` is what is left to hand over, and
+ * `afterAccruedCents` is the same figure with commission not yet batched taken out too — the number
+ * a seller actually plans against.
+ *
+ * The R-coin half is counted in R-coins, never money. A member's sale to this seller is a withdrawal
+ * whose cash changes hands at a rate agreed outside the platform; `payWithdrawal` has never priced
+ * external cash, and inventing a rate here would put a number in the book nobody agreed to. The two
+ * halves are labelled in their own units and are deliberately not added together.
+ */
+export type SellerCashBook = {
+  currency: string;
+  /** The receivable's debits: cash collected on credited orders, less any rail cost finance charged. */
+  collectedNetCents: number;
+  refundedCents: number;
+  /**
+   * Commission already netted off the receivable. A batch nets when finance prepares it, which is
+   * also when its entries turn SETTLED — so this agrees with `commissionSummary.settledCents`
+   * rather than waiting for the batch to be marked paid.
+   */
+  commissionSettledCents: number;
+  commissionAccruedCents: number;
+  remittanceCents: number;
+  afterAccruedCents: number;
+  creditedOrders: number;
+  cashOutNetRCoins: number;
+  cashOutFeeRCoins: number;
+  cashOutCount: number;
+  /** R-coins members have asked this seller to pay and finance has not released yet. */
+  awaitingCashOutRCoins: number;
+  cashOut: Array<{
+    id: string;
+    reference: string;
+    username: string;
+    amountRCoins: number;
+    feeRCoins: number;
+    netRCoins: number;
+    paidAt: string;
+    payoutReference: string;
+    receiptCount: number;
+  }>;
+};
+
+type CashOutRow = {
+  id: string;
+  reference: string;
+  username: string;
+  amount_r_coins: number;
+  fee_r_coins: number;
+  paid_at: Date | null;
+  payout_reference: string | null;
+  receipt_count: string;
+};
+
+export async function sellerCashBook(sellerId: string): Promise<SellerCashBook> {
+  const [money, summary, credited, totals, paid] = await Promise.all([
+    // Attribution is by the source row, not by the account: SELLER_RECEIVABLE is one platform-wide
+    // account, so a line only belongs to this seller if the order or the batch behind it is theirs.
+    one<{ collected: string; refunded: string; settled: string; currency: string | null }>(
+      `SELECT COALESCE(SUM(l.amount_cents) FILTER (WHERE e.source_kind = 'RECHARGE_ORDER' AND l.direction = 'DEBIT'), 0)::text AS collected,
+              COALESCE(SUM(l.amount_cents) FILTER (WHERE e.source_kind = 'REVERSAL' AND l.direction = 'CREDIT'), 0)::text AS refunded,
+              COALESCE(SUM(l.amount_cents) FILTER (WHERE e.source_kind = 'SETTLEMENT' AND l.direction = 'CREDIT'), 0)::text AS settled,
+              MAX(e.currency) AS currency
+         FROM fin_journal_lines l
+         JOIN fin_journal_entries e ON e.id = l.entry_id
+        WHERE l.account_code = $2
+          AND (EXISTS (SELECT 1 FROM recharge_orders o
+                        WHERE o.seller_id = $1
+                          AND (e.source_id = o.id::text OR e.source_id = 'order:' || o.id::text))
+            OR EXISTS (SELECT 1 FROM commission_settlements cs
+                        WHERE cs.id::text = e.source_id AND cs.beneficiary = 'SELLER' AND cs.beneficiary_id = $1))`,
+      [sellerId, FIN_ACCOUNTS.sellerReceivable],
+    ),
+    commissionSummary(sellerId),
+    one<{ n: string }>(`SELECT count(*)::text AS n FROM recharge_orders WHERE seller_id = $1 AND status = 'CREDITED'`, [sellerId]),
+    one<{ net: string; fee: string; n: string; awaiting: string }>(
+      `SELECT COALESCE(SUM(w.amount_r_coins - w.fee_r_coins) FILTER (WHERE w.status = 'PAID'), 0)::text AS net,
+              COALESCE(SUM(w.fee_r_coins) FILTER (WHERE w.status = 'PAID'), 0)::text AS fee,
+              COUNT(*) FILTER (WHERE w.status = 'PAID')::text AS n,
+              COALESCE(SUM(w.amount_r_coins - w.fee_r_coins) FILTER (WHERE w.status IN ('PENDING','APPROVED')), 0)::text AS awaiting
+         FROM withdrawal_requests w WHERE w.seller_id = $1`,
+      [sellerId],
+    ),
+    many<CashOutRow>(
+      `SELECT w.id, ${PAYOUT_REFERENCE_SQL}, u.username, w.amount_r_coins, w.fee_r_coins,
+              w.paid_at, w.payout_reference,
+              (SELECT count(*) FROM payment_receipts r WHERE r.withdrawal_id = w.id)::text AS receipt_count
+         FROM withdrawal_requests w
+         JOIN users u ON u.id = w.user_id
+        WHERE w.seller_id = $1 AND w.status = 'PAID'
+        ORDER BY w.paid_at DESC NULLS LAST, w.created_at DESC
+        LIMIT 50`,
+      [sellerId],
+    ),
+  ]);
+
+  const collectedNetCents = Number(money?.collected ?? 0);
+  const refundedCents = Number(money?.refunded ?? 0);
+  const commissionSettledCents = Number(money?.settled ?? 0);
+  const remittanceCents = collectedNetCents - refundedCents - commissionSettledCents;
+  return {
+    currency: money?.currency ?? summary.currency,
+    collectedNetCents,
+    refundedCents,
+    commissionSettledCents,
+    commissionAccruedCents: summary.accruedCents,
+    remittanceCents,
+    afterAccruedCents: remittanceCents - summary.accruedCents,
+    creditedOrders: Number(credited?.n ?? 0),
+    cashOutNetRCoins: Number(totals?.net ?? 0),
+    cashOutFeeRCoins: Number(totals?.fee ?? 0),
+    cashOutCount: Number(totals?.n ?? 0),
+    awaitingCashOutRCoins: Number(totals?.awaiting ?? 0),
+    cashOut: paid.map((row) => ({
+      id: row.id,
+      reference: row.reference,
+      username: row.username,
+      amountRCoins: row.amount_r_coins,
+      feeRCoins: row.fee_r_coins,
+      netRCoins: row.amount_r_coins - row.fee_r_coins,
+      paidAt: row.paid_at ? new Date(row.paid_at).toISOString() : '',
+      payoutReference: row.payout_reference ?? '',
+      receiptCount: Number(row.receipt_count ?? 0),
+    })),
   };
 }

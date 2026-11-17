@@ -36,15 +36,18 @@ import type {
   BalanceAdjustResult,
   Banner,
   BannerInput,
+  BubbleInput,
   BusinessAccount,
   BusinessAccountListResult,
   CategoryEffect,
+  ChatBubble,
   CommissionBeneficiary,
   CommissionEntry,
   CommissionRule,
   CommissionRuleKind,
   CommissionSettlement,
   PartnerRef,
+  PaymentReceipt,
   CommissionSummary,
   CommissionTier,
   ConsoleRoom,
@@ -115,6 +118,7 @@ import type {
   RoomMutationResult,
   RoomSeatDetail,
   SeatPolicyResult,
+  SellerCashBook,
   StoreItemKind,
   ThemeCatalogue,
   ThemeInput,
@@ -364,8 +368,31 @@ async function downloadFile(path: string, filename: string, accept: string): Pro
   URL.revokeObjectURL(url);
 }
 
-export const api = {
-  // ---- auth ----------------------------------------------------------------
+/**
+ * Read a protected file and hand it back as a blob plus the type the server said it was.
+ *
+ * This is not the export path above: an export the operator downloads is a file with a name, while a
+ * payment receipt is a document they read inside the panel, so the content type has to survive.
+ */
+async function fetchBlob(path: string): Promise<{ blob: Blob; contentType: string }> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let response: Response;
+  try {
+    response = await fetch(`${apiBase()}${path}`, { headers });
+  } catch {
+    throw new ApiError(0, `Network error: cannot reach the Voiza backend at ${apiBase()}.`);
+  }
+  if (!response.ok) {
+    const failure = describeFailure(null, response.status);
+    throw new ApiError(response.status, failure.message, failure.code);
+  }
+  return { blob: await response.blob(), contentType: response.headers.get('content-type') ?? 'application/octet-stream' };
+}
+
+export const api = {  // ---- auth ----------------------------------------------------------------
   login(username: string, password: string): Promise<LoginResponse> {
     return request<LoginResponse>('/api/admin/login', {
       method: 'POST',
@@ -774,6 +801,28 @@ export const api = {
     );
   },
 
+  createBubble(input: BubbleInput): Promise<{ bubble: ChatBubble }> {
+    return request<{ bubble: ChatBubble }>('/api/admin/bubbles', { method: 'POST', body: input });
+  },
+
+  updateBubble(key: string, patch: Partial<Omit<BubbleInput, 'key'>>): Promise<{ bubble: ChatBubble }> {
+    return request<{ bubble: ChatBubble }>(`/api/admin/bubbles/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      body: patch,
+    });
+  },
+
+  deleteBubble(key: string): Promise<{ removed: { key: string; holders: number } }> {
+    return request<{ removed: { key: string; holders: number } }>(
+      `/api/admin/bubbles/${encodeURIComponent(key)}`,
+      { method: 'DELETE' },
+    );
+  },
+
+  bubbleHolders(key: string): Promise<{ holders: FrameHolder[] }> {
+    return request<{ holders: FrameHolder[] }>(`/api/admin/bubbles/${encodeURIComponent(key)}/holders`);
+  },
+
   // ---- entrance rides -------------------------------------------------------
   // The fourth sellable catalogue (migration 0026): bought and worn like a frame, so the same four
   // calls, and the same rule that `key` is a receipt identity — it goes in the body of a create and
@@ -1096,6 +1145,11 @@ export const api = {
     return request<{ sellers: BusinessAccount[] }>(`/api/admin/business/accounts/${id}/sellers`);
   },
 
+  /** The cash a coin seller collected and still holds (0042). A non-seller id is a 400. */
+  sellerCashBook(id: string): Promise<{ cash: SellerCashBook }> {
+    return request<{ cash: SellerCashBook }>(`/api/admin/business/accounts/${id}/cash-book`);
+  },
+
   assignSellerPackages(id: string, packageKeys: string[]): Promise<{ sellerId: string; packageKeys: string[] }> {
     return request<{ sellerId: string; packageKeys: string[] }>(`/api/admin/business/accounts/${id}/packages`, {
       method: 'PUT',
@@ -1190,6 +1244,39 @@ export const api = {
     return request<{ expired: number; orders?: string[] }>('/api/admin/business/recharges/sweep-expiry', {
       method: 'POST',
     });
+  },
+
+  // ---- payment receipts (migration 0041) ----------------------------------
+  /**
+   * The slips a coin seller uploaded as proof of a cash settlement, for one order or one payout.
+   *
+   * Listing is a read (`finance:read` for orders, the review capability for payouts); opening the
+   * bytes is a separate, narrower permission on the server, so the two calls below are deliberately
+   * not one helper. A queue can show that a document exists without every operator being able to
+   * read the bank account number printed on it.
+   */
+  orderReceipts(orderId: string): Promise<{ receipts: PaymentReceipt[] }> {
+    return request<{ receipts: PaymentReceipt[] }>(
+      `/api/admin/business/recharges/${encodeURIComponent(orderId)}/receipts`,
+    );
+  },
+
+  withdrawalReceipts(withdrawalId: string): Promise<{ receipts: PaymentReceipt[] }> {
+    return request<{ receipts: PaymentReceipt[] }>(
+      `/api/admin/withdrawals/${encodeURIComponent(withdrawalId)}/receipts`,
+    );
+  },
+
+  /**
+   * One receipt's bytes, for an inline preview. The caller revokes the returned object URL.
+   *
+   * There is no URL to put in an `img src`, and that is the point: a bank slip does not live in the
+   * publicly served uploads directory, so the only way to see it is to ask the API for it under this
+   * operator's token. `path` therefore names the raw route, which differs per queue.
+   */
+  async receiptBlob(path: string): Promise<{ url: string; contentType: string }> {
+    const { blob, contentType } = await fetchBlob(path);
+    return { url: URL.createObjectURL(blob), contentType };
   },
 
   // ---- commission -----------------------------------------------------------

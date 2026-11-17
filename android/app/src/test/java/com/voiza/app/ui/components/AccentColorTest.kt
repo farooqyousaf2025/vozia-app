@@ -1,6 +1,8 @@
 package com.voiza.app.ui.components
 
 import androidx.compose.ui.graphics.toArgb
+import com.voiza.app.domain.model.BubbleStyle
+import org.junit.Assert.assertNull
 import com.voiza.app.ui.theme.OnDarkMedium
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -14,6 +16,21 @@ import org.junit.Test
 class AccentColorTest {
 
     private val fallback = OnDarkMedium
+
+    @Test
+    fun `bubble snapshots accept only opaque hash-prefixed six-digit hex`() {
+        // Midnight, aurora, blossom and royal retain their exact server palette.
+        val colours = listOf(
+            "#202746", "#94B6FF", "#F5F7FF", "#123B3C", "#65E2CD", "#F5FFFD",
+            "#41213B", "#F4A6D0", "#FFF5FA", "#362C1C", "#F2CB75", "#FFF9E9",
+        )
+        colours.forEach { hex ->
+            assertEquals((0xFF000000L or hex.substring(1).toLong(16)).toInt(), BubbleStyle.parseColor(hex))
+            assertEquals(BubbleStyle.parseColor(hex), BubbleStyle.parseColor(hex.lowercase()))
+        }
+        listOf(null, "", "red", "transparent", "202746", " #202746", "#202746 ", "#123", "#00123456", "#+12345", "#-12345", "#zzzzzz")
+            .forEach { assertNull(BubbleStyle.parseColor(it)) }
+    }
 
     @Test
     fun `a well-formed accent paints exactly the colour the operator chose`() {

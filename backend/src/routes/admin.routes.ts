@@ -120,6 +120,11 @@ router.post('/users/:id/grant', requirePermission('user:wallet'), admin.grantIte
 
 // Entrance rides (migration 0026): sold and worn like a frame, so the same two powers — pricing and
 // retiring a row changes what every room plays when somebody joins, which is `config:manage`.
+router.post('/bubbles', requirePermission('config:manage'), admin.createBubbleEndpoint);
+router.put('/bubbles/:key', requirePermission('config:manage'), admin.updateBubbleEndpoint);
+router.delete('/bubbles/:key', requirePermission('config:manage'), admin.deleteBubbleEndpoint);
+router.get('/bubbles/:key/holders', requirePermission('user:read'), admin.bubbleHoldersEndpoint);
+
 router.post('/rides', requirePermission('config:manage'), admin.createRideEndpoint);
 router.put('/rides/:key', requirePermission('config:manage'), admin.updateRideEndpoint);
 router.delete('/rides/:key', requirePermission('config:manage'), admin.deleteRideEndpoint);
@@ -174,6 +179,10 @@ router.post('/withdrawals/:id/review', requirePermission('withdrawal:review'), a
 // those decisions, not a different kind of one. What the split *does* buy is two separate rows in
 // `admin_audit`, so who accepted and who actually paid stay distinguishable.
 router.post('/withdrawals/:id/pay', requirePermission('withdrawal:review'), admin.payWithdrawalEndpoint);
+// Migration 0041: the documents behind a cash payout. The queue already lists them by id; opening
+// one takes the same capability as paying, because looking at the slip is how that decision is made.
+router.get('/withdrawals/:id/receipts', requirePermission('withdrawal:review'), admin.withdrawalReceipts);
+router.get('/withdrawals/receipts/:id/raw', requirePermission('withdrawal:review'), admin.withdrawalReceiptFile);
 
 router.get('/games', requirePermission('game:read'), admin.games);
 router.put('/games/:key/rules', requirePermission('game:manage'), admin.setGameRules);

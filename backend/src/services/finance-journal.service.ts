@@ -106,6 +106,9 @@ type LineRow = {
 
 export const FIN_ACCOUNTS = {
   providerCollections: 'PROVIDER_COLLECTIONS',
+  // 0042: cash a coin seller collected and still holds. A seller order debits this, not
+  // providerCollections — the platform never received that money, so the asset is the seller's debt.
+  sellerReceivable: 'SELLER_RECEIVABLE',
   collectionsPending: 'COLLECTIONS_PENDING',
   providerFees: 'PROVIDER_FEES',
   coinLiability: 'COIN_LIABILITY',

@@ -47,6 +47,11 @@ export function createApp(): Express {
   // Mounting it before the default below means every other route keeps the 64 kb limit, and
   // body-parser skips a request whose body has already been read.
   app.use('/api/admin/uploads', express.json({ limit: UPLOAD_JSON_BODY_LIMIT }));
+  // A seller's bank receipt is the same shape of request — a file as base64 inside JSON — and takes
+  // the same cap. It is not the same storage: nothing below `/uploads` is checked, and a receipt
+  // must never be readable that way, so these bytes live in `backend/receipts` and leave the server
+  // only through a route that has already checked a permission.
+  app.use('/api/business/receipts', express.json({ limit: UPLOAD_JSON_BODY_LIMIT }));
 
   // Party payloads are tiny. `verify` also keeps the untouched bytes around, which
   // the LiveKit webhook signature check needs (re-serialised JSON would not match).

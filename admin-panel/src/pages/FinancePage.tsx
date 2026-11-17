@@ -4,11 +4,12 @@
 //
 // Two ideas the page has to keep straight for an operator.
 //
-// First, the face value of coins issued is not revenue. Cash arrives in
-// PROVIDER_COLLECTIONS, the coins the platform still owes the holder sit in COIN_LIABILITY,
-// and only what remains becomes PLATFORM_REVENUE — the net of a collection after provider
-// fees, and since migration 0031 the coin spread each gift and each settled game kept. A trial
-// balance that pretends otherwise would overstate the business by every unredeemed coin.
+// First, the face value of coins issued is not revenue. Cash a provider settled arrives in
+// PROVIDER_COLLECTIONS, cash a coin seller collected and still holds is SELLER_RECEIVABLE (0042),
+// the coins the platform still owes the holder sit in COIN_LIABILITY, and only what remains becomes
+// PLATFORM_REVENUE — the net of a collection after provider fees, and since migration 0031 the coin
+// spread each gift and each settled game kept. A trial balance that pretends otherwise would
+// overstate the business by every unredeemed coin.
 //
 // Second, the reconciliation report is not a summary of what the services said. Each check is a
 // count of offending rows read straight out of the tables, so a zero means "I looked for a

@@ -30,6 +30,15 @@ router.get('/orders', requireBusiness('recharge:read'), business.orders);
 router.get('/orders/:id', requireBusiness('recharge:read'), business.showOrder);
 router.get('/statement', requireBusiness('statement:read'), business.statement);
 
+// Receipts and cash payouts (migration 0041). One capability covers both, because they are one
+// job: this account is the one that is supposed to have moved the cash, so it may say so with a
+// document and see the requests aimed at it. Which order or payout a given upload may attach to is
+// decided in `receipt.service.ts` from the row, never from the body.
+router.post('/receipts', requireBusiness('payout:manage'), business.uploadReceipt);
+router.get('/receipts/:id/raw', requireBusiness('payout:manage'), business.ownReceipt);
+router.get('/payouts', requireBusiness('payout:manage'), business.payouts);
+router.get('/payouts/:id', requireBusiness('payout:manage'), business.payout);
+
 // BD-only: the sellers it is responsible for, and one of their books.
 router.get('/sellers', requireBusiness('seller:read'), business.sellerRoster);
 router.get('/sellers/:id/report', requireBusiness('report:read'), business.sellerReport);

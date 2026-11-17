@@ -404,7 +404,7 @@ fun PartyRoomScreen(
             text = {
                 OutlinedTextField(
                     value = pw,
-                    onValueChange = { pw = it.take(16) },
+                    onValueChange = { pw = it.take(32) },
                     label = { Text("Room password", fontSize = 13.sp) },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),

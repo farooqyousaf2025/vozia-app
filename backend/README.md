@@ -984,8 +984,9 @@ and what would fix it. The batch opens as DRAFT behind a `PENDING_SETTLEMENT` ho
 
 **The journal moves when the transfer is recorded.** DRAFT → APPROVED → PAID, or VOID from either of the
 first two. Approval moves no balance and books no entry; it says the figures are right. Pay is the only
-step that writes — DEBIT `AGENCY:<id>` / CREDIT `PROVIDER_COLLECTIONS`, the pair BD and seller
-settlements already use because the money leaves through the same rails, keyed
+step that writes — DEBIT `AGENCY:<id>` / CREDIT `PROVIDER_COLLECTIONS`, the pair a BD settlement
+already uses because the money leaves through the same rails (a seller batch is the exception since
+0042: it credits `SELLER_RECEIVABLE`, because that cash never left the seller's pocket), keyed
 `(AGENCY_SETTLEMENT, settlement.id)` so a pay whose response was lost replays its first answer instead of
 sending a second transfer. Its hold is CONVERTED with the batch's reference, which is how the statement can
 still name the batch that cleared it, and the payout reference is required for the same reason 0032
@@ -1049,9 +1050,11 @@ first delivery booked instead of doubling the liability. Idempotency for the boo
 fact as idempotency for the credit, rather than being bolted beside it.
 
 **`journaledByCaller` is the opt-out and exactly one caller takes it.** The seller order's entry is not a
-coarser version of the generic one: it splits the gross into `PROVIDER_COLLECTIONS` and `PROVIDER_FEES`, so
-booking both would double the liability *and* lose the fee — and the order-keyed shape is what the existing
-recharge tie-outs read. Opting out leaves those checks meaningful. The two postings are then mutually
+coarser version of the generic one: it splits the gross into an asset and `PROVIDER_FEES`, so booking both
+would double the liability *and* lose the fee — and the order-keyed shape is what the existing recharge
+tie-outs read. That asset was `PROVIDER_COLLECTIONS` until 0042 renamed the side the cash is actually on to
+`SELLER_RECEIVABLE`; the entry, its key and its amounts are unchanged. Opting out leaves those checks
+meaningful. The two postings are then mutually
 exclusive by construction, which is the claim 0034's backfill is written to make true: a proof is missing
 only if it has neither an issuance entry keyed on itself nor an order entry reachable through the
 transaction they share.
@@ -1556,6 +1559,265 @@ label a sub reads, and the whole member surface seen with a master token, a sub 
 agency, an operator token and a suspended agency's owner. It names every row it writes with a stamp and leaves
 them in place, so it is a development-database script.
 
+## A manual settlement is judged on a document (migration 0041)
+
+The payments model is now: a member buys coins **from a coin seller** and sells R-coins **to a coin seller**,
+and the rupees for both legs move out of the seller's own pocket, somewhere this backend has no window into.
+That was settled on 2026-11-09, and it leaves exactly one question the database cannot answer — did the cash
+actually change hands? — and one honest answer: a human looks at a photograph of a bank slip and decides.
+`payment_receipts` is that photograph, and `receipt.service.ts` is the code that stores it without pretending
+to have verified it.
+
+**A receipt is evidence, never a trigger.** This is the rule the whole feature is built to keep. Uploading a
+slip satisfies the `manualEvidenceRequired` gate in `markOrderPaid` and nothing else: the order still stops at
+`AWAITING_VERIFICATION`, the coins are still created only when a `recharge:review` operator presses Approve,
+and the suite asserts the member's `diamond_balance` is unchanged after the upload. There is no webhook, no
+OCR, no "provider confirmed" state, and the panel's own footer says so in words — the document proves nothing
+on its own; the decision is what the audit trail keeps.
+
+**Nothing here is addressable.** `media_assets` was the obvious home and it is exactly wrong twice over: its
+`uploaded_by` is `UUID REFERENCES admins`, and a coin seller is deliberately not in `admins` (0004 — a partner
+credential in that table would make every `requireAdmin` route reachable with it); and its bytes live under
+`/uploads`, which `app.ts` mounts with `express.static` and no authentication, which is fine for a gift icon
+and not fine for a screenshot of a name and an account number. So the bytes go to `backend/receipts/` — a
+directory no static mount points at, written `0600`, named from a uuid rather than from `file_name`, and
+gitignored because it is customer banking data, not source. Every DTO for a receipt has a `contentType`, a
+`byteSize` and an `uploadedBy`, and **no `url` field, because there is no URL to return**: reading a document
+means calling a route that has already checked a permission, which is why `GET …/raw` answers
+`Cache-Control: no-store`.
+
+**A file does not describe itself.** The format comes from the magic bytes through the same `sniff()` the
+media library uses, and the extension, content type and size budget come from this server's table for that
+format — never from the caller's `fileName` or a declared type. PNG/JPEG/WebP are capped at 5 MB and PDF at
+8 MB, and the cap is read from the format *found*, so a 6 MB file renamed `.png` is a 6 MB PNG and is refused
+(`receipt_too_large`). Anything else — including an animated GIF — is refused as `receipt_format_unsupported`
+before a byte is written.
+
+**One document, one money record, one owner.** The `CHECK (num_nonnulls(order_id, withdrawal_id) = 1)` in the
+schema is the third rule, and the service refuses both the empty and the double target
+(`receipt_target_required`, `receipt_target_ambiguous`). The record must belong to the uploader: an order
+whose `seller_id` is not this account answers 404, not 403, so a forged uuid says nothing about whether the
+order exists. Documents may be added only while the record is still open (`AWAITING_PAYMENT` /
+`AWAITING_VERIFICATION`, `PENDING` / `APPROVED`), so a credited or cancelled record closes its window
+(`receipt_target_closed`), and eight is the ceiling per record (`receipt_limit`) — counted *before* the file is
+written, so a refusal leaves no row and no bytes. The same bytes on the same record are the same receipt: the
+partial unique index on `(target, sha256)` makes the second upload return the first row with
+`duplicate: true`, and the orphan file is unlinked. Every accepted upload writes one `RECEIPT_UPLOADED` audit
+row carrying `business_id` — the only actor column a partner action can have, since `admin_id` is NULL for it.
+
+### Selling R-coins is a withdrawal, not a second cash-out table
+
+A member who sells R-coins to a seller is still taking money *out* of the platform, so the record stays a
+`withdrawal_requests` row and keeps everything hanging off it: the `fee_bps` quoted when they asked rather
+than when the cash moved, the minimum, the mandatory `payout_reference` before a row can be PAID, and the
+`withdrawal:review` permission that releases it. `payoutMethod: 'SELLER'` plus `payoutDetails.sellerId` is
+resolved from `business_accounts` (`kind = 'COIN_SELLER' AND status = 'ACTIVE'`), never trusted from the body,
+so a suspended partner stops being choosable the moment an operator flips the switch and a BD manager cannot be
+named as a cash payer it has no part in (`payout_seller_unavailable`). The resolved id is stored in
+`withdrawal_requests.seller_id` — the column 0041 adds — because a code pasted into `payoutDetails` is text
+that a queue cannot join against. The seller's own desk is `GET /api/business/payouts`, and it masks the
+member's account number to the last four: one host's bank details must not be readable by every seller who
+polls the queue.
+
+| Route | Who | Notes |
+|---|---|---|
+| `POST /api/business/receipts` | partner `payout:manage` | `{ orderId }` or `{ withdrawalId }`, `fileName`, base64 `data`; 201, or 200 with `duplicate: true` |
+| `GET /api/business/receipts/:id/raw` | partner `payout:manage` | the uploader's own bytes only; another partner's slip is a 404 |
+| `GET /api/business/payouts` (`/:id`) | partner `payout:manage` | the cash this account is asked to hand over, with `receiptCount` and a tail-masked account |
+| `GET /api/admin/business/recharges/:id/receipts` | `finance:read` | the documents on one order; no URL in the payload |
+| `GET /api/admin/business/receipts/:id/raw` | `recharge:review` | order slips only — a payout slip answered here is `receipt_wrong_queue` |
+| `GET /api/admin/withdrawals/:id/receipts` | `withdrawal:review` | the documents on one payout |
+| `GET /api/admin/withdrawals/receipts/:id/raw` | `withdrawal:review` | payout slips only |
+
+Two queues, two permissions, and the two `…/raw` routes check which queue the row belongs to before they
+stream it. A `MODERATOR` token may hold `finance:read`, list the slips, and still be refused the bytes: reading
+a bank statement is the review capability, not the read one.
+
+**What this costs operationally.** `backend/receipts/` is now part of the database backup, not of the repo.
+Lose it and every `payment_receipts` row points at a missing file — the row still proves *that* a seller
+uploaded something and when, but nobody can read it again. The directory is gitignored for the same reason the
+account numbers in it are.
+
+### Tests
+
+`npm run test:receipts` (69 checks) drives a running backend over HTTP and reads the book back through its own
+pool. Read the money assertions first: a slip on a claimed order leaves the balance exactly where it was, the
+credit happens once at approval, and the credited order then refuses further documents. Then the shape of the
+storage — bytes in the receipts directory and never in `uploads`, no route that reaches them without a token
+(including by id), `no-store` on the way back, the returned bytes identical to the uploaded ones and decodable
+as the format they claim. Then the refusals, each proved by counting rows and files afterwards: oversize,
+unsupported, ambiguous and unowned targets, the eighth slip allowed and the ninth not, a cancelled payout, and
+a BD agent named as a cash payer. Finally the sell side, where the fee dial, the mandatory reference and the
+`withdrawal:review` guard all still apply to a payout no bank API was ever called for. The documents a reviewer
+opens are real PNG and PDF bytes, not magic numbers over junk, so an operator clicking Open on a suite record
+sees a page. Since 0042 it also reads the cash book: a requested sale is R-coins waiting on that seller,
+paying it moves the coin half and leaves `remittanceCents` where it was, another seller's statement shows
+neither, finance and the partner read one number, a BD id is refused, and the CSV keeps the two units apart.
+
+## The cash a seller holds is their debt (migration 0042)
+
+Settled with the operator on 2026-11-09: a member buys coins **from a coin seller** and sells R-coins **to a
+coin seller**, and the rupees for both legs move out of the seller's own pocket, outside the app. 0041 gave
+that handover its document. This gives it its account, because until now the book was claiming an asset
+nobody had handed over.
+
+`creditOrder` debited `PROVIDER_COLLECTIONS` — 0004's *"Money held by the payment provider"* — for cash a
+seller was holding in a drawer. The platform had never received it, no provider was settling it, and the
+seller's commission sat beside it as an expense the platform would pay from a bank account that money never
+reached. The seller is an **agent**: they collect on the platform's behalf and keep their cut out of what
+they collected.
+
+**One new account, three movements.** `SELLER_RECEIVABLE` (ASSET, `pkr`, DEBIT, category
+`PENDING_SETTLEMENT`, `balance_source = fin_journal_lines`) is what sellers hold for the platform:
+
+| Event | Entry | Why |
+|---|---|---|
+| An order is credited | DEBIT `SELLER_RECEIVABLE` (gross − fee), DEBIT `PROVIDER_FEES` (fee), CREDIT `COIN_LIABILITY` (gross) | The cash is the seller's to hand over; the coins are still a service owed, never revenue |
+| An order is reversed | DEBIT `COIN_LIABILITY`, CREDIT `SELLER_RECEIVABLE`, CREDIT `PROVIDER_FEES` | The refund goes back through the same seller, fee split included |
+| A SELLER commission batch is prepared | DEBIT `SELLER_COMMISSION_PAY`, CREDIT `SELLER_RECEIVABLE` | The seller keeps that money rather than receiving a transfer for it |
+
+The batch nets when finance **prepares** it, which is the moment its entries turn `SETTLED` and the payable
+is released — so the receivable and `commission_entries` never disagree about what is owed. Netting is safe
+rather than hopeful: 0004's trigger refuses an accrual that would push an order's total commission above what
+that order collected, so a seller's payable can never exceed the receivable it is settled against.
+
+**What did not move.** `COIN_LIABILITY` is still credited the gross on every order, so
+`recharge.credited_has_journal` and `recharge.issued_has_journal` keep their meaning: they key on the
+liability equalling the collection, not on the asset account, and only the asset's name changed.
+`PROVIDER_COLLECTIONS` stays what its name says — a Stripe `COIN_ISSUANCE`, a BD commission batch and an
+agency settlement still credit or debit it, because none of those three holds cash the platform is waiting
+on. Paying a BD manager or an agency is a real outflow.
+
+**History was restated, not left to disagree.** The migration updates lines already written, scoped to
+entries that are provably a seller's: a `RECHARGE_ORDER`, a `REVERSAL` whose `source_id` is `order:<id>`, or a
+`SETTLEMENT` whose batch names `beneficiary = 'SELLER'`. On the development database that moved 83 order
+debits (5,425,000 cents), 20 reversal credits (1,950,000) and 20 seller-batch credits (90,000), leaving the
+128 Stripe-shaped `COIN_ISSUANCE` lines alone and the trial balance still zero. Idempotent: after the first
+run each `WHERE` matches nothing. Commission reversals need no handling — they post under
+`commission:<orderId>` against the payables and `COMMISSION_EXPENSE`, and never touched this account.
+
+### One statement, two units
+
+A seller reads `cash` on `GET /api/business/statement`; finance reads the same figure at
+`GET /api/admin/business/accounts/:id/cash-book`. Both call `sellerCashBook(sellerId)`, so there is one
+number rather than two reports that drift.
+
+| Field | Meaning |
+|---|---|
+| `collectedNetCents` | the receivable's debits — cash collected on credited orders, less any rail cost finance charged |
+| `refundedCents` | reversals handed back through this seller |
+| `commissionSettledCents` | commission already netted off; agrees with `commissionSummary.settledCents` |
+| `commissionAccruedCents` | accrued and not yet batched |
+| `remittanceCents` | collected − refunded − netted: **what the seller still has to hand over** |
+| `afterAccruedCents` | the same, assuming every accrued line is batched — the figure a seller plans against |
+| `cashOutNetRCoins`, `cashOutFeeRCoins`, `cashOutCount`, `cashOut[]` | R-coins this seller has paid members, with the payout reference and its receipt count |
+| `awaitingCashOutRCoins` | R-coins requested and not yet released by finance |
+
+Attribution is by the source row, not by the account: `SELLER_RECEIVABLE` is one platform-wide account, so a
+line belongs to a seller only if the order or the batch behind it is theirs. A second seller's statement
+reads zero, and a BD manager has no `cash` field at all — asking the admin endpoint for one is
+`400 not_a_coin_seller` rather than a misleading empty book.
+
+**The R-coin half is deliberately not priced.** A member's sale to a seller is a `withdrawal_requests` row
+whose cash changes hands at a rate agreed outside the platform. `payWithdrawal` has always refused to price
+external cash — it books the fee spread and nothing else — and inventing a rate to net against the
+receivable would put a number in the book nobody agreed to. So the sale appears in R-coins beside the money
+lines, the CSV stamps `rcoin` in the currency column on those rows, and the two halves are never added. That
+is a stated limitation, not an oversight: the platform knows how many R-coins a seller handed over and has
+the slip that proves it, but not the rupees that changed hands.
+
+| Route | Who | Notes |
+|---|---|---|
+| `GET /api/business/statement` (`?format=csv`) | partner, own scope | adds `cash` for a COIN_SELLER only; the CSV carries both halves in their own units |
+| `GET /api/admin/business/accounts/:id/cash-book` | `finance:read` | the same book; a non-seller id is `not_a_coin_seller` |
+
+### Tests
+
+`npm run test:business` (93) asserts the three entries above by account and direction, that a seller order
+books nothing against `PROVIDER_COLLECTIONS`, that the seller's statement and finance's endpoint agree, that
+another seller's book is empty and that a BD statement has no `cash`. `npm run test:receipts` (69) proves the
+unit boundary on a real paid sale: `remittanceCents` is read before the payout is released and after, and
+must be identical while `awaitingCashOutRCoins` falls and `cashOutNetRCoins` rises by exactly the net.
+
+## A ring's rarity is a badge, and its life is drawn on the device (migration 0043)
+
+`profile_frames` gained `tier TEXT NOT NULL DEFAULT 'COMMON'` with a CHECK over
+`COMMON | RARE | EPIC | LEGENDARY`, and `animated BOOLEAN NOT NULL DEFAULT false`. Both are
+**display only**: `price_diamonds` remains the single number a purchase reads, and the VIP spend
+gate from 0024 is untouched, so a rarity can never become a second price list. The seed backfills
+the ten shipped rings (bronze/silver COMMON; jade/ocean/sky RARE; amber/rose/violet EPIC;
+crown/immortal LEGENDARY) and marks ocean, amber, rose, crown and immortal `animated`.
+
+`animated` deliberately does not mean a video file. The ring art stays a still PNG; the flag tells
+the phone to draw a rotating, pulsing aura behind it in the frame's `accent` colour, with a gold
+thread added for LEGENDARY. That keeps frames out of the upload-format pipeline entirely — no new
+container to sniff, no per-format cap, no renderer split — and the same aura composable serves the
+store preview, the profile header and every room seat, so a worn ring looks identical everywhere.
+The catalogue (`GET /api/store`), the account DTO and the admin decor reads all carry `tier` and
+`animated` through `utils/serialize.ts`; `/api/admin/decor` frames accept both on create and treat
+them as omit-on-update like the other optional fields, and the panel's Decor page edits them with a
+rarity select, a "Live frame" switch and a `Live · <tier>` badge on each card.
+
+**The sheet wears owned rows for free.** A support grant (`POST /api/admin/users/:id/grant`,
+`kind: FRAME`, `days: null` for permanent) lands in `user_items` like a purchase, so the detail
+sheet's primary action becomes Wear regardless of balance or VIP rank. The red shortfall line is
+therefore gated on *not owned*: an owned rental whose renewal is out of reach shows a muted
+"Wearing is free. Renewing later needs N more diamonds." above an enabled Wear and a disabled
+Renew, instead of an error that reads as if wearing were blocked. The store grid is a snapshot
+loaded on entry, so a grant made while the app sits in the Store refreshes on re-entering the tab —
+the same ownership refresh every purchase already relies on.
+
+Verified on the emulator (LAN build, 2026-11-17; captures under
+`D:\vozia-runtime\qa-evidence\`, never committed): the owned Crown sheet offers free Wear,
+Wear changes to Take off and writes `users.profile_frame_key = 'ring-crown'` with permanent
+ownership, while the unowned Immortal sheet retains its red shortfall and disabled Buy.
+Profile aura rotation and live-room seat rendering still require verified device evidence.
+
+## Chat bubbles keep their send-time style (migration 0044)
+
+`chat_bubbles` stores background, accent, text colour and a `NONE | SPARKLE | HEART | CROWN`
+motif alongside the existing Store price, period, VIP gate and recommended flag. All three colours
+must be opaque `#RRGGBB`; the service requires at least 4.5:1 text/background contrast. A sold
+bubble has a positive price; an off-sale, zero-price row is available only through an admin grant.
+
+| Route | Permission / behaviour |
+|---|---|
+| `GET /api/admin/decor` | `room:read`; includes `bubbles` |
+| `POST /api/admin/bubbles` | `config:manage`; returns `{bubble}` |
+| `PUT /api/admin/bubbles/:key` | `config:manage`; partial update, key immutable, returns `{bubble}` |
+| `DELETE /api/admin/bubbles/:key` | `config:manage`; returns `{removed:{key,holders}}`; retains ownership and history |
+| `GET /api/admin/bubbles/:key/holders` | `user:read`; returns `{key,holders}` |
+| `POST /api/admin/users/:id/grant` | `user:wallet`; accepts `kind: BUBBLE`, `days: null` for a permanent grant |
+
+The existing Store routes accept `kind: BUBBLE`. Purchases read catalogue prices inside the ledger
+transaction and spend eligible promotional diamonds with purpose `STORE`; renewal extends the live
+expiry by the catalogue period and refreshes the equipped expiry. Wear is free, but still requires
+live ownership. A retired row is no longer purchasable or equipable; receipts remain.
+
+The account DTO exposes `chatBubble`, Store rows expose `bubble`, and text chat exposes `bubble` as
+a send-time snapshot saved in `chat_messages.bubble_style`. The server ignores client-supplied art
+and checks live ownership, not just the account's denormalized expiry. Old plain messages stay
+plain; old styled messages keep their colours after unequip, expiry, catalogue edits or retirement.
+Gift and system lines remain unstyled. Android draws the border and motif natively, without an upload.
+The Store sheet reads wallet policy for eligible bonus spending and labels that bonus separately;
+it never deducts a balance locally.
+
+`node scripts/bubbles-e2e.cjs --evidence` passed 177 checks on 2026-11-17 against the running local
+stack. It uses an existing marked QA account, audited test funding, API retirement/room cleanup,
+and isolated save/restore for an ownership-expiry simulation; receipts and chat history are retained.
+Evidence stays outside the repository under `D:\vozia-runtime\qa-evidence`.
+
+Device proof on the emulator (LAN build, 2026-11-17, marked QA account, room
+`QA Bubble History 20261117`): a text sent while wearing Midnight Spark stored the full snapshot;
+after a free Take off the next text stored `bubble_style = null` while both earlier rows kept their
+colours; a line written through `appendChat` while the API process was stopped appeared on the phone
+once the socket reconnect re-fetched history, still plain, beside the re-fetched styled rows.
+Closing through `POST /api/rooms/:id/close` left the wear null, the wallet at 0 bought / 300 promo /
+0 R-coins, and every receipt and message in place. Captures: `bubble-chat-live-20261117.png`,
+`bubble-unequip-history-20261117.png`, `bubble-history-recovery-20261117.png`,
+`bubble-history-recovery-full-20261117.png`, `bubble-history-recovery-mixed-20261117.png`;
+the fixture/verify/close log is `bubble-device-proof-20261117.json`.
+
 ## What six simultaneous sends are allowed to do
 
 Every other suite here asks a money path one question at a time. The question a phone always ends up
@@ -1688,7 +1950,7 @@ written into the receipt, a replay answering the roll it already bought, and the
 same numbers the ledger paid. It exits non-zero on
 any failure.
 
-`npm run test:games` (69) and `npm run test:business` (87) run against the same stack:
+`npm run test:games` (69) and `npm run test:business` (93) run against the same stack:
 the game lifecycle, pinned rule versions, fees, at-most-once settlement, timeout
 forfeit, disputes and the three drivers, and since 0031 the journal leg of a settled pool — one
 entry, priced at the configured face value, and no entry at all for a free match; then BD/coin-seller
@@ -1697,7 +1959,7 @@ reversals and reconciliation, with the revenue account pinned to holding only th
 0034 — the liability pinned to exactly the cents every `payment_proofs` row collected, whichever of the two
 kinds posted it.
 
-`npm run test:accounts` (134) and `npm run test:operators` (44) need that stack running too. The
+`npm run test:accounts` (135) and `npm run test:operators` (44) need that stack running too. The
 accounts suite walks the whole book rather than a page of it: the projection identity
 `opening + ΣIN − ΣOUT = balance` on a 926-movement account, one statement leg per currency rule, the
 reconciliation findings a clean database should not raise, idempotent hold create/release including
@@ -1827,6 +2089,36 @@ Two scripts exist to set up and debug a demo rather than to assert:
 * `npm run webhook:sink` listens on `:4111` and answers LiveKit webhook deliveries,
   reporting whether the `Authorization` header carries `Bearer ` and whether the
   SHA-256 claim matches the body — then replies 500 so redelivery is exercised.
+
+## Landing rankings (0045)
+
+`GET /api/rankings?board=host|rich|gifter&period=day|week|month` is public; an optional
+member session adds `self` and `reward`. `settled=true` shows yesterday, last completed
+ISO week or last calendar month (UTC). Host sums received R-coins, Gifter sums sent gift
+diamonds, and Rich sums spending less game refunds. QA-linked transfers are excluded.
+Ties resolve by account creation time and id consistently across leaders and self-standing.
+
+`POST /api/rankings/claim` requires a member session and `{ board, period }`. It pays
+only a finished window through a `RANKING` promo grant, backed by a balanced journal entry.
+The unique user/board/window claim key prevents concurrent requests minting twice. The
+member-facing grant reason names the board and readable date range, not the period key.
+`rankings.rewards` is managed through the existing audited business-config route; valid
+rewards form a contiguous positive integer ladder, with malformed entries rejected by the
+reader and shipped defaults used when no first-place prefix remains.
+
+Run `node scripts/rankings-e2e.cjs` from this directory against a local development API,
+mock SMS and simulated payments. It creates four synthetic accounts, funds and gifts
+through product routes, backs up its own transfer timestamps before moving them into the
+settled week, and marks every account with a distinct QA reference. Its `finally` block
+restores a changed payout dial and completes marking even after an exception. Financial
+records are retained, not deleted. Backups and per-run redacted evidence stay under
+`D:\vozia-runtime\backups` and `D:\vozia-runtime\qa-evidence`.
+
+On 2026-11-17, two consecutive runs passed 49/49 checks, including tied positions,
+concurrent claiming, exact bonus/journal deltas, replay, QA exclusion and payout-ladder
+holes. A separate forced exception proved cleanup. The account and business-finance
+reconcilers were checked before and after these runs. Historical unmarked script
+identities remain a separate demo-data cleanup task (#148).
 
 ## Conventions
 

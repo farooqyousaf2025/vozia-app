@@ -57,6 +57,9 @@ data class ProfileFrame(
     val name: String,
     val art: String,
     val accent: String?,
+    /** Migration 0043: rarity badge and the rotating-aura flag; older payloads default to a plain ring. */
+    val tier: String = "COMMON",
+    val animated: Boolean = false,
 )
 
 /**
@@ -80,6 +83,33 @@ data class EntryRide(
     val format: GiftAnimationFormat,
     val durationMs: Int = 0,
 )
+
+/** Server-authored chat cosmetic, also captured on each message at send time. */
+data class BubbleStyle(
+    val key: String,
+    val name: String,
+    val background: String,
+    val accent: String,
+    val textColor: String,
+    /** Wire string retained so a future motif can safely render without an ornament. */
+    val motif: String,
+) {
+    companion object {
+        /** Only opaque #RRGGBB is accepted; no names, alpha, signs or partial hex. */
+        fun parseColor(value: String?): Int? {
+            if (value == null || !value.matches(Regex("#[0-9a-fA-F]{6}"))) return null
+            return value.substring(1).toInt(16) or (0xFF shl 24)
+        }
+    }
+}
+
+enum class BubbleMotif {
+    NONE, SPARKLE, HEART, CROWN;
+
+    companion object {
+        fun fromWire(value: String?): BubbleMotif = entries.firstOrNull { it.name == value } ?: NONE
+    }
+}
 
 /** Full `users` row as returned by /api/auth/me and auth responses. */
 data class User(
@@ -119,6 +149,7 @@ data class User(
      * operator retired the row. There is no free ride to fall back on: null means walk in quietly.
      */
     val entryRide: EntryRide? = null,
+    val chatBubble: BubbleStyle? = null,
 )
 
 enum class SeatStatus { EMPTY, OCCUPIED, LOCKED }
@@ -317,6 +348,8 @@ data class ChatMessage(
     val type: MessageType,
     /** ISO-8601 timestamp string straight from the wire. */
     val createdAt: String,
+    /** Send-time snapshot, never inferred from the author's currently equipped cosmetic. */
+    val bubble: BubbleStyle? = null,
 )
 
 /** How loudly a gift plays: one row in the ticker column, or the whole screen. */
@@ -527,16 +560,12 @@ data class Withdrawal(
 
 // ---------------------------------------------------------------------------
 // Cosmetic store (GET /api/store; frames/themes/effects from migration 0019,
-// the entrance rides of 0026). All four kinds share one row shape and one
+// entrance rides and chat bubbles). All kinds share one row shape and one
 // purchase/equip contract, so they stay in one model.
 // ---------------------------------------------------------------------------
 
-/**
- * The four catalogues one shop lists: rings a member wears, themes a room wears, entry flourishes
- * and the full-screen ride a member arrives with. FRAME, EFFECT and RIDE are worn by an account and
- * can be equipped; THEME decorates a room, so a host picks it in room settings instead.
- */
-enum class StoreItemKind { FRAME, THEME, EFFECT, RIDE }
+/** THEME decorates a room; the other kinds are equipped by an account. */
+enum class StoreItemKind { FRAME, THEME, EFFECT, RIDE, BUBBLE }
 
 /**
  * One purchasable row, already annotated by the server with what *this* caller holds.
@@ -561,6 +590,9 @@ data class StoreItem(
     val minVipLevel: Int,
     /** Editorial flag; the server already lists recommended rows first, so the app only badges. */
     val recommended: Boolean,
+    /** FRAME rows only (migration 0043): rarity badge and rotating-aura flag. */
+    val tier: String = "COMMON",
+    val animated: Boolean = false,
     /**
      * RIDE rows only: which renderer opens [art]. The catalogue stores what the upload sniffer said
      * about the bytes, so a device that guessed from the file extension would open an SVGA
@@ -579,6 +611,8 @@ data class StoreItem(
      * value stays exactly what the server sent.
      */
     val durationMs: Int = 0,
+    /** BUBBLE rows are drawn from this style, not from [art]. */
+    val bubble: BubbleStyle? = null,
 ) {
     val id: String get() = "${kind.name}:$key"
 

@@ -595,7 +595,13 @@ export async function createCommissionSettlement(adminId: string, opts: {
           direction: 'DEBIT',
           amountCents,
         },
-        { accountCode: FIN_ACCOUNTS.providerCollections, direction: 'CREDIT', amountCents },
+        // A seller keeps their commission out of the cash they already collected, so the batch
+        // reduces what they owe (0042). A BD manager holds no cash: paying one is a real outflow.
+        {
+          accountCode: opts.beneficiary === 'SELLER' ? FIN_ACCOUNTS.sellerReceivable : FIN_ACCOUNTS.providerCollections,
+          direction: 'CREDIT',
+          amountCents,
+        },
       ],
     });
 

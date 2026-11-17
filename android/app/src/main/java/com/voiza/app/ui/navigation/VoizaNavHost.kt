@@ -19,6 +19,7 @@ import com.voiza.app.ui.screens.partner.MyApplicationsScreen
 import com.voiza.app.ui.screens.partner.PartnerApplyScreen
 import com.voiza.app.ui.screens.profile.ProfileScreen
 import com.voiza.app.ui.screens.quests.QuestsScreen
+import com.voiza.app.ui.screens.rankings.RankingsScreen
 import com.voiza.app.ui.screens.room.PartyRoomScreen
 import com.voiza.app.ui.screens.store.StoreScreen
 import com.voiza.app.ui.screens.wallet.WalletScreen
@@ -55,6 +56,7 @@ fun VoizaNavHost(
                 onOpenWallet = { navController.navigate(Routes.WALLET) },
                 onOpenStore = { navController.navigate(Routes.STORE) },
                 onOpenProfile = { navController.navigate(Routes.PROFILE) },
+                onOpenRankings = { navController.navigate(Routes.RANKINGS) },
             )
         }
 
@@ -181,6 +183,10 @@ fun VoizaNavHost(
 
         composable(Routes.QUESTS) {
             QuestsScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.RANKINGS) {
+            RankingsScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.PROFILE) {

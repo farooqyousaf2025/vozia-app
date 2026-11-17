@@ -23,6 +23,7 @@ import {
   IconRefresh,
   IconSearch,
   IconScales,
+  IconWallet,
 } from '../components/ui/Icons';
 import { Modal } from '../components/ui/Modal';
 import { Pagination } from '../components/ui/Pagination';
@@ -31,8 +32,14 @@ import { Spinner } from '../components/ui/Spinner';
 import { Table, TBody, Td, Th, THead, Tr } from '../components/ui/Table';
 import { useAuth } from '../context/AuthContext';
 import { ApiError, api } from '../lib/api';
-import { formatDateTime, formatNumber, parseUnsignedInt, relativeTime } from '../lib/format';
-import type { BusinessAccount, BusinessAccountKind, BusinessAccountStatus, RechargePackage } from '../types';
+import { formatCents, formatDateTime, formatNumber, formatUnitAmount, parseUnsignedInt, relativeTime } from '../lib/format';
+import type {
+  BusinessAccount,
+  BusinessAccountKind,
+  BusinessAccountStatus,
+  RechargePackage,
+  SellerCashBook,
+} from '../types';
 
 const KIND_LABELS: Record<BusinessAccountKind, string> = {
   BD_MANAGER: 'BD manager',
@@ -64,6 +71,8 @@ const TRANSITIONS: Record<BusinessAccountStatus, BusinessAccountStatus[]> = {
 export default function PartnersPage() {
   const { can } = useAuth();
   const manage = can('business:manage');
+  // The cash book is a finance read, not a partner-management one (0042).
+  const financeRead = can('finance:read');
 
   const [kind, setKind] = useState<'' | BusinessAccountKind>('');
   const [status, setStatus] = useState<'' | BusinessAccountStatus>('');
@@ -82,6 +91,7 @@ export default function PartnersPage() {
   const [passwordTarget, setPasswordTarget] = useState<BusinessAccount | null>(null);
   const [territoryTarget, setTerritoryTarget] = useState<BusinessAccount | null>(null);
   const [packageTarget, setPackageTarget] = useState<BusinessAccount | null>(null);
+  const [cashTarget, setCashTarget] = useState<BusinessAccount | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -262,81 +272,90 @@ export default function PartnersPage() {
                 </Th>
               </THead>
               <TBody>
-                {(accounts ?? []).map((row) => (
-                  <Tr key={row.id}>
-                    <Td>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-ink">{row.displayName}</p>
-                        <p className="mt-0.5 flex items-center gap-2 text-[11px] text-faint">
-                          <span className="font-mono">{row.code}</span>
-                          <Badge tone={KIND_TONES[row.kind]}>{KIND_LABELS[row.kind]}</Badge>
-                          {!row.hasCredential && <span className="text-amber-300">no password set</span>}
-                        </p>
-                      </div>
-                    </Td>
-                    <Td>
-                      {row.parentCode ? (
-                        <span className="text-xs text-muted" title={row.parentName ?? undefined}>
-                          <span className="font-mono text-ink">{row.parentCode}</span>
-                          {row.parentName ? ` · ${row.parentName}` : ''}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-faint">—</span>
-                      )}
-                    </Td>
-                    <Td>
-                      <p className="text-xs text-muted">{row.contactPhone ?? row.contactEmail ?? '—'}</p>
-                      <p className="text-[11px] text-faint">
-                        {row.marketCountry ? `${row.marketCountry} · ` : ''}
-                        last login {relativeTime(row.lastLoginAt)}
-                      </p>
-                    </Td>
-                    <Td align="right" className="tabular-nums text-xs">
-                      {formatNumber(row.maxOrderDiamonds)}
-                    </Td>
-                    <Td align="right" className="tabular-nums text-xs">
-                      {formatNumber(row.dailyDiamondLimit)}
-                    </Td>
-                    <Td align="right" className="tabular-nums text-xs">
-                      {formatNumber(row.dailyOrderLimit)}
-                    </Td>
-                    <Td>
-                      <Badge tone={STATUS_TONES[row.status] ?? 'slate'}>{row.status}</Badge>
-                      {row.suspendedReason && (
-                        <p className="mt-1 max-w-40 truncate text-[11px] text-rose-300" title={row.suspendedReason}>
-                          {row.suspendedReason}
-                        </p>
-                      )}
-                    </Td>
-                    <Td align="right" className="pr-4">
-                      {manage ? (
-                        <div className="flex justify-end gap-1">
-                          {row.kind !== 'COIN_SELLER' && (
-                            <IconButton label="Territory" onClick={() => setTerritoryTarget(row)}>
-                              <IconScales className="h-4 w-4" />
-                            </IconButton>
-                          )}
-                          {row.kind === 'COIN_SELLER' && (
-                            <IconButton label="Allowed packages" onClick={() => setPackageTarget(row)}>
-                              <IconPartners className="h-4 w-4" />
-                            </IconButton>
-                          )}
-                          <IconButton label="Change status" onClick={() => setStatusTarget(row)} disabled={TRANSITIONS[row.status].length === 0}>
-                            <IconCheck className="h-4 w-4" />
-                          </IconButton>
-                          <IconButton label="Reset password" onClick={() => setPasswordTarget(row)}>
-                            <IconKey className="h-4 w-4" />
-                          </IconButton>
-                          <IconButton label="Edit limits" onClick={() => setEditing(row)}>
-                            <IconEdit className="h-4 w-4" />
-                          </IconButton>
+                {(accounts ?? []).map((row) => {
+                  const showCash = row.kind === 'COIN_SELLER' && financeRead;
+                  return (
+                    <Tr key={row.id}>
+                      <Td>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-ink">{row.displayName}</p>
+                          <p className="mt-0.5 flex items-center gap-2 text-[11px] text-faint">
+                            <span className="font-mono">{row.code}</span>
+                            <Badge tone={KIND_TONES[row.kind]}>{KIND_LABELS[row.kind]}</Badge>
+                            {!row.hasCredential && <span className="text-amber-300">no password set</span>}
+                          </p>
                         </div>
-                      ) : (
-                        <span className="block text-right text-xs text-faint">read only</span>
-                      )}
-                    </Td>
-                  </Tr>
-                ))}
+                      </Td>
+                      <Td>
+                        {row.parentCode ? (
+                          <span className="text-xs text-muted" title={row.parentName ?? undefined}>
+                            <span className="font-mono text-ink">{row.parentCode}</span>
+                            {row.parentName ? ` · ${row.parentName}` : ''}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-faint">—</span>
+                        )}
+                      </Td>
+                      <Td>
+                        <p className="text-xs text-muted">{row.contactPhone ?? row.contactEmail ?? '—'}</p>
+                        <p className="text-[11px] text-faint">
+                          {row.marketCountry ? `${row.marketCountry} · ` : ''}
+                          last login {relativeTime(row.lastLoginAt)}
+                        </p>
+                      </Td>
+                      <Td align="right" className="tabular-nums text-xs">
+                        {formatNumber(row.maxOrderDiamonds)}
+                      </Td>
+                      <Td align="right" className="tabular-nums text-xs">
+                        {formatNumber(row.dailyDiamondLimit)}
+                      </Td>
+                      <Td align="right" className="tabular-nums text-xs">
+                        {formatNumber(row.dailyOrderLimit)}
+                      </Td>
+                      <Td>
+                        <Badge tone={STATUS_TONES[row.status] ?? 'slate'}>{row.status}</Badge>
+                        {row.suspendedReason && (
+                          <p className="mt-1 max-w-40 truncate text-[11px] text-rose-300" title={row.suspendedReason}>
+                            {row.suspendedReason}
+                          </p>
+                        )}
+                      </Td>
+                      <Td align="right" className="pr-4">
+                        <div className="flex justify-end gap-1">
+                          {showCash && (
+                            <IconButton label="Cash book" onClick={() => setCashTarget(row)}>
+                              <IconWallet className="h-4 w-4" />
+                            </IconButton>
+                          )}
+                          {manage && (
+                            <>
+                              {row.kind !== 'COIN_SELLER' && (
+                                <IconButton label="Territory" onClick={() => setTerritoryTarget(row)}>
+                                  <IconScales className="h-4 w-4" />
+                                </IconButton>
+                              )}
+                              {row.kind === 'COIN_SELLER' && (
+                                <IconButton label="Allowed packages" onClick={() => setPackageTarget(row)}>
+                                  <IconPartners className="h-4 w-4" />
+                                </IconButton>
+                              )}
+                              <IconButton label="Change status" onClick={() => setStatusTarget(row)} disabled={TRANSITIONS[row.status].length === 0}>
+                                <IconCheck className="h-4 w-4" />
+                              </IconButton>
+                              <IconButton label="Reset password" onClick={() => setPasswordTarget(row)}>
+                                <IconKey className="h-4 w-4" />
+                              </IconButton>
+                              <IconButton label="Edit limits" onClick={() => setEditing(row)}>
+                                <IconEdit className="h-4 w-4" />
+                              </IconButton>
+                            </>
+                          )}
+                          {!manage && !showCash && <span className="text-xs text-faint">read only</span>}
+                        </div>
+                      </Td>
+                    </Tr>
+                  );
+                })}
               </TBody>
             </Table>
             <div className="px-4">
@@ -375,6 +394,7 @@ export default function PartnersPage() {
       {passwordTarget && <PasswordModal account={passwordTarget} onClose={() => setPasswordTarget(null)} />}
       {territoryTarget && <TerritoryModal account={territoryTarget} onClose={() => setTerritoryTarget(null)} />}
       {packageTarget && <PackagesModal account={packageTarget} onClose={() => setPackageTarget(null)} />}
+      {cashTarget && <CashBookModal account={cashTarget} onClose={() => setCashTarget(null)} />}
     </div>
   );
 }
@@ -769,6 +789,174 @@ function TerritoryModal({ account, onClose }: { account: BusinessAccount; onClos
             ))}
           </TBody>
         </Table>
+      )}
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// What one coin seller is holding for the platform (0042).
+//
+// Two halves that must never be added. The money half is cash the seller took
+// from members for coins the platform issued: a receivable, reduced by refunds
+// and by the commission batches finance has already prepared. The R-coin half is
+// the opposite direction — coins a member sold back to this seller for cash the
+// two of them agreed outside the app. The platform never priced that cash, so it
+// is counted in coins here and stays out of the receivable entirely.
+// ---------------------------------------------------------------------------
+function CashBookModal({ account, onClose }: { account: BusinessAccount; onClose: () => void }) {
+  const [cash, setCash] = useState<SellerCashBook | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .sellerCashBook(account.id)
+      .then((result) => {
+        if (!cancelled) setCash(result.cash);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof ApiError ? err.message : 'Failed to load the cash book.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [account.id]);
+
+  const money = (value: number): string => formatCents(value, (cash?.currency ?? 'pkr').toUpperCase());
+  // Exact digits, not "100k": an operator adds these rows up against a balance.
+  const rcoin = (value: number): string => formatUnitAmount(value, 'rcn');
+
+  return (
+    <Modal open onClose={onClose} size="lg" title={`Cash book · ${account.code}`} subtitle={account.displayName}>
+      {error !== null ? (
+        <p className="text-sm text-rose-300">{error}</p>
+      ) : cash === null ? (
+        <div className="grid h-32 place-items-center text-violet-300">
+          <Spinner className="h-6 w-6" />
+        </div>
+      ) : (
+        <div className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <StatCard
+              label="Owes the platform"
+              value={money(cash.remittanceCents)}
+              sub="cash collected, less refunds and netted commission"
+              tone={cash.remittanceCents > 0 ? 'amber' : 'emerald'}
+            />
+            <StatCard
+              label="After accrued cut"
+              value={money(cash.afterAccruedCents)}
+              sub="what is left once unnetted commission is kept"
+              tone={cash.afterAccruedCents < 0 ? 'rose' : 'sky'}
+            />
+            <StatCard
+              label="Credited orders"
+              value={formatNumber(cash.creditedOrders)}
+              sub="orders this seller has issued coins for"
+              tone="fuchsia"
+            />
+          </div>
+
+          <div>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-faint">Cash held for the platform</h3>
+            <Table>
+              <THead>
+                <Th>Movement</Th>
+                <Th align="right">Amount</Th>
+              </THead>
+              <TBody>
+                <Tr>
+                  <Td className="text-sm text-ink">Collected from members, net of provider fee</Td>
+                  <Td align="right" className="tabular-nums text-sm">{money(cash.collectedNetCents)}</Td>
+                </Tr>
+                <Tr>
+                  <Td className="text-sm text-muted">Refunded when an order was reversed</Td>
+                  <Td align="right" className="tabular-nums text-sm text-rose-300">−{money(cash.refundedCents)}</Td>
+                </Tr>
+                <Tr>
+                  <Td className="text-sm text-muted">Commission already netted by prepared batches</Td>
+                  <Td align="right" className="tabular-nums text-sm text-emerald-300">−{money(cash.commissionSettledCents)}</Td>
+                </Tr>
+                <Tr>
+                  <Td className="text-sm font-semibold text-ink">Remittance due</Td>
+                  <Td align="right" className="tabular-nums text-sm font-semibold text-ink">{money(cash.remittanceCents)}</Td>
+                </Tr>
+                <Tr>
+                  <Td className="text-sm text-muted">Commission accrued, not yet in a batch</Td>
+                  <Td align="right" className="tabular-nums text-sm">{money(cash.commissionAccruedCents)}</Td>
+                </Tr>
+                <Tr>
+                  <Td className="text-sm text-muted">Remittance after that accrued cut</Td>
+                  <Td align="right" className="tabular-nums text-sm">{money(cash.afterAccruedCents)}</Td>
+                </Tr>
+              </TBody>
+            </Table>
+          </div>
+
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-faint">R-coins bought back from members</h3>
+            <p className="mt-1 mb-3 text-xs text-muted">
+              Counted in R-coins, not money. The cash for these sales was agreed between the member and the seller
+              outside the platform, so it is deliberately not priced here and is not part of the remittance above.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <StatCard label="Paid out" value={rcoin(cash.cashOutNetRCoins)} sub={`${formatNumber(cash.cashOutCount)} settled ${cash.cashOutCount === 1 ? 'sale' : 'sales'}`} tone="violet" />
+              <StatCard label="Fee kept" value={rcoin(cash.cashOutFeeRCoins)} sub="platform spread on those sales" tone="emerald" />
+              <StatCard
+                label="Awaiting payment"
+                value={rcoin(cash.awaitingCashOutRCoins)}
+                sub={cash.awaitingCashOutRCoins > 0 ? 'held until the seller pays' : 'nothing held'}
+                tone={cash.awaitingCashOutRCoins > 0 ? 'amber' : 'emerald'}
+              />
+            </div>
+            <div className="mt-3">
+              {cash.cashOut.length === 0 ? (
+                <EmptyState
+                  title="No paid sales yet"
+                  message="Once this seller pays a member for their R-coins, the sale appears here with its receipt."
+                  icon={<IconWallet className="h-6 w-6" />}
+                />
+              ) : (
+                <Table>
+                  <THead>
+                    <Th>Sale</Th>
+                    <Th>Member</Th>
+                    <Th align="right">Sold</Th>
+                    <Th align="right">Fee</Th>
+                    <Th align="right">Net</Th>
+                    <Th>Paid</Th>
+                    <Th align="right">Receipts</Th>
+                  </THead>
+                  <TBody>
+                    {cash.cashOut.map((sale) => (
+                      <Tr key={sale.id}>
+                        <Td>
+                          <p className="font-mono text-xs text-ink">{sale.reference}</p>
+                          {sale.payoutReference && (
+                            <p className="font-mono text-[11px] text-faint" title="Reference the seller gave the member">
+                              {sale.payoutReference}
+                            </p>
+                          )}
+                        </Td>
+                        <Td className="text-xs text-muted">{sale.username}</Td>
+                        <Td align="right" className="tabular-nums text-xs">{rcoin(sale.amountRCoins)}</Td>
+                        <Td align="right" className="tabular-nums text-xs text-emerald-300">{rcoin(sale.feeRCoins)}</Td>
+                        <Td align="right" className="tabular-nums text-xs">{rcoin(sale.netRCoins)}</Td>
+                        <Td className="text-xs text-muted" title={sale.paidAt ? formatDateTime(sale.paidAt) : undefined}>
+                          {sale.paidAt ? relativeTime(sale.paidAt) : '—'}
+                        </Td>
+                        <Td align="right">
+                          <Badge tone={sale.receiptCount > 0 ? 'green' : 'amber'}>{formatNumber(sale.receiptCount)}</Badge>
+                        </Td>
+                      </Tr>
+                    ))}
+                  </TBody>
+                </Table>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </Modal>
   );

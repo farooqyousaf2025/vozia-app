@@ -1,6 +1,6 @@
 import { many, one, query, withTransaction } from '../config/db';
-import { ProfileFrameRow, ProfileRideRow, RoomCategoryEffectRow, RoomThemeRow, VisualEffectRow } from '../types/db';
-import { ApiError, requireBoolean, requireInt, requireString } from '../utils/http';
+import { ChatBubbleRow, FrameTier, ProfileFrameRow, ProfileRideRow, RoomCategoryEffectRow, RoomThemeRow, VisualEffectRow } from '../types/db';
+import { ApiError, requireBoolean, requireEnum, requireInt, requireString } from '../utils/http';
 
 /**
  * The decoration catalogue: wallpapers a host can pick, the Lottie loops a room breathes, the
@@ -111,6 +111,7 @@ type Snapshot = {
   welcomeByKey: Map<string, string>;
   accentByTheme: Map<string, string>;
   frames: Map<string, FrameArt>;
+  bubbles: Map<string, BubbleArt>;
   /** Every ride row by key, including delisted ones — a receipt outlives the shelf it came from. */
   rides: Map<string, RideArt>;
   categoryEffects: Map<string, string>;
@@ -118,7 +119,15 @@ type Snapshot = {
 };
 
 /** The ring a member wears: art to draw over the avatar, and a colour to fall back on. */
-export type FrameArt = { key: string; name: string; art: string; accent: string };
+export type FrameArt = {
+  key: string;
+  name: string;
+  art: string;
+  accent: string;
+  /** Migration 0043: rarity badge and the client-rendered aura flag. */
+  tier: FrameTier;
+  animated: boolean;
+};
 
 /**
  * The cinematic a member arrives with. `format` tells the device which renderer opens `url` and
@@ -127,16 +136,47 @@ export type FrameArt = { key: string; name: string; art: string; accent: string 
  */
 export type RideArt = { key: string; name: string; url: string; format: RideFormat; durationMs: number };
 
+export type BubbleArt = {
+  key: string;
+  name: string;
+  background: string;
+  accent: string;
+  textColor: string;
+  motif: ChatBubbleRow['motif'];
+};
+
+export type ChatBubbleDto = BubbleArt & {
+  sortOrder: number;
+  priceDiamonds: number;
+  forSale: boolean;
+  periodDays: number | null;
+  minVipLevel: number;
+  recommended: boolean;
+  holders: number;
+};
+
+export function bubbleArt(row: ChatBubbleRow): BubbleArt {
+  return {
+    key: row.key,
+    name: row.name,
+    background: row.background.trim(),
+    accent: row.accent.trim(),
+    textColor: row.text_color.trim(),
+    motif: row.motif,
+  };
+}
+
 let snapshot: Snapshot | null = null;
 let loading: Promise<void> | null = null;
 
 async function fetchSnapshot(): Promise<Snapshot> {
-  const [themeRows, effectRows, categoryRows, frameRows, rideRows] = await Promise.all([
+  const [themeRows, effectRows, categoryRows, frameRows, rideRows, bubbleRows] = await Promise.all([
     many<RoomThemeRow>('SELECT * FROM room_themes ORDER BY sort_order ASC, slug ASC'),
     many<VisualEffectRow>('SELECT * FROM visual_effects ORDER BY sort_order ASC, key ASC'),
     many<RoomCategoryEffectRow>('SELECT * FROM room_category_effects'),
     many<ProfileFrameRow>('SELECT * FROM profile_frames ORDER BY sort_order ASC, key ASC'),
     many<ProfileRideRow>('SELECT * FROM profile_rides ORDER BY sort_order ASC, key ASC'),
+    many<ChatBubbleRow>('SELECT * FROM chat_bubbles ORDER BY sort_order ASC, key ASC'),
   ]);
 
   if (themeRows.length === 0) {
@@ -163,7 +203,10 @@ async function fetchSnapshot(): Promise<Snapshot> {
     welcomeByKey: new Map(welcomes.map((row) => [row.key, row.url])),
     accentByTheme: new Map(themeRows.map((row) => [row.slug, row.accent.trim()])),
     frames: new Map(
-      frameRows.map((row) => [row.key, { key: row.key, name: row.name, art: row.art_url, accent: row.accent.trim() }]),
+      frameRows.map((row) => [
+        row.key,
+        { key: row.key, name: row.name, art: row.art_url, accent: row.accent.trim(), tier: row.tier, animated: row.animated },
+      ]),
     ),
     rides: new Map(
       rideRows.map((row) => [
@@ -171,6 +214,7 @@ async function fetchSnapshot(): Promise<Snapshot> {
         { key: row.key, name: row.name, url: row.url, format: row.format, durationMs: row.duration_ms },
       ]),
     ),
+    bubbles: new Map(bubbleRows.map((row) => [row.key, bubbleArt(row)])),
     categoryEffects: new Map(categoryRows.map((row) => [row.category, row.effect_key])),
     loadedAt: Date.now(),
   };
@@ -286,6 +330,15 @@ export function wornFrame(row: {
   return current().frames.get(row.profile_frame_key) ?? null;
 }
 
+export function wornBubble(row: {
+  chat_bubble_key?: string | null;
+  chat_bubble_expires_at?: Date | null;
+}): BubbleArt | null {
+  if (!row.chat_bubble_key) return null;
+  if (row.chat_bubble_expires_at && row.chat_bubble_expires_at.getTime() <= Date.now()) return null;
+  return current().bubbles.get(row.chat_bubble_key) ?? null;
+}
+
 /**
  * The flourish other members see when this one enters a room. Null means "use the free default",
  * not "show nothing" — a member who bought nothing is still announced.
@@ -324,6 +377,7 @@ export async function listAdminCatalogue(): Promise<{
   categoryEffects: CategoryEffectDto[];
   frames: ProfileFrameDto[];
   rides: ProfileRideDto[];
+  bubbles: ChatBubbleDto[];
 }> {
   const [themeRows, effectRows, categoryRows, usage] = await Promise.all([
     many<RoomThemeRow>('SELECT * FROM room_themes ORDER BY sort_order ASC, slug ASC'),
@@ -352,6 +406,7 @@ export async function listAdminCatalogue(): Promise<{
     // One call for the whole decoration screen, priced rows and rings included.
     frames: await listFrames(),
     rides: await listRides(),
+    bubbles: await listBubbles(),
   };
 }
 
@@ -771,6 +826,9 @@ export type ProfileFrameDto = {
   recommended: boolean;
   /** Members holding this ring right now, sale or grant included. */
   holders: number;
+  /** Migration 0043: rarity badge and the client-rendered aura flag. */
+  tier: FrameTier;
+  animated: boolean;
 };
 
 /**
@@ -779,7 +837,7 @@ export type ProfileFrameDto = {
  * There is no "on sale for zero", because that is a giveaway, and a giveaway is a different feature.
  */
 function assertPricing(
-  subject: 'frame' | 'theme' | 'effect' | 'ride',
+  subject: 'frame' | 'theme' | 'effect' | 'ride' | 'bubble',
   forSale: boolean,
   priceDiamonds: number,
 ): void {
@@ -857,7 +915,11 @@ type FrameChanges = {
   artUrl?: string;
   accent?: string;
   sortOrder?: number;
+  tier?: FrameTier;
+  animated?: boolean;
 };
+
+const FRAME_TIERS: readonly FrameTier[] = ['COMMON', 'RARE', 'EPIC', 'LEGENDARY'];
 
 function readFrameBody(body: Record<string, unknown>): FrameChanges {
   const out: FrameChanges = {};
@@ -866,6 +928,12 @@ function readFrameBody(body: Record<string, unknown>): FrameChanges {
   if (body.artUrl !== undefined) out.artUrl = readUrl(body.artUrl, 'artUrl');
   if (body.accent !== undefined) out.accent = readAccent(body.accent);
   if (body.sortOrder !== undefined) out.sortOrder = requireInt(body.sortOrder, 'sortOrder', { min: -9999, max: 9999 });
+  if (body.tier !== undefined) {
+    const tier = requireString(body.tier, 'tier', { max: 12 }).toUpperCase() as FrameTier;
+    if (!FRAME_TIERS.includes(tier)) throw ApiError.badRequest('tier must be COMMON, RARE, EPIC or LEGENDARY', 'frame_tier_invalid');
+    out.tier = tier;
+  }
+  if (body.animated !== undefined) out.animated = requireBoolean(body.animated, 'animated');
   return out;
 }
 
@@ -882,6 +950,8 @@ function frameDto(row: ProfileFrameRow, holders: number): ProfileFrameDto {
     minVipLevel: row.min_vip_level,
     recommended: row.recommended,
     holders,
+    tier: row.tier,
+    animated: row.animated,
   };
 }
 
@@ -917,10 +987,10 @@ export async function createFrame(body: Record<string, unknown>): Promise<Profil
   }
   await query(
     `INSERT INTO profile_frames (key, name, art_url, accent, sort_order, price_diamonds, for_sale, period_days,
-                                min_vip_level, recommended)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+                                min_vip_level, recommended, tier, animated)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
     [input.key, input.name, input.artUrl, input.accent, input.sortOrder ?? 0, pricing.priceDiamonds, pricing.forSale, pricing.periodDays,
-     pricing.minVipLevel, pricing.recommended],
+     pricing.minVipLevel, pricing.recommended, input.tier ?? 'COMMON', input.animated ?? false],
   );
   await loadThemeRegistry();
   return frameAfterWrite(input.key!);
@@ -943,15 +1013,17 @@ export async function updateFrame(key: string, body: Record<string, unknown>): P
     artUrl: changes.artUrl ?? existing.art_url,
     accent: changes.accent ?? existing.accent.trim(),
     sortOrder: changes.sortOrder ?? existing.sort_order,
+    tier: changes.tier ?? existing.tier,
+    animated: changes.animated ?? existing.animated,
   };
   await query(
     `UPDATE profile_frames
         SET name = $2, art_url = $3, accent = $4, sort_order = $5,
             price_diamonds = $6, for_sale = $7, period_days = $8,
-            min_vip_level = $9, recommended = $10
+            min_vip_level = $9, recommended = $10, tier = $11, animated = $12
       WHERE key = $1`,
     [key, next.name, next.artUrl, next.accent, next.sortOrder, pricing.priceDiamonds, pricing.forSale, pricing.periodDays,
-     pricing.minVipLevel, pricing.recommended],
+     pricing.minVipLevel, pricing.recommended, next.tier, next.animated],
   );
   await loadThemeRegistry();
   return frameAfterWrite(key);
@@ -974,6 +1046,185 @@ export async function deleteFrame(key: string): Promise<{ ok: true; key: string;
   await query('DELETE FROM profile_frames WHERE key = $1', [key]);
   await loadThemeRegistry();
   return { ok: true, key, membersStillHolding: Number(holders?.n ?? 0) };
+}
+
+type BubbleChanges = Partial<BubbleArt> & { sortOrder?: number };
+
+const BUBBLE_MOTIFS: readonly ChatBubbleRow['motif'][] = ['NONE', 'SPARKLE', 'HEART', 'CROWN'];
+
+function readBubbleField<T>(field: string, read: () => T): T {
+  try {
+    return read();
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 400) {
+      throw ApiError.badRequest(err.message, `bubble_${field}_invalid`);
+    }
+    throw err;
+  }
+}
+
+function readBubbleColor(value: unknown, field: string): string {
+  return readBubbleField(field === 'textColor' ? 'text_color' : field, () => {
+    const text = requireString(value, field, { max: 7 });
+    if (!ACCENT_PATTERN.test(text)) {
+      throw ApiError.badRequest(`${field} must be a hex colour like #3ddc97`);
+    }
+    return text;
+  });
+}
+
+function bubbleLuminance(color: string): number {
+  const [red, green, blue] = [1, 3, 5].map((offset) => {
+    const channel = parseInt(color.slice(offset, offset + 2), 16) / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function assertBubbleContrast(background: string, textColor: string): void {
+  const backgroundLuminance = bubbleLuminance(background);
+  const textLuminance = bubbleLuminance(textColor);
+  const contrast = (Math.max(backgroundLuminance, textLuminance) + 0.05) /
+    (Math.min(backgroundLuminance, textLuminance) + 0.05);
+  if (contrast < 4.5) {
+    throw ApiError.badRequest('textColor and background must have a contrast ratio of at least 4.5:1', 'bubble_contrast_invalid');
+  }
+}
+
+function readBubbleBody(body: Record<string, unknown>): BubbleChanges {
+  const out: BubbleChanges = {};
+  if (body.key !== undefined) out.key = readBubbleField('key', () => readIdentity(body.key, 'key'));
+  if (body.name !== undefined) out.name = readBubbleField('name', () => requireString(body.name, 'name', { max: 60 }));
+  if (body.background !== undefined) out.background = readBubbleColor(body.background, 'background');
+  if (body.accent !== undefined) out.accent = readBubbleColor(body.accent, 'accent');
+  if (body.textColor !== undefined) out.textColor = readBubbleColor(body.textColor, 'textColor');
+  if (body.motif !== undefined) out.motif = readBubbleField('motif', () => requireEnum(body.motif, 'motif', BUBBLE_MOTIFS));
+  if (body.sortOrder !== undefined) {
+    out.sortOrder = readBubbleField('sort_order', () => requireInt(body.sortOrder, 'sortOrder', { min: -9999, max: 9999 }));
+  }
+  return out;
+}
+
+function bubbleDto(row: ChatBubbleRow, holders: number): ChatBubbleDto {
+  return {
+    ...bubbleArt(row),
+    sortOrder: row.sort_order,
+    ...rowPricing(row),
+    holders,
+  };
+}
+
+async function bubbleAfterWrite(key: string): Promise<ChatBubbleDto> {
+  const row = await one<ChatBubbleRow>('SELECT * FROM chat_bubbles WHERE key = $1', [key]);
+  if (!row) throw new Error(`bubble ${key} vanished after being written`);
+  const holders = await one<{ n: string }>(
+    'SELECT count(*)::text n FROM user_items WHERE kind = $1 AND item_key = $2',
+    ['BUBBLE', key],
+  );
+  return bubbleDto(row, Number(holders?.n ?? 0));
+}
+
+export async function listBubbles(): Promise<ChatBubbleDto[]> {
+  const [rows, usage] = await Promise.all([
+    many<ChatBubbleRow>('SELECT * FROM chat_bubbles ORDER BY sort_order ASC, key ASC'),
+    many<{ item_key: string; n: string }>(
+      'SELECT item_key, count(*)::text n FROM user_items WHERE kind = $1 GROUP BY item_key',
+      ['BUBBLE'],
+    ),
+  ]);
+  const holdersByKey = new Map(usage.map((row) => [row.item_key, Number(row.n)]));
+  return rows.map((row) => bubbleDto(row, holdersByKey.get(row.key) ?? 0));
+}
+
+export async function createBubble(body: Record<string, unknown>): Promise<ChatBubbleDto> {
+  const input = readBubbleBody(body ?? {});
+  const missing = (['key', 'name', 'background', 'accent', 'textColor'] as const).filter((field) => !input[field]);
+  if (missing.length > 0) throw ApiError.badRequest(`${missing.join(', ')} required`, 'bubble_fields_missing');
+  const pricing = readBubbleField('pricing', () => readPricing(body ?? {}));
+  assertPricing('bubble', pricing.forSale, pricing.priceDiamonds);
+  assertBubbleContrast(input.background!, input.textColor!);
+  if (await one<ChatBubbleRow>('SELECT key FROM chat_bubbles WHERE key = $1', [input.key!])) {
+    throw ApiError.conflict(`A bubble already uses the key ${input.key}`, 'bubble_exists');
+  }
+  await query(
+    `INSERT INTO chat_bubbles (key, name, background, accent, text_color, motif, sort_order,
+                              price_diamonds, for_sale, period_days, min_vip_level, recommended)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    [
+      input.key,
+      input.name,
+      input.background,
+      input.accent,
+      input.textColor,
+      input.motif ?? 'NONE',
+      input.sortOrder ?? 0,
+      pricing.priceDiamonds,
+      pricing.forSale,
+      pricing.periodDays,
+      pricing.minVipLevel,
+      pricing.recommended,
+    ],
+  );
+  await loadThemeRegistry();
+  return bubbleAfterWrite(input.key!);
+}
+
+export async function updateBubble(key: string, body: Record<string, unknown>): Promise<ChatBubbleDto> {
+  const changes = readBubbleBody(body ?? {});
+  const existing = await one<ChatBubbleRow>('SELECT * FROM chat_bubbles WHERE key = $1', [key]);
+  if (!existing) throw ApiError.notFound('Bubble not found', 'bubble_not_found');
+  if (changes.key && changes.key !== key) {
+    throw ApiError.badRequest(
+      'key is an identity — members wear it and receipts name it. Add the new key and delete this one instead',
+      'bubble_key_immutable',
+    );
+  }
+  const pricing = readBubbleField('pricing', () => readPricing(body ?? {}, rowPricing(existing)));
+  assertPricing('bubble', pricing.forSale, pricing.priceDiamonds);
+  const next = {
+    name: changes.name ?? existing.name,
+    background: changes.background ?? existing.background.trim(),
+    accent: changes.accent ?? existing.accent.trim(),
+    textColor: changes.textColor ?? existing.text_color.trim(),
+    motif: changes.motif ?? existing.motif,
+    sortOrder: changes.sortOrder ?? existing.sort_order,
+  };
+  assertBubbleContrast(next.background, next.textColor);
+  await query(
+    `UPDATE chat_bubbles
+        SET name = $2, background = $3, accent = $4, text_color = $5, motif = $6, sort_order = $7,
+            price_diamonds = $8, for_sale = $9, period_days = $10,
+            min_vip_level = $11, recommended = $12
+      WHERE key = $1`,
+    [
+      key,
+      next.name,
+      next.background,
+      next.accent,
+      next.textColor,
+      next.motif,
+      next.sortOrder,
+      pricing.priceDiamonds,
+      pricing.forSale,
+      pricing.periodDays,
+      pricing.minVipLevel,
+      pricing.recommended,
+    ],
+  );
+  await loadThemeRegistry();
+  return bubbleAfterWrite(key);
+}
+
+export async function deleteBubble(key: string): Promise<{ holders: number }> {
+  const existing = await one<ChatBubbleRow>('SELECT key FROM chat_bubbles WHERE key = $1', [key]);
+  if (!existing) throw ApiError.notFound('Bubble not found', 'bubble_not_found');
+  const holders = await one<{ n: string }>(
+    'SELECT count(*)::text n FROM user_items WHERE kind = $1 AND item_key = $2',
+    ['BUBBLE', key],
+  );
+  await query('DELETE FROM chat_bubbles WHERE key = $1', [key]);
+  await loadThemeRegistry();
+  return { holders: Number(holders?.n ?? 0) };
 }
 
 // ---------------------------------------------------------------------------

@@ -631,7 +631,7 @@ export async function settlePaymentOnClient(
     meta?: Record<string, unknown>;
     /**
      * Set by a caller that books the collection itself. The seller path does, because its entry splits
-     * the gross into `PROVIDER_COLLECTIONS` and `PROVIDER_FEES` and is keyed on the order — the tie-outs
+     * the gross into `SELLER_RECEIVABLE` and `PROVIDER_FEES` and is keyed on the order — the tie-outs
      * in `reconciliation.service.ts` read that shape. Everyone else leaves it unset and is journaled
      * here: defaulting to posting means a caller added later cannot mint coins silently.
      */
@@ -1068,6 +1068,10 @@ export async function requestWithdrawal(
   amountRCoins: number,
   payoutMethod: string,
   payoutDetails: Record<string, unknown>,
+  /** Migration 0041: the coin seller who agreed to hand this over in cash. NULL on every rail the
+   *  platform pays itself, and it is resolved from `business_accounts` by the caller, never trusted
+   *  from a body — the column is what lets that seller's queue show the request at all. */
+  sellerId: string | null = null,
 ): Promise<{ withdrawal: WithdrawalRow; user: UserDto }> {
   await ensureRankRegistry();
   const { minRCoins, feeBps } = await withdrawalPolicy();
@@ -1090,9 +1094,9 @@ export async function requestWithdrawal(
     await client.query('UPDATE users SET r_coin_balance = r_coin_balance - $2 WHERE id = $1', [userId, amountRCoins]);
 
     const inserted = await client.query<WithdrawalRow>(
-      `INSERT INTO withdrawal_requests (user_id, amount_r_coins, fee_r_coins, payout_method, payout_details)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [userId, amountRCoins, feeRCoins, payoutMethod, JSON.stringify(payoutDetails)],
+      `INSERT INTO withdrawal_requests (user_id, amount_r_coins, fee_r_coins, payout_method, payout_details, seller_id)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [userId, amountRCoins, feeRCoins, payoutMethod, JSON.stringify(payoutDetails), sellerId],
     );
     await client.query<TransactionRow>(
       `INSERT INTO transactions (type, status, sender_id, amount_r_coins, meta)

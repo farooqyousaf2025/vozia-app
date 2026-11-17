@@ -364,8 +364,15 @@ export interface ProfileFrame {
   minVipLevel: number;
   /** Editorial flag: the member's store lists recommended rows first and badges them. */
   recommended: boolean;
+  /** Rarity tier (migration 0043) the store badges and the phone colours the aura with. */
+  tier: FrameTier;
+  /** Migration 0043: the phone draws a rotating sweep aura behind the still PNG when true. */
+  animated: boolean;
   holders: number;
 }
+
+/** The four rarities `profile_frames.tier` accepts (migration 0043). */
+export type FrameTier = 'COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
 
 export interface CategoryEffect {
   category: string;
@@ -431,11 +438,43 @@ export interface RideInput {
 /** "Who owns this ride": the fourth catalogue reports the same receipt shape as frames. */
 export type RideHolder = FrameHolder;
 
+export interface ChatBubble {
+  key: string;
+  name: string;
+  background: string;
+  accent: string;
+  textColor: string;
+  motif: 'NONE' | 'SPARKLE' | 'HEART' | 'CROWN';
+  sortOrder: number;
+  priceDiamonds: number;
+  forSale: boolean;
+  periodDays: number | null;
+  minVipLevel: number;
+  recommended: boolean;
+  holders: number;
+}
+
+export interface BubbleInput {
+  key: string;
+  name: string;
+  background: string;
+  accent: string;
+  textColor: string;
+  motif: ChatBubble['motif'];
+  sortOrder?: number;
+  priceDiamonds?: number;
+  forSale?: boolean;
+  periodDays?: number | null;
+  minVipLevel?: number;
+  recommended?: boolean;
+}
+
 export interface DecorCatalogue {
   themes: AdminRoomTheme[];
   effects: VisualEffect[];
   categoryEffects: CategoryEffect[];
   frames: ProfileFrame[];
+  bubbles: ChatBubble[];
   /** Entrance rides (migration 0026), sorted the way the server publishes them. */
   rides: ProfileRide[];
 }
@@ -486,10 +525,14 @@ export interface FrameInput {
   minVipLevel?: number;
   /** Omitting it on an update keeps the current flag. */
   recommended?: boolean;
+  /** Omitting it on an update keeps the current tier. */
+  tier?: FrameTier;
+  /** Omitting it on an update keeps the current flag. */
+  animated?: boolean;
 }
 
-/** The three catalogues a member can buy from, as `/api/admin/users/:id/grant` names them. */
-export type StoreItemKind = 'FRAME' | 'THEME' | 'EFFECT';
+/** The catalogues named by `/api/admin/users/:id/grant`. */
+export type StoreItemKind = 'FRAME' | 'THEME' | 'EFFECT' | 'RIDE' | 'BUBBLE';
 
 /** One row of "who holds this ring", including the door it came through. */
 export interface FrameHolder {
@@ -865,6 +908,14 @@ export interface WithdrawalRow {
   /** Set only by a recorded payout, which is the point the ledger calls the money gone. */
   paidAt: string | null;
   payoutReference: string | null;
+  /**
+   * The coin seller this request asks to hand over the cash, or null on every rail the platform pays
+   * itself (`payoutMethod === 'SELLER'`). The account behind a partner-paid payout is the only party
+   * that can upload its proof, so the queue needs to show whose slip to expect.
+   */
+  seller: { id: string; code: string | null; name: string | null } | null;
+  /** Null on a read that did not count them — "no slips yet" and "not looked up" are different facts. */
+  receiptCount: number | null;
   createdAt: string;
 }
 
@@ -1137,6 +1188,37 @@ export interface BusinessAccountListResult {
   limit: number;
 }
 
+/**
+ * What one coin seller holds for the platform (migration 0042). The `…Cents` fields are money;
+ * the `…RCoins` fields are coins a member sold to that seller for cash agreed outside the app.
+ * The two are never added — the backend does not price that cash, and neither should a screen.
+ */
+export interface SellerCashBook {
+  currency: string;
+  collectedNetCents: number;
+  refundedCents: number;
+  commissionSettledCents: number;
+  commissionAccruedCents: number;
+  remittanceCents: number;
+  afterAccruedCents: number;
+  creditedOrders: number;
+  cashOutNetRCoins: number;
+  cashOutFeeRCoins: number;
+  cashOutCount: number;
+  awaitingCashOutRCoins: number;
+  cashOut: Array<{
+    id: string;
+    reference: string;
+    username: string;
+    amountRCoins: number;
+    feeRCoins: number;
+    netRCoins: number;
+    paidAt: string;
+    payoutReference: string;
+    receiptCount: number;
+  }>;
+}
+
 export type RechargeOrderStatus =
   | 'AWAITING_PAYMENT'
   | 'AWAITING_VERIFICATION'
@@ -1179,6 +1261,22 @@ export interface RechargeOrderListResult {
   total: number;
   page: number;
   limit: number;
+}
+
+/**
+ * A bank slip a coin seller uploaded as proof of a cash settlement (migration 0041).
+ *
+ * There is deliberately no URL field: these bytes do not live in the public `uploads` directory, and
+ * the only way to see one is `api.openReceipt`, which asks the API for the bytes under the operator's
+ * own token. A field named `url` here would be a lie an operator would eventually click.
+ */
+export interface PaymentReceipt {
+  id: string;
+  fileName: string;
+  contentType: string;
+  byteSize: number;
+  uploadedBy: string;
+  createdAt: string;
 }
 
 export interface RechargePackage {

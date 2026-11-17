@@ -26,6 +26,7 @@
     "test:earning:hooks": "node scripts/earning-hooks-e2e.cjs",
     "test:operators": "node scripts/operator-e2e.cjs",
     "test:partner": "node scripts/partner-e2e.cjs",
+    "test:receipts": "node scripts/receipt-e2e.cjs",
     "test:agency:hierarchy": "node scripts/agency-hierarchy-e2e.cjs",
     "test:qa": "node scripts/qa-e2e.cjs",
     "test:revenue": "node scripts/revenue-e2e.cjs",
@@ -39,7 +40,8 @@
     "demo:gifts": "node scripts/demo-gift-chat.cjs",
     "webhook:sink": "node scripts/livekit-webhook-sink.cjs",
     "test:social:e2e": "node scripts/social-e2e.cjs",
-    "test:gift:e2e": "node scripts/gift-e2e.cjs"
+    "test:gift:e2e": "node scripts/gift-e2e.cjs",
+    "test:bubbles": "node scripts/bubbles-e2e.cjs"
   },
   "dependencies": {
     "cors": "^2.8.5",

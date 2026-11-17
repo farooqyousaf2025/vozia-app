@@ -30,6 +30,7 @@ import {
 import { JsonBlock } from '../components/ui/JsonBlock';
 import { Modal } from '../components/ui/Modal';
 import { Pagination } from '../components/ui/Pagination';
+import { ReceiptsPanel } from '../components/ui/ReceiptsPanel';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { Switch } from '../components/ui/Switch';
@@ -499,6 +500,7 @@ export default function RechargesPage() {
 // order was priced under. An operator deciding on a claim needs both on screen.
 // ---------------------------------------------------------------------------
 function OrderModal({ order, onClose }: { order: RechargeOrder; onClose: () => void }) {
+  const { can } = useAuth();
   return (
     <Modal open onClose={onClose} size="lg" title={order.reference} subtitle={`${order.sellerCode} · ${order.username} · ${STATUS_TONES[order.status] ? order.status.replace(/_/g, ' ') : order.status}`}>
       <div className="space-y-4">
@@ -525,6 +527,7 @@ function OrderModal({ order, onClose }: { order: RechargeOrder; onClose: () => v
             {order.reversalReason}
           </div>
         )}
+        <ReceiptsPanel queue="order" recordId={order.id} canOpen={can('recharge:review')} />
         <JsonBlock label="Payment evidence attached by the seller" value={order.evidence} />
         <JsonBlock label="Pricing and limit snapshot taken at open" value={order.rulesSnapshot} />
       </div>
@@ -564,6 +567,7 @@ function DecisionModal({
   const [clawback, setClawback] = useState(true);
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const { can } = useAuth();
 
   const reasonRequired = mode !== 'approve';
   const reason = note.trim();
@@ -651,6 +655,8 @@ function DecisionModal({
             </div>
           </>
         )}
+
+        <ReceiptsPanel queue="order" recordId={order.id} canOpen={can('recharge:review')} />
 
         <Textarea
           label={reasonRequired ? 'Reason (required, stored with the decision)' : 'Note (optional)'}

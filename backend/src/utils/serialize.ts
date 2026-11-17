@@ -19,7 +19,7 @@ import {
   UserRow,
   WithdrawalRow,
 } from '../types/db';
-import { ambientEffectFor, FrameArt, RideArt, themeFor, wornFrame, wornRide, wornWelcome } from '../services/theme.service';
+import { ambientEffectFor, BubbleArt, FrameArt, RideArt, themeFor, wornBubble, wornFrame, wornRide, wornWelcome } from '../services/theme.service';
 import { BoxOutcomeDto } from '../services/lucky-box.service';
 import { nextRankFor, rankFor, RankDto } from '../services/rank.service';
 
@@ -153,6 +153,7 @@ export type ChatMessageDto = {
   user: MiniUser | null;
   content: string;
   type: ChatRow['message_type'];
+  bubble: BubbleArt | null;
   createdAt: string;
 };
 
@@ -194,6 +195,7 @@ export type UserDto = {
   entryEffect: string | null;
   /** The ride this member arrives with, or null. Same preview reason as `entryEffect`. */
   entryRide: RideArt | null;
+  chatBubble: BubbleArt | null;
   lastSeenAt: string | null;
   createdAt: string;
 };
@@ -221,6 +223,9 @@ export type WithdrawalDto = {
   createdAt: string;
   paidAt: string | null;
   payoutReference: string | null;
+  /** Migration 0041: the seller paying this out in cash, and the slips attached to that claim. */
+  seller: { id: string; code: string | null; name: string | null } | null;
+  receiptCount: number | null;
   user: MiniUser;
 };
 
@@ -355,6 +360,7 @@ export function toUser(row: UserRow): UserDto {
     profileFrame: wornFrame(row),
     entryEffect: wornWelcome(row),
     entryRide: wornRide(row),
+    chatBubble: wornBubble(row),
     lastSeenAt: row.last_seen_at ? iso(row.last_seen_at) : null,
     createdAt: iso(row.created_at),
   };
@@ -474,6 +480,7 @@ export function toChatMessage(row: ChatRow): ChatMessageDto {
     user: row.user_id ? { id: row.user_id, username: row.username ?? 'unknown', avatarUrl: row.avatar_url ?? null } : null,
     content: row.content,
     type: row.message_type,
+    bubble: row.message_type === 'TEXT' ? row.bubble_style ?? null : null,
     createdAt: iso(row.created_at),
   };
 }
@@ -508,6 +515,11 @@ export function toWithdrawal(row: WithdrawalRow): WithdrawalDto {
     createdAt: iso(row.created_at),
     paidAt: row.paid_at ? iso(row.paid_at) : null,
     payoutReference: row.payout_reference,
+    seller: row.seller_id
+      ? { id: row.seller_id, code: row.seller_code ?? null, name: row.seller_name ?? null }
+      : null,
+    // Null when the read did not join it, rather than a zero that would claim nobody uploaded.
+    receiptCount: row.receipt_count == null ? null : Number(row.receipt_count),
     user: { id: row.user_id, username: row.username ?? 'unknown', avatarUrl: row.avatar_url ?? null },
   };
 }

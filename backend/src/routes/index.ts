@@ -14,6 +14,7 @@ import partnerApplicationRoutes from './partner-application.routes';
 import pkRoutes from './pk.routes';
 import questRoutes from './quest.routes';
 import rankRoutes from './rank.routes';
+import rankingsRoutes from './rankings.routes';
 import roomRoutes from './room.routes';
 import storeRoutes from './store.routes';
 import userRoutes from './user.routes';
@@ -30,6 +31,9 @@ router.use('/emoji', emojiRoutes);
 // The earned-level ladder. Public for the same reason the picker is: a client reads it before it
 // knows whose badge it is about to draw.
 router.use('/ranks', rankRoutes);
+// The settled landing boards and their podium rewards. Separate from /ranks (the XP ladder) and
+// from /users/top (the rolling in-room sheet): a finished window is a different question.
+router.use('/rankings', rankingsRoutes);
 // Today's quests and the check-in. Separate from /users for the same reason /store is: it is an
 // XP-writing path, not a profile field, and the screen loads before a room is chosen.
 router.use('/quests', questRoutes);

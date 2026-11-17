@@ -13,6 +13,7 @@ import com.voiza.app.data.repository.GameRepositoryImpl
 import com.voiza.app.data.repository.GiftRepositoryImpl
 import com.voiza.app.data.repository.PkRepositoryImpl
 import com.voiza.app.data.repository.QuestRepositoryImpl
+import com.voiza.app.data.repository.RankingsRepositoryImpl
 import com.voiza.app.data.repository.RoleApplicationRepositoryImpl
 import com.voiza.app.data.repository.RoomRepositoryImpl
 import com.voiza.app.data.repository.SocialRepositoryImpl
@@ -26,6 +27,7 @@ import com.voiza.app.domain.repository.GiftRepository
 import com.voiza.app.domain.repository.GameRepository
 import com.voiza.app.domain.repository.PkRepository
 import com.voiza.app.domain.repository.QuestRepository
+import com.voiza.app.domain.repository.RankingsRepository
 import com.voiza.app.domain.repository.RoleApplicationRepository
 import com.voiza.app.domain.repository.RoomRepository
 import com.voiza.app.domain.repository.SocialRepository
@@ -89,6 +91,10 @@ object ServiceLocator {
     lateinit var socialRepository: SocialRepository
         private set
 
+    /** The landing rankings: three boards over the ledger, and the podium reward a member collects. */
+    lateinit var rankingsRepository: RankingsRepository
+        private set
+
     /** The live campaigns, read once per session and drawn by four surfaces. */
     lateinit var bannersStore: BannersStore
         private set
@@ -135,6 +141,7 @@ object ServiceLocator {
             roleApplicationRepository = RoleApplicationRepositoryImpl(apiService)
             agencyBookRepository = AgencyBookRepositoryImpl(apiService)
             socialRepository = SocialRepositoryImpl(apiService)
+            rankingsRepository = RankingsRepositoryImpl(apiService)
 
             joinRoomUseCase = JoinRoomUseCase(roomRepository) { roomId ->
                 socketClient.joinRoom(roomId)

@@ -2,6 +2,7 @@ package com.voiza.app.data.mapper
 
 import com.voiza.app.data.remote.dto.BannerDto
 import com.voiza.app.data.remote.dto.BannersResponse
+import com.voiza.app.data.remote.dto.BubbleStyleDto
 import com.voiza.app.data.remote.dto.ChatMessageDto
 import com.voiza.app.data.remote.dto.EmojiCatalogueDto
 import com.voiza.app.data.remote.dto.FrameArtDto
@@ -55,6 +56,7 @@ import com.voiza.app.domain.model.BannerFormat
 import com.voiza.app.domain.model.BannerPlacement
 import com.voiza.app.domain.model.BannerScreen
 import com.voiza.app.domain.model.BannerTarget
+import com.voiza.app.domain.model.BubbleStyle
 import com.voiza.app.domain.model.ChatMessage
 import com.voiza.app.domain.model.EmojiCatalogue
 import com.voiza.app.domain.model.EmojiOption
@@ -150,8 +152,17 @@ fun FrameArtDto?.toDomain(): ProfileFrame? {
     val key = frame.key?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val art = frame.art?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val name = frame.name?.trim()?.takeIf { it.isNotEmpty() } ?: key
-    return ProfileFrame(key = key, name = name, art = art, accent = frame.accent)
+    return ProfileFrame(
+        key = key,
+        name = name,
+        art = art,
+        accent = frame.accent,
+        tier = frame.tier?.trim()?.uppercase()?.takeIf { it in FRAME_TIERS } ?: "COMMON",
+        animated = frame.animated ?: false,
+    )
 }
+
+private val FRAME_TIERS = setOf("COMMON", "RARE", "EPIC", "LEGENDARY")
 
 /**
  * The ride a member arrives with. Dropped unless both the key and the file are there: without a URL
@@ -179,6 +190,19 @@ fun RideArtDto?.toDomain(): EntryRide? {
     )
 }
 
+/** Incomplete styles are absent; malformed snapshot colours are handled by the renderer. */
+fun BubbleStyleDto?.toDomain(): BubbleStyle? {
+    val style = this ?: return null
+    return BubbleStyle(
+        key = style.key?.takeIf { it.isNotBlank() } ?: return null,
+        name = style.name?.takeIf { it.isNotBlank() } ?: return null,
+        background = style.background ?: return null,
+        accent = style.accent ?: return null,
+        textColor = style.textColor ?: return null,
+        motif = style.motif ?: "NONE",
+    )
+}
+
 fun UserDto.toDomain(): User = User(
     id = id,
     phone = phone,
@@ -201,6 +225,7 @@ fun UserDto.toDomain(): User = User(
     profileFrame = profileFrame.toDomain(),
     entryEffect = entryEffect?.takeIf { it.isNotBlank() },
     entryRide = entryRide.toDomain(),
+    chatBubble = chatBubble.toDomain(),
 )
 
 fun SeatDto.toDomain(): Seat = Seat(
@@ -319,6 +344,7 @@ fun ChatMessageDto.toDomain(): ChatMessage = ChatMessage(
     content = content,
     type = enumOrDefault(type, MessageType.TEXT),
     createdAt = createdAt,
+    bubble = bubble.toDomain(),
 )
 
 fun GiftDto.toDomain(): Gift = Gift(
@@ -457,9 +483,8 @@ fun WithdrawalDto.toDomain() = com.voiza.app.domain.model.Withdrawal(
 )
 
 /**
- * One shop row. A row is dropped unless its kind is one this build knows, and unless it has the
- * four strings every card needs to draw and to buy it: key, name and art. A newer backend selling
- * a fourth catalogue should make the shop show less, not crash it.
+ * Unknown or incomplete rows are dropped rather than sold as empty cards. Only BUBBLE may omit
+ * art, and only with a complete, drawable style; every other catalogue still requires its file.
  */
 fun StoreItemDto.toDomainOrNull(): StoreItem? {
     val parsedKind = kind?.let { raw ->
@@ -467,7 +492,13 @@ fun StoreItemDto.toDomainOrNull(): StoreItem? {
     } ?: return null
     val itemKey = key?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val itemName = name?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    val itemArt = art?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val itemBubble = bubble.toDomain()
+    if (parsedKind == StoreItemKind.BUBBLE &&
+        (itemBubble == null || listOf(itemBubble.background, itemBubble.accent, itemBubble.textColor)
+            .any { BubbleStyle.parseColor(it) == null })
+    ) return null
+    val itemArt = art?.trim().orEmpty()
+    if (itemArt.isEmpty() && parsedKind != StoreItemKind.BUBBLE) return null
     return StoreItem(
         kind = parsedKind,
         key = itemKey,
@@ -482,6 +513,8 @@ fun StoreItemDto.toDomainOrNull(): StoreItem? {
         // Nullable-DTO rule: Gson leaves an absent key null, so the fallback lives here.
         minVipLevel = minVipLevel ?: 0,
         recommended = recommended ?: false,
+        tier = tier?.trim()?.uppercase()?.takeIf { it in FRAME_TIERS } ?: "COMMON",
+        animated = animated ?: false,
         // Sent on RIDE rows and on nothing else. The schema's own default is LOTTIE, so an absent
         // or unrecognised container degrades to the one renderer every build has shipped rather
         // than making the row undrawable; a named SVGA/MP4 must survive intact, since a device
@@ -493,6 +526,7 @@ fun StoreItemDto.toDomainOrNull(): StoreItem? {
         // 0 from the server is "play the clip for its own length" and stays 0; only a key the
         // response never carried becomes 0 here, which is the same answer an older catalogue gives.
         durationMs = durationMs ?: 0,
+        bubble = itemBubble,
     )
 }
 
@@ -545,7 +579,14 @@ fun LeaderboardResponse.toDomain(): Leaderboard = Leaderboard(
 
 fun SocketChatDto.toDomain(): RoomChatEvent = RoomChatEvent(
     roomId = roomId,
-    message = ChatMessage(id, user?.toDomain(), content, enumOrDefault(type, MessageType.TEXT), createdAt),
+    message = ChatMessage(
+        id = id,
+        user = user?.toDomain(),
+        content = content,
+        type = enumOrDefault(type, MessageType.TEXT),
+        createdAt = createdAt,
+        bubble = bubble.toDomain(),
+    ),
 )
 
 fun SocketSeatUpdateDto.toDomain(): SeatUpdateEvent = SeatUpdateEvent(

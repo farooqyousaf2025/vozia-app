@@ -30,6 +30,9 @@ import com.voiza.app.data.remote.dto.HandRaiseResponse
 import com.voiza.app.data.remote.dto.JoinRoomBody
 import com.voiza.app.data.remote.dto.JoinRoomResponse
 import com.voiza.app.data.remote.dto.LeaderboardResponse
+import com.voiza.app.data.remote.dto.RankingBoardResponse
+import com.voiza.app.data.remote.dto.RankingClaimBody
+import com.voiza.app.data.remote.dto.RankingClaimResponse
 import com.voiza.app.data.remote.dto.LiveKitTokenDto
 import com.voiza.app.data.remote.dto.MyApplicationsDto
 import com.voiza.app.data.remote.dto.OtpRequestBody
@@ -294,6 +297,22 @@ interface VoizaApiService {
         @Query("role") role: String,
         @Query("limit") limit: Int,
     ): LeaderboardResponse
+
+    /**
+     * The landing boards. Public; the auth interceptor attaches the session when one exists, so
+     * the same call answers a guest with the list and a member with their own row and reward.
+     * `settled` = "true" reads the finished window; omitted reads the live one.
+     */
+    @GET("api/rankings")
+    suspend fun rankings(
+        @Query("board") board: String,
+        @Query("period") period: String,
+        @Query("settled") settled: String? = null,
+    ): RankingBoardResponse
+
+    /** Collect a finished window's podium reward. Only the board and period are sent. */
+    @POST("api/rankings/claim")
+    suspend fun claimRanking(@Body body: RankingClaimBody): RankingClaimResponse
 
     // ---- Social moderation ---------------------------------------------------
 

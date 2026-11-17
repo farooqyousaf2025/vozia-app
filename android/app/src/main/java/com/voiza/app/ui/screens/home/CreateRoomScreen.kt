@@ -266,7 +266,7 @@ fun CreateRoomScreen(
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = password,
-                    onValueChange = { password = it.take(16) },
+                    onValueChange = { password = it.take(32) },
                     label = { Text("Room password", fontSize = 13.sp) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),

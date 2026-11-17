@@ -420,6 +420,7 @@ class PartyRoomViewModel(
                 // LiveKit keeps its own session and reconnects on its own; only the publish rights
                 // may have moved with the seat.
                 liveKit.updatePublishRights(it_publishCan(result.data.livekit, mySeat))
+                loadChatHistory()
             }
             is ApiResult.Failure -> Log.w(TAG, "Presence reclaim failed: ${result.message}")
         }
@@ -508,7 +509,7 @@ class PartyRoomViewModel(
         if (detail is ApiResult.Success) {
             _state.update {
                 it.copy(
-                    chat = detail.data.chat.takeLast(HISTORY_CHAT_LIMIT),
+                    chat = RoomEffects.mergeChatHistory(it.chat, detail.data.chat.takeLast(HISTORY_CHAT_LIMIT), MAX_CHAT),
                     handRaises = detail.data.handRaises,
                     // Re-reading the room should not forget that we already asked: our own name in
                     // the queue is the server's answer to whether the button says "Requested".

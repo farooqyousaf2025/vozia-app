@@ -1,12 +1,13 @@
 import { Request, Response } from 'express';
 import { rateLimit } from '../config/redis';
-import { ApiError, asyncHandler, optionalString, requireInt, requireString } from '../utils/http';
+import { ApiError, asyncHandler, optionalString, optionalUuid, requireInt, requireString } from '../utils/http';
 import { BusinessAccountDto, toBusinessAccount, toRechargePackage } from '../utils/serialize';
 import { BUSINESS_KIND_PERMISSIONS } from '../services/rbac.service';
 import { BusinessAccountRow, RechargeOrderStatus } from '../types/db';
 import { changeOwnBusinessPassword, listSellersForBd, loginBusinessAccount } from '../services/business.service';
 import {
   MANUAL_RAILS,
+  SellerCashBook,
   cancelOrder,
   createRechargeOrder,
   listPackagesForSeller,
@@ -14,8 +15,12 @@ import {
   lookupCustomer,
   markOrderPaid,
   rechargeStats,
+  sellerCashBook,
 } from '../services/seller-recharge.service';
 import { commissionSummary, listCommissionEntries, listCommissionSettlements } from '../services/commission.service';
+import { decodeUploadPayload } from '../services/media.service';
+import { getPayoutForSeller, listPayoutsForSeller } from '../services/payout.service';
+import { readReceiptForSeller, safeDownloadName, saveReceipt } from '../services/receipt.service';
 
 /**
  * The BD / coin-seller surface (§21, §22).
@@ -76,6 +81,57 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
     requireString(req.body?.newPassword, 'newPassword', { min: 8, max: 200 }),
   );
   res.json({ changed: true });
+});
+
+/**
+ * Receipts and payouts (migration 0041).
+ *
+ * Both exist because the cash between a member and a seller never touches this server: the upload
+ * is how a seller proves a handover they claim happened, and the payout queue is how a seller
+ * learns a member asked them to make one. Neither is allowed to credit anything — the finance
+ * decision stays the only door to a balance change, and `markOrderPaid` still stops at
+ * `AWAITING_VERIFICATION`.
+ */
+
+export const uploadReceipt = asyncHandler(async (req: Request, res: Response) => {
+  const orderId = optionalUuid(req.body?.orderId, 'orderId');
+  const withdrawalId = optionalUuid(req.body?.withdrawalId, 'withdrawalId');
+  if (orderId && withdrawalId) {
+    throw ApiError.badRequest('A receipt belongs to one record — send either orderId or withdrawalId', 'receipt_target_ambiguous');
+  }
+  const { receipt, duplicate } = await saveReceipt({
+    seller: account(req),
+    orderId: orderId ?? undefined,
+    withdrawalId: withdrawalId ?? undefined,
+    fileName: requireString(req.body?.fileName, 'fileName', { max: 120 }),
+    buffer: decodeUploadPayload(req.body?.data),
+  });
+  // 200 rather than 201 when the same document was already on that record: nothing new was stored.
+  res.status(duplicate ? 200 : 201).json({ receipt, duplicate });
+});
+
+/** The uploader reads their own slip back. Nobody else can reach it on this router. */
+export const ownReceipt = asyncHandler(async (req: Request, res: Response) => {
+  const { bytes, contentType, fileName } = await readReceiptForSeller(uuid(req.params.id, 'id'), account(req));
+  res.setHeader('content-type', contentType);
+  res.setHeader('content-disposition', `inline; filename="${safeDownloadName(fileName)}"`);
+  res.setHeader('cache-control', 'no-store');
+  res.send(bytes);
+});
+
+/** Payouts a member asked this seller to hand over in cash, oldest first. */
+export const payouts = asyncHandler(async (req: Request, res: Response) => {
+  const { page, limit, offset } = pageAndLimit(req);
+  const result = await listPayoutsForSeller(account(req).id, {
+    status: optionalString(req.query?.status, 'status', 12)?.toUpperCase(),
+    limit,
+    offset,
+  });
+  res.json({ ...result, page, limit });
+});
+
+export const payout = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ payout: await getPayoutForSeller(account(req).id, uuid(req.params.id, 'id')) });
 });
 
 export const packages = asyncHandler(async (req: Request, res: Response) => {
@@ -189,14 +245,21 @@ export const sellerReport = asyncHandler(async (req: Request, res: Response) => 
   });
 });
 
-/** A partner's statement: its own commission lines and its own settlement batches. */
+/**
+ * A partner's statement: its own commission lines, its own settlement batches, and — for a coin
+ * seller — the cash they are holding for the platform (0042). The money half and the R-coin half
+ * sit on one surface because it is one relationship, but they are never added: the cash a member
+ * received for their R-coins was agreed outside the platform and the book does not price it.
+ */
 export const statement = asyncHandler(async (req: Request, res: Response) => {
   const caller = account(req);
   const { page, limit, offset } = pageAndLimit(req);
-  const [entries, summary, settlements] = await Promise.all([
+  const [entries, summary, settlements, cash] = await Promise.all([
     listCommissionEntries({ beneficiaryId: caller.id, limit, offset }),
     commissionSummary(caller.id),
     listCommissionSettlements({ beneficiaryId: caller.id, limit: 50 }),
+    // A BD manager holds no cash, so there is no receivable to state.
+    caller.kind === 'COIN_SELLER' ? sellerCashBook(caller.id) : Promise.resolve(undefined),
   ]);
   const report = {
     account: toBusinessAccount(caller),
@@ -204,6 +267,7 @@ export const statement = asyncHandler(async (req: Request, res: Response) => {
     entries: entries.entries,
     total: entries.total,
     settlements,
+    cash,
     page,
     limit,
   };
@@ -222,9 +286,41 @@ function statementCsv(report: {
   summary: { accruedCents: number; settledCents: number; reversedCents: number; currency: string };
   entries: Array<Record<string, unknown>>;
   settlements: Array<Record<string, unknown>>;
+  cash: SellerCashBook | undefined;
 }): string {
   const row = (cells: string[]): string => cells.map(csvCell).join(',');
   const text = (value: unknown): string => (value === null || value === undefined ? '' : String(value));
+  const cash = report.cash;
+  // The R-coin half is exported in its own unit: `currency` reads `rcoin` on those rows so a
+  // spreadsheet cannot sum them into the money column and produce a number nobody agreed to.
+  const cashRows = cash
+    ? [
+        row(['cash', '', '', '', 'collected', '', '', String(cash.collectedNetCents), cash.currency, '', '', '', 'cash collected on credited orders, net of rail cost']),
+        row(['cash', '', '', '', 'refunded', '', '', String(cash.refundedCents), cash.currency, '', '', '', 'reversals handed back']),
+        row(['cash', '', '', '', 'commission_netted', '', '', String(cash.commissionSettledCents), cash.currency, '', '', '', 'commission kept out of the cash collected']),
+        row(['cash', '', '', '', 'remittance', '', '', String(cash.remittanceCents), cash.currency, '', '', '', 'still to hand over to the platform']),
+        row(['cash', '', '', '', 'accrued', '', '', String(cash.commissionAccruedCents), cash.currency, '', '', '', 'commission accrued and not yet batched']),
+        row(['cash', '', '', '', 'after_accrued', '', '', String(cash.afterAccruedCents), cash.currency, '', '', '', 'remittance less accrued commission']),
+        ...cash.cashOut.map((payout) =>
+          row([
+            'cash_out',
+            payout.reference,
+            payout.paidAt,
+            payout.username,
+            'R_COIN_SALE',
+            'PAID',
+            String(payout.amountRCoins),
+            String(payout.netRCoins),
+            'rcoin',
+            '',
+            '',
+            '',
+            `fee ${payout.feeRCoins} R-coins; payout ${payout.payoutReference}; ${payout.receiptCount} receipt(s); cash agreed outside the platform`,
+          ]),
+        ),
+        row(['cash_out', '', '', '', 'awaiting', '', '', String(cash.awaitingCashOutRCoins), 'rcoin', '', '', '', 'requested and not yet released by finance']),
+      ]
+    : [];
   const lines = [
     row(['section', 'reference', 'date', 'order', 'kind', 'status', 'basis_cents', 'amount_cents', 'currency', 'settled_at', 'period_from', 'period_to', 'note']),
     ...report.entries.map((entry) =>
@@ -261,6 +357,7 @@ function statementCsv(report: {
         text(batch.note),
       ]),
     ),
+    ...cashRows,
     row(['total', '', '', '', '', '', '', String(report.summary.accruedCents), report.summary.currency, '', '', '', 'accrued']),
     row(['total', '', '', '', '', '', '', String(report.summary.settledCents), report.summary.currency, '', '', '', 'settled']),
     row(['total', '', '', '', '', '', '', String(report.summary.reversedCents), report.summary.currency, '', '', '', 'reversed']),

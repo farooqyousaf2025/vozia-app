@@ -1,8 +1,9 @@
 import { Request, Response } from 'express';
 import { many } from '../config/db';
 import { WithdrawalRow } from '../types/db';
-import { ApiError, asyncHandler, optionalString, requireEnum, requireInt } from '../utils/http';
+import { ApiError, asyncHandler, optionalString, requireEnum, requireInt, requireUuid } from '../utils/http';
 import { toWithdrawal } from '../utils/serialize';
+import { resolvePayoutSeller } from '../services/payout.service';
 import { getWallet, recharge, requestWithdrawal } from '../services/ledger.service';
 import { simulatedRechargeAllowed } from '../services/stripe.service';
 
@@ -28,8 +29,12 @@ export const rechargeEndpoint = asyncHandler(async (req: Request, res: Response)
 
 export const withdraw = asyncHandler(async (req: Request, res: Response) => {
   const amount = requireInt(req.body?.amountRCoins, 'amountRCoins', { min: 1 });
+  // 'SELLER' (migration 0041) is the coin-seller rail: the member sells the R-coins to a partner who
+  // pays cash out of their own pocket. It stays a withdrawal on purpose — the minimum, the fee
+  // decided at the request and the reference finance must enter before the row can be PAID are the
+  // controls that stop a handshake in a car park from becoming a second, untaxed cash door.
   const method = req.body?.payoutMethod
-    ? requireEnum(req.body.payoutMethod, 'payoutMethod', ['BANK', 'WALLET', 'USDT'] as const)
+    ? requireEnum(req.body.payoutMethod, 'payoutMethod', ['BANK', 'WALLET', 'USDT', 'SELLER'] as const)
     : 'BANK';
 
   const details = (req.body?.payoutDetails ?? {}) as Record<string, unknown>;
@@ -37,11 +42,22 @@ export const withdraw = asyncHandler(async (req: Request, res: Response) => {
   const holder = optionalString(details.holder, 'payoutDetails.holder', 80);
   if (!account) throw ApiError.badRequest('Withdrawals need a payout account', 'payout_details_required');
 
+  // Resolved from business_accounts, not accepted as text: an inactive or closed partner cannot be
+  // named, and a BD manager is not a cash payer.
+  let sellerId: string | null = null;
+  let sellerCode: string | null = null;
+  if (method === 'SELLER') {
+    const seller = await resolvePayoutSeller(requireUuid(details.sellerId, 'payoutDetails.sellerId'));
+    sellerId = seller.id;
+    sellerCode = seller.code;
+  }
+
   const { withdrawal, user } = await requestWithdrawal(req.user!.sub, amount, method, {
     account,
     holder,
     currency: optionalString(details.currency, 'payoutDetails.currency', 3) ?? 'USD',
-  });
+    ...(sellerCode ? { sellerCode } : {}),
+  }, sellerId);
   res.status(201).json({ withdrawal: toWithdrawal(withdrawal), user });
 });
 

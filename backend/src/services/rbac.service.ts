@@ -149,6 +149,10 @@ export const BUSINESS_PERMISSIONS = [
   'seller:read',
   'report:read',
   'bd:manage',
+  // Migration 0041: the payouts a member asked this seller to pay in cash — reading that queue is
+  // a different job from selling diamonds, so it is a different capability. Sellers hold it; a BD
+  // sees the network's orders, not its cash handovers.
+  'payout:manage',
 ] as const;
 
 export type BusinessPermission = (typeof BUSINESS_PERMISSIONS)[number];
@@ -156,7 +160,7 @@ export type BusinessPermission = (typeof BUSINESS_PERMISSIONS)[number];
 export const BUSINESS_KIND_PERMISSIONS: Record<BusinessAccountKind, readonly BusinessPermission[]> = {
   // A seller sees its own orders and its own statement, and may look up a recharge it is
   // asked about — never another seller's book, and never a balance to edit.
-  COIN_SELLER: ['recharge:create', 'recharge:read', 'customer:lookup', 'statement:read'],
+  COIN_SELLER: ['recharge:create', 'recharge:read', 'customer:lookup', 'statement:read', 'payout:manage'],
   // A BD agent reads the sellers assigned to it.
   BD_AGENT: ['recharge:read', 'statement:read', 'seller:read', 'report:read'],
   // A BD manager adds agents inside its own territory; whether more than one manager may

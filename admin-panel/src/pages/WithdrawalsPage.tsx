@@ -21,6 +21,7 @@ import { Card } from '../components/ui/Card';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
+import { ReceiptsPanel } from '../components/ui/ReceiptsPanel';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { Textarea } from '../components/ui/Input';
@@ -50,9 +51,24 @@ function payoutDetailsSummary(details: Record<string, unknown>): string {
   const entries = Object.entries(details ?? {});
   if (entries.length === 0) return '—';
   return entries
+    .filter(([key]) => key !== 'sellerId' && key !== 'sellerCode')
     .map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`)
     .join(' · ');
 }
+
+/**
+ * What each rail means on this screen, spelled out because the money leaves by different hands.
+ *
+ * `SELLER` is the one an operator must not read as a platform transfer: on that rail the platform
+ * never pays anyone. A member sold R-coins to a coin seller, who hands over cash from their own
+ * pocket outside the app, and the only proof the queue gets is the slip that seller uploads.
+ */
+const PAYOUT_LABELS: Record<string, string> = {
+  BANK: 'Bank transfer',
+  WALLET: 'Wallet',
+  USDT: 'USDT',
+  SELLER: 'Coin seller (cash)',
+};
 
 export default function WithdrawalsPage() {
   const toast = useToast();
@@ -63,6 +79,7 @@ export default function WithdrawalsPage() {
   const [error, setError] = useState<string | null>(null);
   const [reviewTarget, setReviewTarget] = useState<WithdrawalRow | null>(null);
   const [payTarget, setPayTarget] = useState<WithdrawalRow | null>(null);
+  const [slipsTarget, setSlipsTarget] = useState<WithdrawalRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,7 +108,9 @@ export default function WithdrawalsPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-ink">Withdrawals</h1>
-          <p className="mt-0.5 text-sm text-muted">R-coin cash-out requests from hosts and agencies.</p>
+          <p className="mt-0.5 text-sm text-muted">
+            R-coin cash-out requests from hosts and agencies. A request aimed at a coin seller is settled in cash outside the app.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Select
@@ -166,12 +185,23 @@ export default function WithdrawalsPage() {
                     )}
                   </Td>
                   <Td>
-                    <Badge tone="slate">{row.payoutMethod}</Badge>
+                    <Badge tone={row.payoutMethod === 'SELLER' ? 'fuchsia' : 'slate'}>
+                      {PAYOUT_LABELS[row.payoutMethod] ?? row.payoutMethod}
+                    </Badge>
+                    {row.seller && (
+                      <p className="mt-1 max-w-[13rem] break-words text-[11px] text-faint" title="The seller the member chose to hand over the cash. Only this account can upload its proof.">
+                        paid by {row.seller.code ?? row.seller.id.slice(0, 8)}
+                        {row.seller.name ? ` · ${row.seller.name}` : ''}
+                      </p>
+                    )}
                   </Td>
                   <Td>
                     <span className="line-clamp-2 max-w-xs break-words text-xs" title={payoutDetailsSummary(row.payoutDetails)}>
                       {payoutDetailsSummary(row.payoutDetails)}
                     </span>
+                    {row.receiptCount !== null && row.receiptCount > 0 && (
+                      <p className="mt-1 text-[11px] text-faint">{row.receiptCount} receipt{row.receiptCount === 1 ? '' : 's'} uploaded</p>
+                    )}
                   </Td>
                   <Td className="whitespace-nowrap" title={formatDateTime(row.createdAt)}>
                     {relativeTime(row.createdAt)}
@@ -188,15 +218,13 @@ export default function WithdrawalsPage() {
                     )}
                   </Td>
                   <Td align="right" className="pr-4">
-                    {row.status === 'PENDING' && (
-                      <div className="flex justify-end">
+                    <div className="flex items-center justify-end gap-1.5">
+                      {row.status === 'PENDING' && (
                         <Button size="sm" variant="primary" onClick={() => setReviewTarget(row)}>
                           Review
                         </Button>
-                      </div>
-                    )}
-                    {row.status === 'APPROVED' && (
-                      <div className="flex justify-end">
+                      )}
+                      {row.status === 'APPROVED' && (
                         <Button
                           size="sm"
                           variant="success"
@@ -205,11 +233,16 @@ export default function WithdrawalsPage() {
                         >
                           Pay
                         </Button>
-                      </div>
-                    )}
-                    {(row.status === 'PAID' || row.status === 'REJECTED') && (
-                      <span className="block text-right text-xs text-faint">closed</span>
-                    )}
+                      )}
+                      {(row.status === 'PAID' || row.status === 'REJECTED') && (
+                        <span className="text-xs text-faint">closed</span>
+                      )}
+                      {row.seller !== null && (
+                        <Button size="sm" variant="ghost" onClick={() => setSlipsTarget(row)}>
+                          Slips{row.receiptCount ? ` (${row.receiptCount})` : ''}
+                        </Button>
+                      )}
+                    </div>
                   </Td>
                 </Tr>
               ))}
@@ -247,7 +280,35 @@ export default function WithdrawalsPage() {
       )}
 
       <PolicyCard canWrite={can('config:manage')} />
+
+      {slipsTarget !== null && <SlipsModal withdrawal={slipsTarget} onClose={() => setSlipsTarget(null)} />}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The slips on a closed payout. A seller-paid request is the one the platform
+// cannot re-check from its own bank screen, so the document has to stay readable
+// after the money is gone — that is when someone asks about it.
+// ---------------------------------------------------------------------------
+interface SlipsModalProps {
+  withdrawal: WithdrawalRow;
+  onClose: () => void;
+}
+
+function SlipsModal({ withdrawal, onClose }: SlipsModalProps) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="lg"
+      title="Payment receipts"
+      subtitle={`${formatRCoin(withdrawal.netRCoins)} to ${withdrawal.user.username} · paid by ${
+        withdrawal.seller?.code ?? withdrawal.seller?.name ?? 'a coin seller'
+      } · ${withdrawal.status.toLowerCase()}`}
+    >
+      <ReceiptsPanel queue="withdrawal" recordId={withdrawal.id} canOpen />
+    </Modal>
   );
 }
 
@@ -302,15 +363,19 @@ function PayModal({ withdrawal, onClose, onPaid }: PayModalProps) {
           <p className="mt-1 text-xs text-muted">
             of {formatRCoin(withdrawal.amountRCoins)} requested
             {withdrawal.feeRCoins > 0 ? ` · ${formatRCoin(withdrawal.feeRCoins)} kept as the platform fee` : ' · no fee on this request'}{' '}
-            · via <span className="font-semibold text-ink">{withdrawal.payoutMethod}</span> ·{' '}
+            · via <span className="font-semibold text-ink">{PAYOUT_LABELS[withdrawal.payoutMethod] ?? withdrawal.payoutMethod}</span> ·{' '}
             {payoutDetailsSummary(withdrawal.payoutDetails)}
           </p>
         </div>
 
+        {withdrawal.seller !== null && (
+          <ReceiptsPanel queue="withdrawal" recordId={withdrawal.id} canOpen />
+        )}
+
         <Input
-          label="Bank / transfer reference"
+          label={withdrawal.seller !== null ? 'Cash handover reference (slip or transaction number)' : 'Bank / transfer reference'}
           maxLength={120}
-          placeholder="e.g. HBL-TRX-000984321"
+          placeholder={withdrawal.seller !== null ? 'e.g. SBL-2024-009871 (seller cash slip)' : 'e.g. HBL-TRX-000984321'}
           hint="Required. This is what answers the host who asks in three weeks which transfer paid them, and the database refuses a paid row without one."
           value={reference}
           onChange={(e) => setReference(e.target.value)}
@@ -500,10 +565,16 @@ function ReviewModal({ withdrawal, onClose, onReviewed }: ReviewModalProps) {
             </p>
           )}
           <p className="mt-1 text-xs text-muted">
-            via <span className="font-semibold text-ink">{withdrawal.payoutMethod}</span> ·{' '}
+            via <span className="font-semibold text-ink">{PAYOUT_LABELS[withdrawal.payoutMethod] ?? withdrawal.payoutMethod}</span> ·{' '}
             {payoutDetailsSummary(withdrawal.payoutDetails)} · requested {relativeTime(withdrawal.createdAt)}
           </p>
         </div>
+
+        {/* Only a seller-paid request has a document to look at: on every other rail the platform
+            transfers the money itself, and no partner can attach proof to it. */}
+        {withdrawal.seller !== null && (
+          <ReceiptsPanel queue="withdrawal" recordId={withdrawal.id} canOpen />
+        )}
 
         <div className="grid grid-cols-2 gap-2">
           <button

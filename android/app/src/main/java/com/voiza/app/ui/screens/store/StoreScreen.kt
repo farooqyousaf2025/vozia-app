@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -63,6 +65,7 @@ import com.voiza.app.domain.model.StoreItem
 import com.voiza.app.domain.model.StoreItemKind
 import com.voiza.app.domain.model.User
 import com.voiza.app.ui.components.Avatar
+import com.voiza.app.ui.components.ChatBubblePanel
 import com.voiza.app.ui.components.DiamondChip
 import com.voiza.app.ui.components.EmptyState
 import com.voiza.app.ui.components.LoadingProgress
@@ -77,12 +80,14 @@ import com.voiza.app.ui.screens.room.WelcomeEffect
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.DangerRed
 import com.voiza.app.ui.theme.DiamondGold
+import com.voiza.app.ui.theme.Fuchsia
 import com.voiza.app.ui.theme.Mint
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.OnDarkMuted
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
 import com.voiza.app.ui.theme.VoizaSurfaceVariant
+import com.voiza.app.ui.theme.WarningAmber
 import com.voiza.app.viewmodel.StoreViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
 
@@ -288,7 +293,7 @@ private fun StoreCard(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(104.dp)
+                .then(if (item.kind == StoreItemKind.BUBBLE) Modifier.heightIn(min = 104.dp) else Modifier.height(104.dp))
                 .background(Brush.verticalGradient(listOf(Color(0xFF2A2459), Color(0xFF1B1740)))),
         ) {
             ItemArt(item = item, user = user, size = 72.dp)
@@ -312,6 +317,18 @@ private fun StoreCard(
                     text = "VIP ${item.minVipLevel}",
                     color = DangerRed,
                     modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp),
+                )
+            }
+            if (item.kind == StoreItemKind.FRAME) {
+                StatusPill(
+                    text = (if (item.animated) "Live · " else "") + item.tier.lowercase().replaceFirstChar { it.uppercase() },
+                    color = when (item.tier) {
+                        "LEGENDARY" -> WarningAmber
+                        "EPIC" -> Fuchsia
+                        "RARE" -> Cyan
+                        else -> OnDarkMuted
+                    },
+                    modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
                 )
             }
         }
@@ -366,7 +383,7 @@ private fun StatusPill(text: String, color: Color, modifier: Modifier = Modifier
     }
 }
 
-/** The art as the phone will actually draw it: a ring over the member's own face. */
+/** Preview each cosmetic as it is drawn: a ring over a face, or actual words in a chat panel. */
 @Composable
 private fun ItemArt(item: StoreItem, user: User?, size: Dp) {
     when (item.kind) {
@@ -376,6 +393,27 @@ private fun ItemArt(item: StoreItem, user: User?, size: Dp) {
             size = size,
             frame = item.asFrame(),
         )
+
+        StoreItemKind.BUBBLE -> ChatBubblePanel(
+            style = item.bubble,
+            modifier = Modifier.widthIn(max = 360.dp).padding(horizontal = 12.dp, vertical = 32.dp),
+        ) { textColor, accent ->
+            Column {
+                Text(
+                    text = user?.username ?: "You",
+                    color = accent,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = if (size > 72.dp) "Good to be here. How is everyone?" else "Hello, room!",
+                    color = textColor,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                )
+            }
+        }
 
         StoreItemKind.THEME -> {
             val art = item.art.asAssetUrl()
@@ -482,10 +520,10 @@ private fun StoreDetailSheet(
     // Buying and renewing spend diamonds, so both are gated by tier; wearing an already-owned
     // row is not (a support grant can be worn below the tier). The server is still authoritative.
     val locked = state.vipLocked(item)
-    val renews = item.periodDays != null
-    // A retired row cannot be re-worn, and a permanent one has nothing to renew — only these cases
-    // can spend diamonds from this sheet.
-    val canSpend = !item.owned || renews
+    val catalogueRental = item.periodDays != null
+    // A permanent grant stays permanent even when the catalogue sells rentals of that item.
+    val renewable = item.owned && item.expiresAt != null && item.periodDays != null
+    val canSpend = !item.owned || renewable
     // The flourish and the ride are bought sight-unless-previewed: their art is a file that moves,
     // and the row's format says which player opens it. A ring and a theme are still pictures.
     val playable = item.kind == StoreItemKind.EFFECT || item.kind == StoreItemKind.RIDE
@@ -500,7 +538,7 @@ private fun StoreDetailSheet(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(150.dp)
+                .then(if (item.kind == StoreItemKind.BUBBLE) Modifier.heightIn(min = 150.dp) else Modifier.height(150.dp))
                 .clip(RoundedCornerShape(14.dp))
                 .background(Brush.verticalGradient(listOf(Color(0xFF2A2459), Color(0xFF1B1740))))
                 .then(
@@ -527,14 +565,17 @@ private fun StoreDetailSheet(
                     fontWeight = FontWeight.Black,
                 )
                 Text(
-                    text = if (renews) "Rental \u00B7 ${item.periodDays} days, renewable" else "One-time \u00B7 yours permanently",
+                    text = if (catalogueRental) "Catalogue rental \u00B7 ${item.periodDays} days" else "One-time \u00B7 yours permanently",
                     color = OnDarkMedium,
                     fontSize = 11.sp,
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text("Your balance", color = OnDarkMuted, fontSize = 10.sp)
+                Text("Spendable balance", color = OnDarkMuted, fontSize = 10.sp)
                 Text("${state.balance} \u2756", color = OnDarkHigh, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                if (state.eligibleBonus > 0) {
+                    Text("Includes ${state.eligibleBonus} bonus diamonds", color = OnDarkMuted, fontSize = 10.sp)
+                }
             }
         }
 
@@ -573,11 +614,17 @@ private fun StoreDetailSheet(
             )
         }
 
+        // Only a purchase blocks on balance; an owned row wears for free even when its renewal
+        // is out of reach, so the shortfall reads as a muted renewal note, not a red error.
         if (!affordable && canSpend) {
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "You need ${state.shortfall(item)} more diamonds for this.",
-                color = DangerRed,
+                text = if (item.owned) {
+                    "Wearing is free. Renewing later needs ${state.shortfall(item)} more diamonds."
+                } else {
+                    "You need ${state.shortfall(item)} more diamonds for this."
+                },
+                color = if (item.owned) OnDarkMedium else DangerRed,
                 fontSize = 11.sp,
             )
         }
@@ -609,7 +656,7 @@ private fun StoreDetailSheet(
                         )
                     }
                 }
-                if (renews) {
+                if (renewable) {
                     Spacer(Modifier.height(8.dp))
                     VoizaSecondaryButton(
                         text = if (busy) "Renewing\u2026" else "Renew ${item.periodDays} days \u00B7 ${item.priceDiamonds} \u2756",
@@ -767,13 +814,14 @@ private fun ownedLine(item: StoreItem): String =
 private fun vipLocked(item: StoreItem, user: User?): Boolean =
     item.minVipLevel > 0 && (user?.vipLevel ?: 0) < item.minVipLevel
 
-private fun StoreItem.asFrame() = ProfileFrame(key = key, name = name, art = art, accent = accent)
+private fun StoreItem.asFrame() = ProfileFrame(key = key, name = name, art = art, accent = accent, tier = tier, animated = animated)
 
 private fun StoreItemKind.tabLabel(): String = when (this) {
     StoreItemKind.FRAME -> "Rings"
     StoreItemKind.THEME -> "Themes"
     StoreItemKind.EFFECT -> "Flourishes"
     StoreItemKind.RIDE -> "Arrivals"
+    StoreItemKind.BUBBLE -> "Bubbles"
 }
 
 private fun StoreItemKind.kindLabel(): String = when (this) {
@@ -781,4 +829,5 @@ private fun StoreItemKind.kindLabel(): String = when (this) {
     StoreItemKind.THEME -> "Room theme"
     StoreItemKind.EFFECT -> "Entry flourish"
     StoreItemKind.RIDE -> "Entrance ride"
+    StoreItemKind.BUBBLE -> "Chat bubble"
 }

@@ -825,9 +825,12 @@ export type AdminWithdrawal = Omit<WithdrawalDto, 'user'> & { user: WithdrawalUs
 const WITHDRAWAL_SELECT = `
   SELECT w.*, u.username, u.avatar_url, u.phone,
          u.r_coin_balance AS user_r_coin_balance,
-         u.user_type AS user_type, u.status AS user_status
+         u.user_type AS user_type, u.status AS user_status,
+         s.code AS seller_code, s.display_name AS seller_name,
+         (SELECT count(*) FROM payment_receipts pr WHERE pr.withdrawal_id = w.id)::text AS receipt_count
     FROM withdrawal_requests w
-    JOIN users u ON u.id = w.user_id`;
+    JOIN users u ON u.id = w.user_id
+    LEFT JOIN business_accounts s ON s.id = w.seller_id`;
 
 type WithdrawalJoinedRow = WithdrawalRow & {
   username: string;

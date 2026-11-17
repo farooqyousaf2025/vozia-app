@@ -2,6 +2,13 @@ package com.voiza.app.data.mapper
 
 import com.google.gson.Gson
 import com.voiza.app.data.remote.dto.ApproveSpeakerRequestResponse
+import com.voiza.app.data.remote.dto.BubbleStyleDto
+import com.voiza.app.data.remote.dto.ChatMessageDto
+import com.voiza.app.data.remote.dto.SocketChatDto
+import com.voiza.app.data.remote.dto.StoreItemBody
+import com.voiza.app.domain.model.BubbleMotif
+import com.voiza.app.domain.model.BubbleStyle
+import com.voiza.app.domain.model.MessageType
 import com.voiza.app.data.remote.dto.EmojiCatalogueDto
 import com.voiza.app.data.remote.dto.GiftDto
 import com.voiza.app.data.remote.dto.GiftsResponse
@@ -1067,6 +1074,116 @@ class MappersTest {
         // the ride column, and the room must not play one it was never told about.
         val lean = gson.fromJson("""{"id":"u3","username":"bo"}""", MiniUserDto::class.java).toDomain()
         assertNull(lean.entryRide)
+    }
+
+    private val midnightBubble = """{"key":"midnight","name":"Midnight","background":"#202746",
+        "accent":"#94B6FF","textColor":"#F5F7FF","motif":"SPARKLE"}"""
+
+    @Test
+    fun `a bubble catalogue row needs style instead of art and keeps server ownership`() {
+        val item = gson.fromJson(
+            """{"kind":"BUBBLE","key":"midnight","name":"Midnight","art":"",
+               "priceDiamonds":321,"periodDays":30,"owned":true,"expiresAt":null,
+               "equipped":true,"bubble":$midnightBubble}""",
+            StoreItemDto::class.java,
+        ).toDomainOrNull()!!
+
+        assertEquals(StoreItemKind.BUBBLE, item.kind)
+        assertEquals("BUBBLE:midnight", item.id)
+        assertEquals("", item.art)
+        assertEquals(321, item.priceDiamonds)
+        assertEquals(30, item.periodDays)
+        // A permanent grant is not converted into a rental by the catalogue's period.
+        assertTrue(item.owned)
+        assertNull(item.expiresAt)
+        assertTrue(item.equipped)
+        assertTrue(item.wearable)
+        assertEquals(BubbleStyle("midnight", "Midnight", "#202746", "#94B6FF", "#F5F7FF", "SPARKLE"), item.bubble)
+    }
+
+    @Test
+    fun `empty art is permitted only for a bubble with a drawable style`() {
+        val complete = gson.fromJson(midnightBubble, BubbleStyleDto::class.java)
+        val bubble = StoreItemDto(kind = "BUBBLE", key = "midnight", name = "Midnight", art = "", bubble = complete)
+        assertNotNull(bubble.toDomainOrNull())
+        assertNull(bubble.copy(bubble = null).toDomainOrNull())
+        assertNull(bubble.copy(bubble = complete.copy(key = " ")).toDomainOrNull())
+        assertNull(bubble.copy(bubble = complete.copy(name = null)).toDomainOrNull())
+        assertNull(bubble.copy(bubble = complete.copy(background = null)).toDomainOrNull())
+        assertNull(bubble.copy(bubble = complete.copy(accent = "red")).toDomainOrNull())
+        assertNull(bubble.copy(bubble = complete.copy(textColor = "#00FFFFFF")).toDomainOrNull())
+        for (kind in listOf("FRAME", "THEME", "EFFECT", "RIDE")) {
+            assertNull(bubble.copy(kind = kind).toDomainOrNull())
+            assertNull(bubble.copy(kind = kind, art = null).toDomainOrNull())
+            assertNotNull(bubble.copy(kind = kind, art = "/art.png").toDomainOrNull())
+        }
+    }
+
+    @Test
+    fun `rest and socket messages retain the same top-level send-time bubble`() {
+        val json = """{"roomId":"r1","id":"m1","content":"Hello [smile]","type":"TEXT",
+            "createdAt":"2026-11-08T10:00:00Z","bubble":$midnightBubble,
+            "user":{"id":"u1","username":"ana","chatBubble":null}}"""
+        val rest = gson.fromJson(json, ChatMessageDto::class.java).toDomain()
+        val event = gson.fromJson(json, SocketChatDto::class.java).toDomain()
+        assertEquals("r1", event.roomId)
+        assertEquals(rest, event.message)
+        assertEquals("midnight", rest.bubble?.key)
+        assertEquals("Hello [smile]", rest.content)
+        assertEquals("ana", rest.user?.username)
+        assertEquals(MessageType.TEXT, rest.type)
+        assertEquals("2026-11-08T10:00:00Z", rest.createdAt)
+    }
+
+    @Test
+    fun `missing and null message snapshots never inherit author decoration`() {
+        for (snapshot in listOf("", ",\"bubble\":null")) {
+            val json = """{"roomId":"r1","id":"m1","content":"Hello","type":"TEXT","createdAt":"now",
+                "user":{"id":"u1","username":"ana","chatBubble":$midnightBubble}$snapshot}"""
+            val rest = gson.fromJson(json, ChatMessageDto::class.java)
+            val socket = gson.fromJson(json, SocketChatDto::class.java)
+            assertNull(rest.bubble)
+            assertNull(socket.bubble)
+            assertNull(rest.toDomain().bubble)
+            assertNull(socket.toDomain().message.bubble)
+        }
+    }
+
+    @Test
+    fun `the equipped account bubble is optional and independent of messages`() {
+        val base = """{"id":"u1","phone":"+1","username":"ana","userType":"USER","status":"ACTIVE""""
+        for (suffix in listOf("}", ",\"chatBubble\":null}")) {
+            val account = gson.fromJson(base + suffix, UserDto::class.java)
+            assertNull(account.chatBubble)
+            assertNull(account.toDomain().chatBubble)
+        }
+        val account = gson.fromJson("$base,\"chatBubble\":$midnightBubble}", UserDto::class.java).toDomain()
+        assertEquals("midnight", account.chatBubble?.key)
+    }
+
+    @Test
+    fun `unknown motifs render none and malformed snapshot colours reach safe parsing`() {
+        for (motif in BubbleMotif.entries) assertEquals(motif, BubbleMotif.fromWire(motif.name))
+        assertEquals(BubbleMotif.NONE, BubbleMotif.fromWire(null))
+        assertEquals(BubbleMotif.NONE, BubbleMotif.fromWire("COMET"))
+        val future = gson.fromJson(midnightBubble.replace("SPARKLE", "COMET"), BubbleStyleDto::class.java)
+        assertEquals("COMET", future.toDomain()?.motif)
+        assertNotNull(StoreItemDto(kind = "BUBBLE", key = "future", name = "Future", art = "", bubble = future).toDomainOrNull())
+        val badColour = future.copy(background = "red", accent = "#123", textColor = "#00FFFFFF").toDomain()!!
+        assertNull(BubbleStyle.parseColor(badColour.background))
+        assertNull(BubbleStyle.parseColor(badColour.accent))
+        assertNull(BubbleStyle.parseColor(badColour.textColor))
+    }
+
+    @Test
+    fun `bubble actions send only the kind and optional key through the existing body`() {
+        val buyOrEquip = gson.toJsonTree(StoreItemBody(StoreItemKind.BUBBLE.name, "midnight")).asJsonObject
+        assertEquals(setOf("kind", "key"), buyOrEquip.keySet())
+        assertEquals("BUBBLE", buyOrEquip["kind"].asString)
+        assertEquals("midnight", buyOrEquip["key"].asString)
+        val takeOff = gson.toJsonTree(StoreItemBody(StoreItemKind.BUBBLE.name)).asJsonObject
+        assertEquals(setOf("kind"), takeOff.keySet())
+        assertEquals("BUBBLE", takeOff["kind"].asString)
     }
 
     // ---- Speaker gate: the seat route with two answers ---------------------------------

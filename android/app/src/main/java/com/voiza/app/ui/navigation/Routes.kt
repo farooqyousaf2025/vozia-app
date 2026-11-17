@@ -9,6 +9,10 @@ object Routes {
     const val STORE = "store"
     const val QUESTS = "quests"
 
+    // The landing rankings. One route, no arguments: the board, period and window are chosen on
+    // the screen and answered by /api/rankings, so nothing about them travels in the path.
+    const val RANKINGS = "rankings"
+
     const val ROOM_ARG = "roomId"
     const val ROOM_BASE = "room"
     const val ROOM_PATTERN = "$ROOM_BASE/{$ROOM_ARG}"

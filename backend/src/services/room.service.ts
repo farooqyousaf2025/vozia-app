@@ -863,8 +863,17 @@ export async function setHandRaised(
 
 export async function appendChat(roomId: string, userId: string, content: string): Promise<ChatMessageDto> {
   const row = await one<ChatRow>(
-    `INSERT INTO chat_messages (room_id, user_id, message_type, content)
-     VALUES ($1,$2,'TEXT',$3)
+    `INSERT INTO chat_messages (room_id, user_id, message_type, content, bubble_style)
+     SELECT $1, u.id, 'TEXT', $3,
+            CASE WHEN b.key IS NOT NULL THEN jsonb_build_object(
+              'key', b.key, 'name', b.name, 'background', trim(b.background),
+              'accent', trim(b.accent), 'textColor', trim(b.text_color), 'motif', b.motif
+            ) END
+       FROM users u
+       LEFT JOIN user_items ui ON ui.user_id = u.id AND ui.kind = 'BUBBLE'
+         AND ui.item_key = u.chat_bubble_key AND (ui.expires_at IS NULL OR ui.expires_at > now())
+       LEFT JOIN chat_bubbles b ON b.key = ui.item_key
+      WHERE u.id = $2
      RETURNING *`,
     [roomId, userId, content],
   );

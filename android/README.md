@@ -294,6 +294,10 @@ valid cert, or `adb reverse` for local testing).
   connection edge and re-runs `JoinRoomUseCase`, which re-claims presence and re-emits the
   socket join, then applies the returned snapshot without touching the LiveKit session —
   LiveKit reconnects itself, and only publish rights may have moved with the seat. The
+  re-claimed join also re-reads chat history and merges it with what is on screen
+  (`RoomEffects.mergeChatHistory`: dedupe by server id, order by `createdAt`, keep the newest
+  120), so a line saved while the API was down arrives on reconnect instead of being lost to
+  the socket gap, and live arrivals are never displaced by the fetch. The
   room is process-wide state, so leaving a screen unsubscribes the shared socket rather
   than closing it, and `MainActivity.onDestroy` calls `disconnect()`, never the old
   `destroy()`: the singleton is never rebuilt, and cancelling its scope would take voice
@@ -378,7 +382,9 @@ valid cert, or `adb reverse` for local testing).
   listener badge, gift-value flame, PRIVATE lock), pull-to-refresh (which re-reads the banner wall
   on the same gesture, so a campaign switched on mid-scroll arrives with the rooms), empty
   state, FAB → `createRoom` (title/category/language/region/rules/public-private+password/capacity, the range
-  and default of which come from `GET /api/rooms/capacity`). The same screen is the edit
+  and default of which come from `GET /api/rooms/capacity`). The password field here and in the
+  join dialog accepts the API's full 32 characters; it used to stop at 16, which silently
+  truncated longer passwords and made the join fail with no error. The same screen is the edit
   screen (`editRoom/{id}`, reached from the host's pencil icon): it prefills from
   `GET /api/rooms/:id` rather than the lobby row it was launched from, hides the access,
   password and capacity fields the `PATCH` refuses, adds the one switch that route does accept —
@@ -456,7 +462,7 @@ valid cert, or `adb reverse` for local testing).
   one impression per row per session and every tap. Inserted at: `HOME` under Home's discovery row,
   `GIFT` above the gift panel's pages (a shorter card — the Send button owns the bottom of that
   dialog), `GAME` under the desk's error line, `SPLASH` over cold start.
-- `ui/screens/store` — one chip per kind (*Rings*, *Themes*, *Flourishes*, *Arrivals*) over a grid
+- `ui/screens/store` — one chip per kind (*Rings*, *Themes*, *Flourishes*, *Arrivals*, *Bubbles*) over a grid
   of server rows, nothing cached: the catalogue, the caller's holdings and the balance are re-read on
   `ON_RESUME`, and a purchase re-reads them rather than patching the tile. Price, rental period
   (`priceLine`) and expiry (`ownedLine`, "Yours until <date>" or "Yours permanently") are all the
@@ -466,9 +472,27 @@ valid cert, or `adb reverse` for local testing).
   wearing an already-owned row is never tier-gated, so a support grant stays wearable.
   `recommended` only badges the tile — the server already sorts those rows first. A flourish and a
   ride are playable from the detail sheet ("Tap to play"); a ring and a theme are still pictures.
+  Bubbles are drawn natively from the server's colour/motif style, with a real-text preview. Text chat
+  uses each message's saved bubble snapshot, never the sender's current selection; gift and system
+  lines stay plain. The purchase sheet reads the wallet's `promo.usableFor` policy, counts bonus
+  diamonds only when `STORE` is allowed, and labels that part separately. A permanent grant offers
+  free Wear/Take off without Renew even when the catalogue sells a rental.
   Rows an operator retired but the member still paid for list apart, with their own expiry.
-- `ui/screens/wallet` — diamond hero card, R-coin earnings, preset recharge,
-  withdrawal sheet, +/- coloured ledger. Balances stay live: the private
+  Device-verified on the emulator (2026-11-17): a styled send renders border and motif, the
+  snapshot survives Take off, and an API restart reconnect re-fetches missed history with each
+  line's saved style intact (captures under `D:\vozia-runtime\qa-evidence\`, never committed).
+- `ui/screens/rankings` — Home's Rankings card opens themed Host/Rich/Gifter boards with
+  Daily/Weekly/Monthly periods, a 2–1–3 podium, standings and the gift-box reward sheet.
+  The window pill switches between live and completed periods; rewards always refer to
+  the completed one. Collect calls the server and refreshes its reward state, without
+  local minting. QA-excluded members have no reward. Header/system-bar insets keep Back
+  and the reward entry tappable. Emulator evidence on 2026-11-17 includes the three
+  boards, period changes, no-reward guidance, eligible Collect, Collected and the wallet's
+  exact bonus increase. Screenshots live under `D:\vozia-runtime\qa-evidence`, not git.
+- `ui/screens/wallet` — diamond hero card, R-coin earnings, horizontally scrollable recharge
+  presets, withdrawal sheet and +/- coloured ledger. System-bar insets keep the header
+  tappable. Ranking grants show a readable date range and remain separate bonus diamonds.
+  Balances stay live: the private
   `wallet:update` event is folded into the cached session by
   `SessionManager.applyWalletUpdate()`, and only the side the server actually names is
   replaced, so a gift sender never sees their R-coin balance drop to zero.

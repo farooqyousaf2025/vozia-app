@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { one } from '../config/db';
 import {
+  createBubble,
+  deleteBubble,
+  updateBubble,
   createEffect,
   createFrame,
   createRide,
@@ -89,6 +92,7 @@ import {
   GiftInput,
 } from '../services/admin.service';
 import { adjustBalance, payWithdrawal, reviewWithdrawal } from '../services/ledger.service';
+import { listReceiptsForWithdrawal, readReceiptForAdmin, safeDownloadName } from '../services/receipt.service';
 import {
   MEDIA_KINDS,
   MediaKind,
@@ -899,6 +903,40 @@ export const frameHoldersEndpoint = asyncHandler(async (req: Request, res: Respo
   res.json({ key, holders: await holdersOf('FRAME', key) });
 });
 
+export const createBubbleEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const bubble = await createBubble(req.body ?? {});
+  await logAction(req, {
+    action: 'BUBBLE_CREATE', targetType: 'bubble', targetId: bubble.key,
+    summary: `Created chat bubble ${bubble.name}`, details: { bubble },
+  });
+  res.status(201).json({ bubble });
+});
+
+export const updateBubbleEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const key = requireIdentity(req.params.key, 'key');
+  const bubble = await updateBubble(key, req.body ?? {});
+  await logAction(req, {
+    action: 'BUBBLE_UPDATE', targetType: 'bubble', targetId: key,
+    summary: `Updated chat bubble ${bubble.name}`, details: { changes: req.body ?? {}, bubble },
+  });
+  res.json({ bubble });
+});
+
+export const deleteBubbleEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const key = requireIdentity(req.params.key, 'key');
+  const result = await deleteBubble(key);
+  await logAction(req, {
+    action: 'BUBBLE_DELETE', targetType: 'bubble', targetId: key,
+    summary: `Removed chat bubble ${key}; existing messages keep their style`, details: result,
+  });
+  res.json({ removed: { key, holders: result.holders } });
+});
+
+export const bubbleHoldersEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const key = requireIdentity(req.params.key, 'key');
+  res.json({ key, holders: await holdersOf('BUBBLE', key) });
+});
+
 // --- Entrance rides (migration 0026) -------------------------------------
 //
 // A ride is sold like a ring and worn like a flourish, but it is the first cosmetic that takes the
@@ -1386,6 +1424,27 @@ export const payWithdrawalEndpoint = asyncHandler(async (req: Request, res: Resp
     });
   }
   res.json({ withdrawal: (await getAdminWithdrawal(id)) ?? toWithdrawal(withdrawal) });
+});
+
+/**
+ * The slips a coin seller handed over for a cash payout (migration 0041).
+ *
+ * A payout paid by a partner is the one withdrawal the platform cannot verify from its own bank
+ * screen, so the document is the review material — and it reads under `withdrawal:review`, the same
+ * capability that releases the money, not the broader finance read that lists the queue.
+ */
+export const withdrawalReceipts = asyncHandler(async (req: Request, res: Response) => {
+  const id = requireString(req.params.id, 'withdrawalId', { min: 36, max: 36 });
+  res.json({ receipts: await listReceiptsForWithdrawal(id) });
+});
+
+export const withdrawalReceiptFile = asyncHandler(async (req: Request, res: Response) => {
+  const id = requireString(req.params.id, 'receiptId', { min: 36, max: 36 });
+  const file = await readReceiptForAdmin(id, 'withdrawal');
+  res.setHeader('content-type', file.contentType);
+  res.setHeader('content-disposition', `inline; filename="${safeDownloadName(file.fileName)}"`);
+  res.setHeader('cache-control', 'no-store');
+  res.send(file.bytes);
 });
 
 /** Rotate the operator password from inside the panel. */

@@ -146,6 +146,15 @@ object RoomEffects {
         return (current + incoming).takeLast(limit)
     }
 
+    fun mergeChatHistory(
+        current: List<ChatMessage>,
+        history: List<ChatMessage>,
+        limit: Int,
+    ): List<ChatMessage> = (history + current)
+        .distinctBy { it.id }
+        .sortedBy { it.createdAt }
+        .takeLast(limit)
+
     /**
      * Size of a joiner's entry banner from their spend tier. Three steps because
      * that is what a viewer can actually distinguish in a two-second banner;

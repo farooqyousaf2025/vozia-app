@@ -1,13 +1,13 @@
 import { PoolClient } from 'pg';
 import { many, one, withTransaction } from '../config/db';
 import { rateLimit } from '../config/redis';
-import { ProfileFrameRow, ProfileRideRow, RoomThemeRow, UserItemRow, UserRow, VisualEffectRow } from '../types/db';
+import { ChatBubbleRow, FrameTier, ProfileFrameRow, ProfileRideRow, RoomThemeRow, UserItemRow, UserRow, VisualEffectRow } from '../types/db';
 import { ApiError, requireEnum, requireInt, requireString } from '../utils/http';
 import { toTransaction, toUser, TransactionDto, UserDto } from '../utils/serialize';
 import { announceBonusChange, earnWithin } from './earning.service';
 import { postedTransaction, postLedgerMoves } from './ledger.service';
 import { awardXp, ensureRankRegistry, xpForSpend } from './rank.service';
-import type { RideFormat } from './theme.service';
+import { bubbleArt, BubbleArt, RideFormat } from './theme.service';
 
 /**
  * The cosmetic store (migration 0019): who owns what, and the money that says so.
@@ -32,7 +32,7 @@ import type { RideFormat } from './theme.service';
  * account.
  */
 
-export const ITEM_KINDS = ['FRAME', 'THEME', 'EFFECT', 'RIDE'] as const;
+export const ITEM_KINDS = ['FRAME', 'THEME', 'EFFECT', 'RIDE', 'BUBBLE'] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
 
 /** A purchase is a deliberate act, so this is an abuse brake, not a product limit. */
@@ -64,6 +64,10 @@ export type StoreItemDto = {
   expiresAt: string | null;
   /** Only meaningful for FRAME and EFFECT — a theme is worn by a room, not by an account. */
   equipped: boolean;
+  /** FRAME only (migration 0043): rarity badge and the client-rendered aura flag. */
+  tier?: FrameTier;
+  animated?: boolean;
+  bubble?: BubbleArt;
 };
 
 export type OwnedItemDto = {
@@ -103,6 +107,10 @@ type CatalogueRow = {
   /** Set only by the one catalogue that hands devices an animation file rather than an image. */
   animationFormat?: RideFormat;
   durationMs?: number;
+  /** FRAME only (migration 0043). */
+  tier?: FrameTier;
+  animated?: boolean;
+  bubble?: BubbleArt;
 };
 
 /**
@@ -113,11 +121,12 @@ type CatalogueRow = {
  * row the shop no longer lists.
  */
 async function allRows(): Promise<CatalogueRow[]> {
-  const [frames, themes, effects, rides] = await Promise.all([
+  const [frames, themes, effects, rides, bubbles] = await Promise.all([
     many<ProfileFrameRow>('SELECT * FROM profile_frames ORDER BY sort_order ASC, key ASC'),
     many<RoomThemeRow>('SELECT * FROM room_themes ORDER BY sort_order ASC, slug ASC'),
     many<VisualEffectRow>("SELECT * FROM visual_effects WHERE kind = 'WELCOME' ORDER BY sort_order ASC, key ASC"),
     many<ProfileRideRow>('SELECT * FROM profile_rides ORDER BY sort_order ASC, key ASC'),
+    many<ChatBubbleRow>('SELECT * FROM chat_bubbles ORDER BY sort_order ASC, key ASC'),
   ]);
   return [
     ...frames.map((row) => ({
@@ -132,6 +141,8 @@ async function allRows(): Promise<CatalogueRow[]> {
       sortOrder: row.sort_order,
       minVipLevel: row.min_vip_level,
       recommended: row.recommended,
+      tier: row.tier,
+      animated: row.animated,
     })),
     ...themes.map((row) => ({
       kind: 'THEME' as const,
@@ -175,6 +186,7 @@ async function allRows(): Promise<CatalogueRow[]> {
       animationFormat: row.format,
       durationMs: row.duration_ms,
     })),
+    ...bubbles.map(toBubbleCatalogueRow),
   // Recommended rows lead, then the operator's own order. A member should not have to hunt for the
   // thing the shop is pointing at, and `sort_order` stays the tie-break so nothing is un-sortable.
   ].sort((a, b) => Number(b.recommended) - Number(a.recommended) || a.sortOrder - b.sortOrder);
@@ -182,7 +194,20 @@ async function allRows(): Promise<CatalogueRow[]> {
 
 /** The same rows read inside a purchase, where a second query per item is the point: it is the
  * price at this instant, not the one a screen rendered a minute ago. */
+function toBubbleCatalogueRow(row: ChatBubbleRow): CatalogueRow {
+  return {
+    kind: 'BUBBLE', key: row.key, name: row.name, art: '', accent: row.accent.trim(),
+    priceDiamonds: row.price_diamonds, periodDays: row.period_days, forSale: row.for_sale,
+    sortOrder: row.sort_order, minVipLevel: row.min_vip_level, recommended: row.recommended,
+    bubble: bubbleArt(row),
+  };
+}
+
 async function catalogueRow(client: PoolClient, kind: ItemKind, key: string): Promise<CatalogueRow | null> {
+  if (kind === 'BUBBLE') {
+    const row = (await client.query<ChatBubbleRow>('SELECT * FROM chat_bubbles WHERE key = $1', [key])).rows[0];
+    return row ? toBubbleCatalogueRow(row) : null;
+  }
   if (kind === 'FRAME') {
     const row = (await client.query<ProfileFrameRow>('SELECT * FROM profile_frames WHERE key = $1', [key])).rows[0];
     return row && {
@@ -197,6 +222,8 @@ async function catalogueRow(client: PoolClient, kind: ItemKind, key: string): Pr
       sortOrder: row.sort_order,
       minVipLevel: row.min_vip_level,
       recommended: row.recommended,
+      tier: row.tier,
+      animated: row.animated,
     };
   }
   if (kind === 'THEME') {
@@ -257,14 +284,15 @@ function stamp(kind: ItemKind, key: string): string {
 
 /** What a member is wearing, so the shop can mark the one row they have equipped. */
 async function wornBy(userId: string): Promise<Map<string, boolean>> {
-  const row = await one<Pick<UserRow, 'profile_frame_key' | 'welcome_effect_key' | 'profile_ride_key'>>(
-    'SELECT profile_frame_key, welcome_effect_key, profile_ride_key FROM users WHERE id = $1',
+  const row = await one<Pick<UserRow, 'profile_frame_key' | 'welcome_effect_key' | 'profile_ride_key' | 'chat_bubble_key'>>(
+    'SELECT profile_frame_key, welcome_effect_key, profile_ride_key, chat_bubble_key FROM users WHERE id = $1',
     [userId],
   );
   const worn = new Map<string, boolean>();
   if (row?.profile_frame_key) worn.set(stamp('FRAME', row.profile_frame_key), true);
   if (row?.welcome_effect_key) worn.set(stamp('EFFECT', row.welcome_effect_key), true);
   if (row?.profile_ride_key) worn.set(stamp('RIDE', row.profile_ride_key), true);
+  if (row?.chat_bubble_key) worn.set(stamp('BUBBLE', row.chat_bubble_key), true);
   return worn;
 }
 
@@ -286,6 +314,9 @@ function toItem(row: CatalogueRow, held: UserItemRow | undefined, worn: Map<stri
     recommended: row.recommended,
     animationFormat: row.animationFormat,
     durationMs: row.durationMs,
+    tier: row.tier,
+    animated: row.animated,
+    bubble: row.bubble,
     owned: live,
     expiresAt: live ? held!.expires_at?.toISOString() ?? null : null,
     equipped: live && worn.get(stamp(row.kind, row.key)) === true,
@@ -419,6 +450,8 @@ function wornColumns(kind: ItemKind): { key: string; expiry: string } {
       return { key: 'welcome_effect_key', expiry: 'welcome_effect_expires_at' };
     case 'RIDE':
       return { key: 'profile_ride_key', expiry: 'profile_ride_expires_at' };
+    case 'BUBBLE':
+      return { key: 'chat_bubble_key', expiry: 'chat_bubble_expires_at' };
     case 'THEME':
       throw ApiError.badRequest(
         'A room theme decorates a room, not an account — set it with POST /api/rooms/<id>/theme',
@@ -630,6 +663,7 @@ export async function unequipItem(input: { userId: string; kind: ItemKind }): Pr
 }
 
 async function catalogueRowExists(kind: ItemKind, key: string): Promise<boolean> {
+  if (kind === 'BUBBLE') return Boolean(await one<ChatBubbleRow>('SELECT key FROM chat_bubbles WHERE key = $1', [key]));
   if (kind === 'FRAME') return Boolean(await one<ProfileFrameRow>('SELECT key FROM profile_frames WHERE key = $1', [key]));
   if (kind === 'THEME') return Boolean(await one<RoomThemeRow>('SELECT slug FROM room_themes WHERE slug = $1', [key]));
   if (kind === 'EFFECT') {

@@ -6,6 +6,7 @@
 // or an upload something still points at.
 // ---------------------------------------------------------------------------
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { BubblesSection } from '../components/BubblesSection';
 import { ArtField } from '../components/ui/ArtField';
 import { Badge, type BadgeTone } from '../components/ui/Badge';
 import { Button, IconButton } from '../components/ui/Button';
@@ -29,6 +30,7 @@ import type {
   EffectInput,
   FrameHolder,
   FrameInput,
+  FrameTier,
   ProfileFrame,
   ProfileRide,
   ProfileRideFormat,
@@ -49,6 +51,15 @@ const URL_PATTERN = /^(\/|https:\/\/)/;
 const RIDE_FORMATS: readonly ProfileRideFormat[] = ['LOTTIE', 'SVGA', 'MP4'];
 
 const CATEGORY_TONE: BadgeTone = 'sky';
+
+// The same tier→colour mapping the member store pills use (migration 0043).
+const FRAME_TIERS: readonly FrameTier[] = ['COMMON', 'RARE', 'EPIC', 'LEGENDARY'];
+const FRAME_TIER_TONE: Record<FrameTier, BadgeTone> = {
+  COMMON: 'slate',
+  RARE: 'sky',
+  EPIC: 'fuchsia',
+  LEGENDARY: 'amber',
+};
 
 export default function DecorPage() {
   const toast = useToast();
@@ -284,6 +295,9 @@ export default function DecorPage() {
                         />
                         {frame.accent}
                       </span>
+                      <Badge tone={FRAME_TIER_TONE[frame.tier]}>
+                        {frame.animated ? `Live · ${frame.tier}` : frame.tier}
+                      </Badge>
                     </div>
                   </div>
                 </div>
@@ -320,6 +334,8 @@ export default function DecorPage() {
           </div>
         )}
       </Card>
+
+      <BubblesSection bubbles={catalogue?.bubbles ?? []} onChanged={refresh} />
 
       <Card
         title="Entrance rides"
@@ -1503,6 +1519,8 @@ interface FrameForm {
   periodDays: string;
   minVipLevel: string;
   recommended: boolean;
+  tier: FrameTier;
+  animated: boolean;
 }
 
 function validateFrame(form: FrameForm, isNew: boolean, existingKeys: string[]): Partial<Record<keyof FrameForm, string>> {
@@ -1532,7 +1550,7 @@ function FrameFormModal({ frame, existingKeys, onClose, onSaved }: FrameFormModa
   const isNew = frame === null;
   const [form, setForm] = useState<FrameForm>(() =>
     frame === null
-      ? { key: '', name: '', artUrl: '', accent: '#c98a6b', sortOrder: '0', forSale: true, priceDiamonds: '300', periodDays: '30', minVipLevel: '0', recommended: false }
+      ? { key: '', name: '', artUrl: '', accent: '#c98a6b', sortOrder: '0', forSale: true, priceDiamonds: '300', periodDays: '30', minVipLevel: '0', recommended: false, tier: 'COMMON', animated: false }
       : {
           key: frame.key,
           name: frame.name,
@@ -1544,6 +1562,8 @@ function FrameFormModal({ frame, existingKeys, onClose, onSaved }: FrameFormModa
           periodDays: frame.periodDays === null ? '' : String(frame.periodDays),
           minVipLevel: String(frame.minVipLevel),
           recommended: frame.recommended,
+          tier: frame.tier,
+          animated: frame.animated,
         },
   );
   const [submitting, setSubmitting] = useState(false);
@@ -1569,6 +1589,8 @@ function FrameFormModal({ frame, existingKeys, onClose, onSaved }: FrameFormModa
       periodDays: form.periodDays.trim() === '' ? null : Number.parseInt(form.periodDays.trim(), 10),
       minVipLevel: Number.parseInt(form.minVipLevel.trim(), 10),
       recommended: form.recommended,
+      tier: form.tier,
+      animated: form.animated,
     };
     if (isNew) input.key = form.key.trim();
     try {
@@ -1719,6 +1741,31 @@ function FrameFormModal({ frame, existingKeys, onClose, onSaved }: FrameFormModa
           </label>
         </div>
 
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted">Rarity tier</span>
+            <Select
+              aria-label="Rarity tier"
+              value={form.tier}
+              onChange={(event) => setField('tier', event.target.value as FrameTier)}
+            >
+              {FRAME_TIERS.map((tier) => (
+                <option key={tier} value={tier}>
+                  {tier.charAt(0) + tier.slice(1).toLowerCase()}
+                </option>
+              ))}
+            </Select>
+            <p className="text-[11px] text-faint">Badges the store card; Legendary adds a gold thread to the live aura.</p>
+          </div>
+          <label className="flex items-center gap-3 rounded-lg border border-edge/60 bg-elevated/40 px-3 py-2.5">
+            <Switch checked={form.animated} onChange={(next) => setField('animated', next)} label="Live aura on this frame" />
+            <span className="text-xs">
+              <span className="font-medium text-ink">Live frame</span>{' '}
+              <span className="text-faint">— the phone draws a rotating aura in the accent colour.</span>
+            </span>
+          </label>
+        </div>
+
         <div className="flex items-center gap-3 rounded-xl border border-edge/60 bg-elevated/40 p-3">
           <FrameArt
             frame={{
@@ -1732,6 +1779,8 @@ function FrameFormModal({ frame, existingKeys, onClose, onSaved }: FrameFormModa
               periodDays: null,
               minVipLevel: Number.parseInt(form.minVipLevel, 10) || 0,
               recommended: form.recommended,
+              tier: form.tier,
+              animated: form.animated,
               holders: 0,
             }}
           />

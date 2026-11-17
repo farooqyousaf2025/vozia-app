@@ -14,6 +14,7 @@ data class SocketChatDto(
     @SerializedName("content") val content: String,
     @SerializedName("type") val type: String = "TEXT",
     @SerializedName("createdAt") val createdAt: String = "",
+    @SerializedName("bubble") val bubble: BubbleStyleDto? = null,
 )
 
 data class SocketSeatUpdateDto(

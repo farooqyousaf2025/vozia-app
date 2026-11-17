@@ -66,13 +66,16 @@ the OTP bootstrap path — `POST /api/auth/verify-otp` with
 
 | Token   | Who holds it | How it is earned                                   | How it is spent             |
 | ------- | ------------ | -------------------------------------------------- | --------------------------- |
-| Diamond | Listener     | `POST /api/wallet/recharge/checkout` + Stripe hook | Buying gifts                |
-| R-coin  | Host         | Receiving gifts                                    | `POST /api/wallet/withdraw` |
+| Diamond | Listener     | Bought from a coin seller, credited by finance      | Buying gifts                |
+| R-coin  | Host         | Receiving gifts                                    | Sold to a coin seller, or `POST /api/wallet/withdraw` |
 
-In a `PAYMENTS_PROVIDER=simulated` stack (the default here, so the demo can top up
-without a Stripe account) `POST /api/wallet/recharge` credits balance directly, and
-that is the only free path. With `PAYMENTS_PROVIDER=stripe` it returns
-`403 payments_provider_is_stripe`; only a signature-verified
+Money reaches the platform through a coin seller, not through a card form: the seller opens a
+`recharge_orders` row against a member, claims it paid, and the order stops at `AWAITING_VERIFICATION` until
+a `recharge:review` operator credits it — see *Coin sellers and cash settlement*. The Stripe path is still
+built and tested, but no member surface may call it. In a `PAYMENTS_PROVIDER=simulated` stack (the default
+here) `POST /api/wallet/recharge` credits balance directly, and that is the only free path — under this model
+it is a test door, not a top-up, and it is why production refuses to boot on `simulated`. With
+`PAYMENTS_PROVIDER=stripe` it returns `403 payments_provider_is_stripe`; only a signature-verified
 `payment_intent.succeeded` webhook can credit a wallet, and `payment_proofs`
 (`UNIQUE (provider, external_id)`, written in the same transaction as the credit) makes
 a webhook redelivery a no-op rather than a second top-up. Balances then reach the
@@ -124,9 +127,10 @@ seller order credited `COIN_LIABILITY`, so every `payment_intent.succeeded` mint
 had never seen and the balance was a tally of the orders a seller happened to open. The posting now lives
 in `settlePaymentOnClient` — the primitive both routes share — as DEBIT PROVIDER_COLLECTIONS / CREDIT
 `COIN_LIABILITY`, keyed on the `payment_proofs` row, so a redelivered webhook answers the entry the first
-delivery booked instead of doubling the debt. The seller path keeps its own fee-split entry and opts out of
-the generic one, and the two shapes are mutually exclusive by construction: a proof counts as covered when
-either credits exactly what was collected. A simulated top-up and an admin balance grant still book
+delivery booked instead of doubling the debt. The seller path keeps its own fee-split entry — against
+`SELLER_RECEIVABLE` rather than `PROVIDER_COLLECTIONS`, because that cash never reached a provider (0042) —
+and opts out of the generic one, and the two shapes are mutually exclusive by construction: a proof counts as
+covered when either credits exactly what was collected. A simulated top-up and an admin balance grant still book
 nothing — they collect nothing, and the purchased-coin hand-out has no contra account either; the mint
 that does book is the bonus pocket below. See `backend/README.md` →
 *What a confirmed payment minted is owed on the book (migration 0034)*.
@@ -211,14 +215,19 @@ Two layers, neither of which needs a third-party account to work:
    so no SDK or extra dependency is involved. Production refuses to boot on
    `SMS_PROVIDER=mock`, and a failed send now returns `502 sms_send_failed` instead of
    telling the user a text was sent.
-3. Set `PAYMENTS_PROVIDER=stripe` with `STRIPE_SECRET_KEY` and
-   `STRIPE_WEBHOOK_SECRET`, then point a Stripe webhook at
-   `POST /api/payments/stripe/webhook`. Until then the stack mints diamonds through
-   the simulated `POST /api/wallet/recharge`, which is why production refuses to boot
-   on `PAYMENTS_PROVIDER=simulated`. Test mode (`sk_test_…`) works end to end with the
-   Stripe CLI forwarding events. Note the Android wallet screen still calls the
-   simulated endpoint, so a Stripe build needs that client call replaced by the
-   checkout + webhook flow before it can take money.
+3. Money in is a coin seller's order, not a card form: the seller opens it with
+   `POST /api/business/orders`, claims it with `…/mark-paid`, and a `recharge:review`
+   operator credits it from the panel's Recharges queue. Keep `PAYMENTS_PROVIDER` off
+   `simulated` in production, because that mode makes `POST /api/wallet/recharge` a
+   free mint — and the Android wallet's top-up chips still call it, so on this stack a
+   tap mints diamonds with no money behind them. The Stripe keys
+   (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, a webhook on
+   `POST /api/payments/stripe/webhook`) are only worth setting if you choose to keep
+   the card path reachable; under the current model no member surface may call
+   `recharge/checkout`. That leaves an unanswered config question — a seller-only
+   production has no `PAYMENTS_PROVIDER` value that is both accepted by the boot guard
+   and correct, since `simulated` mints and `stripe` opens checkout. See
+   *Coin sellers and cash settlement*.
 4. WebRTC needs `50000-60000/udp` open on the host firewall. If your network blocks
    outbound UDP, clients fall back to RTC-over-TCP on `7881`; set
    `rtc.use_external_ip: true` when the VPS has a public IPv4.
@@ -403,6 +412,24 @@ operator's art can live at `/uploads/<uuid>.png`, so a client that derived
 `/themes/<slug>/wallpaper.png` from the slug would 404 on a file that exists. See
 `backend/README.md` → *Room decoration is data*.
 
+A profile ring carries two more display-only fields since migration `0043`: a rarity `tier`
+(`COMMON`/`RARE`/`EPIC`/`LEGENDARY`) that badges the store card and the profile, and `animated`,
+which tells the phone to draw a rotating aura in the ring's accent colour behind the still PNG —
+Legendary adds a gold thread. Neither prices anything (`price_diamonds` stays the only number a
+purchase reads) and neither adds an upload format: the aura is drawn on the device by the same
+composable that paints the store preview, the profile header and every room seat. The panel's
+**Decoration** screen edits both. See `backend/README.md` → *A ring's rarity is a badge, and its
+life is drawn on the device (migration 0043)*. Emulator evidence verifies free Wear/Take off and
+permanent Crown ownership; profile aura rotation and room-seat rendering are not yet device-verified.
+
+Chat bubbles (migration `0044`) are a fifth cosmetic Store shelf. Operators manage colours, motif,
+pricing, rental period and holders in **Decoration**; purchases and free Wear use the existing ledger
+and ownership routes. Each text message saves the server-resolved style at send time, so editing,
+retiring or taking off a bubble cannot restyle old messages. Emulator evidence (2026-11-17) covers a
+styled send, the snapshot surviving Take off, and chat history recovering after an API restart with
+saved styles intact; 177 live API checks and 224 Android unit tests pass. See `backend/README.md` →
+*Chat bubbles keep their send-time style (migration 0044)*.
+
 The chat emoji picker follows the same rule, one step further: a message stores the **token**
 (`[smile]`) and never the picture, so `chat_messages` survives an operator retiring a code or
 replacing its art. `emoji_characters` (migration `0016`, art imported from TUILiveKit and
@@ -509,6 +536,51 @@ an agency cannot set its own percentage or raise its own payout batch, because t
 agency's money is not the person who signs it. See `backend/README.md` → *A sub-agency's share is booked to
 two payables*, and `npm run test:agency:hierarchy` (65).
 
+## Coin sellers and cash settlement
+
+A member buys coins **from a coin seller** and sells R-coins **to a coin seller**, and the rupees for both legs
+move out of the seller's own pocket, somewhere this backend has no window into. So the last question in a
+top-up is one no webhook can answer — did the cash actually change hands? — and the answer is a document a
+human reads. `payment_receipts` (migration 0041) stores that document and stores it as evidence, never as a
+trigger: an upload lets a seller claim an order and nothing else, the order still stops at
+`AWAITING_VERIFICATION`, and the coins appear only when a `recharge:review` operator approves. The bytes go to
+`backend/receipts/` — `0600`, gitignored, named from a uuid rather than the filename, mounted nowhere —
+because `/uploads` is served with no authentication, which is fine for a gift icon and wrong for a screenshot
+of a name and an account number. Every receipt DTO has a size and a content type and **no `url`**, because
+there is no URL to return: opening a document means calling a route that has already checked a permission.
+
+The sell side reuses the cash-out rails instead of inventing a second table. `payoutMethod: 'SELLER'` is still
+a `withdrawal_requests` row, so it keeps the minimum and the `fee_bps` quoted when the member asked, the
+`payout_reference` finance must type before the row can be PAID, and the `withdrawal:review` permission that
+releases the money. The seller is resolved from `business_accounts` — an active COIN_SELLER, never a code
+pasted into the body — and the seller's own queue masks the member's account to its last four digits. What a
+slip costs in reading is what that split buys: `finance:read` lists the documents on a record, and only the
+review capability opens one.
+
+**The book says what the seller says.** A `recharge_orders` row carries its own `amount_cents`, and approving
+it credits `COIN_LIABILITY` for the gross — coins are a service owed, never revenue. The asset beside it is
+`SELLER_RECEIVABLE` (migration 0042), not `PROVIDER_COLLECTIONS`: the seller collected those rupees and still
+holds them, so what the platform owns is that seller's debt. A reversal credits the receivable back, and a
+SELLER commission batch credits it too — the seller keeps their cut out of cash already in their pocket
+instead of waiting for a transfer, and the 0004 ceiling means that cut can never exceed what they collected.
+`PROVIDER_COLLECTIONS` stays what its name says: a Stripe settlement and a BD batch still use it, because a BD
+manager holds no cash and paying one is a real outflow. The seller reads the result as `cash` on
+`GET /api/business/statement` — collected, refunded, commission netted, and what is still to hand over — and
+finance reads the same figure at `GET /api/admin/business/accounts/:id/cash-book`. The R-coin half of that
+statement is counted in R-coins and never added to the money: the rate a member and a seller agree lives
+outside this platform, and `payWithdrawal` has always refused to price external cash. The honest limit is
+unchanged — nothing in the database can prove the rupees moved, which is exactly why the credit is a decision
+with an audit row and a document a `recharge:review` operator opened, rather than something a file causes.
+
+The gap is on the phone, not in the book. `POST /api/wallet/withdraw` accepts `SELLER`, but the withdrawal
+sheet still offers only BANK / WALLET / USDT; the seller's desk — open an order, claim it paid, upload the
+slip, read the payouts it must hand over — is a partner API (`/api/business/*`) that no client calls yet; and
+the wallet's top-up chips still hit the simulated mint, so on this stack a tap credits coins with no money
+and no seller behind them. `backend/src/config/env.ts` accepts only `simulated` and `stripe` for
+`PAYMENTS_PROVIDER` and refuses to boot on the former in production, so a seller-only deployment has no value
+that is both accepted and correct. See `backend/README.md` → *A manual settlement is judged on a document*,
+and `npm run test:receipts` (69).
+
 ## Verification
 
 * `cd backend && npm run test:e2e` — 402 checks against a running stack (real Postgres,
@@ -534,7 +606,7 @@ two payables*, and `npm run test:agency:hierarchy` (65).
   `fetch` replaced by a recorder, so no account is needed: the exact Twilio form POST
   and Basic header, Vonage's `200`-with-`status:"1"` trap, the Stripe intent body, and
   every webhook-signature rejection. Together with the e2e suite that is 447 checks.
-* `cd backend && npm run test:business` (87), `test:games` (69), `test:accounts` (134),
+* `cd backend && npm run test:business` (93), `test:games` (69), `test:accounts` (135),
   `test:operators` (44) and `test:revenue` (25) cover the money book rather than the party: the
   nine-step recharge and its commission versions, the three game drivers and at-most-once
   settlement, the purpose-account projection and its exports, the operator roster's live re-read
@@ -583,6 +655,19 @@ two payables*, and `npm run test:agency:hierarchy` (65).
   directions, and the member surface seen as a master's owner, a sub's owner, a member who runs no agency,
   an operator token and a suspended agency's owner. It stamps every row it writes and leaves them in place,
   so it is a development-database script.
+* `cd backend && npm run test:receipts` — 69 checks on migrations 0041–0042, the coin-seller desk and the two
+  verification queues. The four it exists for: an accepted slip changes nobody's balance (the member's
+  `diamond_balance` is read before and after), a second partner cannot open a document it did not upload, the
+  format comes from the magic bytes rather than the caller's filename (so a 6 MB file named `.png` is a 6 MB
+  PNG and is refused), and a payout slip asked for on the order route — or the reverse — is
+  `receipt_wrong_queue`. It also proves the sell side is still a withdrawal: fee at request, minimum,
+  `payout_reference` before PAID, and the member's account tail-masked on the seller's desk. Since 0042 it
+  reads the cash book back too: a requested sale is R-coins waiting on that seller, paying it moves the coin
+  half and leaves `remittanceCents` exactly where it was, another seller's statement shows neither, finance
+  and the partner read one number, a BD id is `not_a_coin_seller`, and the CSV keeps `rcoin` rows out of the
+  money column. The documents it uploads are real PNG and PDF bytes with their chunk CRCs and xref offsets
+  verified on the way back, so "the panel renders it" is asserted by the suite. Leaves stamped partners and
+  files under `backend/receipts/` in place; development database only.
 * `cd backend && npm run test:social` — 24 checks over the migration-0022 edges with no
   database: the report/status/decision vocabularies, every validator's trim-and-refuse
   behaviour (details, resolution, block reason, announcement, transfer note, UUIDs), and
@@ -600,7 +685,7 @@ two payables*, and `npm run test:agency:hierarchy` (65).
   where an absent key lands as null instead of
   the declared default. A response shape change fails in seconds rather than as an NPE on
   a phone.
-* `cd android && ./gradlew testDebugUnitTest` — 200 JVM tests over the DTO→domain
+* `cd android && ./gradlew testDebugUnitTest --rerun` — 229 JVM tests over the DTO→domain
   mappers (unknown enums, absent keys, Gson's skipped default initialisers), the game
   boards and the client's copy of the engine's seat rules, the gift
   purchase guard, the effect queue policy (takeover depth and eviction, ticker
@@ -617,6 +702,29 @@ two payables*, and `npm run test:agency:hierarchy` (65).
 * `cd backend && npm run demo:gifts -- +15550000010` — seeds a demo room (host avatar,
   seats, three gifts, one chat line) and prints the dev OTP, so a phone or emulator can
   log in and see populated screens immediately.
+
+## Landing rankings
+
+Host, Rich and Gifter boards now open from Home, with Daily/Weekly/Monthly periods,
+a 2–1–3 podium, the member's standing and a reward sheet. Live boards show the current
+UTC window; rewards always use the previous completed window. Claims mint expiring,
+non-withdrawable bonus diamonds through the journal, never by changing a client balance.
+The operator's `rankings.rewards` setting controls podium payouts. Tied scores use the
+same account-age/id ordering for the board, self-row and reward.
+
+Verified on 2026-11-17: two consecutive `node scripts/rankings-e2e.cjs` runs passed
+49/49 checks each; a forced exception also restored the reward dial and marked all four
+proof accounts. Android's fresh unit-test run passed 229/229. Actual emulator captures
+include all three boards, period switching, an eligible claim and its wallet grant;
+evidence stays under `D:\vozia-runtime\qa-evidence`, outside git.
+
+The native stack and installed debug APK target `192.168.1.100`:
+API `http://192.168.1.100:4000`, admin `http://192.168.1.100:5173`, voice
+`ws://192.168.1.100:7880`. The verified phone APK is
+`D:\vozia-runtime\voiza-phone-192.168.1.100-debug.apk`; rebuild if DHCP changes the PC's address.
+Historical unmarked script accounts still appear in demo boards; their backed-up,
+audited sweep is tracked separately (#148). Physical-phone, real-SIM OTP and real-payment
+verification remain outstanding; these checks used simulated development transactions only.
 
 ## Components
 

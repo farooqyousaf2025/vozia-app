@@ -1161,9 +1161,10 @@ export async function approveAgencySettlement(adminId: string, settlementId: str
  * Record that the transfer happened.
  *
  * The journal moves here and nowhere earlier: DEBIT the agency's own account, CREDIT
- * `PROVIDER_COLLECTIONS` — the same pair the BD and seller batches use, because the money leaves
- * through the same rails. The entry is keyed on the batch, so replaying a pay whose response was
- * lost finds the entry instead of writing a second one.
+ * `PROVIDER_COLLECTIONS` — the pair a BD commission batch uses, because the money leaves through
+ * the same rails. A seller batch is the exception (0042): a seller keeps their cut out of cash they
+ * already hold, so it credits `SELLER_RECEIVABLE` instead. The entry is keyed on the batch, so
+ * replaying a pay whose response was lost finds the entry instead of writing a second one.
  *
  * The hold is converted, not deleted, so the account's statement can still name the batch that
  * cleared it. An operator may have released it by hand from the accounts screen in the meantime;

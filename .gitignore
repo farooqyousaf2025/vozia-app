@@ -33,6 +33,12 @@ android/app/google-services.json
 # the bytes live only on the server that received them, and backups must include this dir.
 backend/uploads/
 
+# Payment receipts: bank slips and transfer screenshots a coin seller uploads as evidence
+# (migration 0041). Not in the repository, and not under backend/uploads — that directory is
+# served statically to anyone, and these documents carry account numbers. Backups must include
+# this dir: a receipt is the only surviving proof of a manual settlement.
+backend/receipts/
+
 # editors / os
 .DS_Store
 Thumbs.db

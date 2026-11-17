@@ -29,6 +29,8 @@ export type UserRow = {
   /** Migration 0026: the entrance cinematic other members see, and the copy of its expiry. */
   profile_ride_key?: string | null;
   profile_ride_expires_at?: Date | null;
+  chat_bubble_key?: string | null;
+  chat_bubble_expires_at?: Date | null;
   device_token: string | null;
   last_seen_at: Date | null;
   created_at: Date;
@@ -165,12 +167,39 @@ export type ParticipantRow = {
   profile_frame_expires_at?: Date | null;
 };
 
+export type BubbleStyle = {
+  key: string;
+  name: string;
+  background: string;
+  accent: string;
+  textColor: string;
+  motif: 'NONE' | 'SPARKLE' | 'HEART' | 'CROWN';
+};
+
+export type ChatBubbleRow = {
+  key: string;
+  name: string;
+  background: string;
+  accent: string;
+  text_color: string;
+  motif: BubbleStyle['motif'];
+  sort_order: number;
+  price_diamonds: number;
+  for_sale: boolean;
+  period_days: number | null;
+  min_vip_level: number;
+  recommended: boolean;
+  created_at: Date;
+  updated_at: Date;
+};
+
 export type ChatRow = {
   id: string;
   room_id: string;
   user_id: string | null;
   message_type: 'TEXT' | 'GIFT' | 'SYSTEM';
   content: string;
+  bubble_style?: BubbleStyle | null;
   created_at: Date;
   username?: string;
   avatar_url?: string | null;
@@ -206,9 +235,29 @@ export type WithdrawalRow = {
   paid_at: Date | null;
   paid_by: string | null;
   payout_reference: string | null;
+  /** Migration 0041: the coin seller who agreed to hand over this payout in cash. */
+  seller_id?: string | null;
   created_at: Date;
   username?: string;
   avatar_url?: string | null;
+  /** Joined reads only (0041): who the seller is, and how much proof they have attached. */
+  seller_code?: string | null;
+  seller_name?: string | null;
+  receipt_count?: string | null;
+};
+
+/** Migration 0041: a bank slip uploaded by a coin seller for one manual settlement. */
+export type PaymentReceiptRow = {
+  id: string;
+  order_id: string | null;
+  withdrawal_id: string | null;
+  uploaded_by: string;
+  file_name: string;
+  stored_name: string;
+  content_type: string;
+  byte_size: number;
+  sha256: string;
+  created_at: Date;
 };
 
 // ---------------------------------------------------------------------------
@@ -612,9 +661,15 @@ export type ProfileFrameRow = {
   /** Migration 0024: lowest `users.vip_level` allowed to buy, and whether to point at it. */
   min_vip_level: number;
   recommended: boolean;
+  /** Migration 0043: rarity badge, and whether devices draw a rotating aura behind the ring. */
+  tier: FrameTier;
+  animated: boolean;
   created_at: Date;
   updated_at: Date;
 };
+
+/** Migration 0043: display-only rarity; pricing stays in `price_diamonds`. */
+export type FrameTier = 'COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
 
 /**
  * `profile_rides` (migration 0026) — one full-screen entrance cinematic the store sells.
@@ -641,7 +696,7 @@ export type ProfileRideRow = {
 export type UserItemRow = {
   id: string;
   user_id: string;
-  kind: 'FRAME' | 'THEME' | 'EFFECT' | 'RIDE';
+  kind: 'FRAME' | 'THEME' | 'EFFECT' | 'RIDE' | 'BUBBLE';
   item_key: string;
   acquired_via: 'PURCHASE' | 'ADMIN_GRANT';
   transaction_id: string | null;

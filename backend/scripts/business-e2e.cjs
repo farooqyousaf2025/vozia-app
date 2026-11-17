@@ -299,8 +299,10 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const booked = Object.fromEntries(journal.rows.map((r) => [`${r.code}:${r.direction}`, Number(r.cents)]));
   const jDebits = journal.rows.filter((r) => r.direction === 'DEBIT').reduce((s, r) => s + Number(r.cents), 0);
   const jCredits = journal.rows.filter((r) => r.direction === 'CREDIT').reduce((s, r) => s + Number(r.cents), 0);
-  check('journal: the collection is split into what was kept and what the provider took',
-    booked['PROVIDER_COLLECTIONS:DEBIT'] === netCents && booked['PROVIDER_FEES:DEBIT'] === feeCents,
+  // 0042: the seller collected this cash and still holds it, so the asset is their debt to the
+  // platform — not money a payment provider is holding.
+  check('journal: the cash a seller collected is a receivable from that seller, split from the rail cost',
+    booked['SELLER_RECEIVABLE:DEBIT'] === netCents && booked['PROVIDER_FEES:DEBIT'] === feeCents && !booked['PROVIDER_COLLECTIONS:DEBIT'],
     { booked });
   check('journal: issued coins are a liability, never revenue, and the entry balances',
     booked['COIN_LIABILITY:CREDIT'] === amountCents && jDebits === jCredits && jDebits === amountCents && !booked['PLATFORM_REVENUE:CREDIT'],
@@ -412,9 +414,9 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const back = Object.fromEntries(reversalJournal.rows.map((r) => [`${r.code}:${r.direction}`, Number(r.cents)]));
   const rjDebits = Object.entries(back).filter(([k]) => k.endsWith(':DEBIT')).reduce((s, [, v]) => s + v, 0);
   const rjCredits = Object.entries(back).filter(([k]) => k.endsWith(':CREDIT')).reduce((s, [, v]) => s + v, 0);
-  check('reversal: the refund is booked back off the coin liability, fee split included',
+  check('reversal: the refund is booked back off the coin liability and the seller’s receivable, fee split included',
     rjDebits === rjCredits && rjDebits === amountCents &&
-      back['COIN_LIABILITY:DEBIT'] === amountCents && back['PROVIDER_COLLECTIONS:CREDIT'] === netCents && back['PROVIDER_FEES:CREDIT'] === feeCents,
+      back['COIN_LIABILITY:DEBIT'] === amountCents && back['SELLER_RECEIVABLE:CREDIT'] === netCents && back['PROVIDER_FEES:CREDIT'] === feeCents,
     { debits: rjDebits, credits: rjCredits, back });
 
   const reopen = await api('POST', `/api/admin/business/recharges/${orderId}/approve`, { token: finance.token, body: {} });
@@ -447,6 +449,39 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const reverseSettled = await api('POST', `/api/admin/business/recharges/${racedId}/reverse`, { token: finance.token, body: { reason: 'e2e too late' } });
   check('settlement: commission already paid out is not silently un-paid', reverseSettled.status === 409 && reverseSettled.json.error.code === 'commission_already_settled', reverseSettled.json && reverseSettled.json.error);
 
+  // ---- K2. the cash book the seller and finance read (0042) ---------------
+  const batchJournal = await sql(
+    `select l.account_code code, l.direction direction, sum(l.amount_cents) cents
+       from fin_journal_entries e
+       join fin_journal_lines l on l.entry_id = e.id
+      where e.source_kind='SETTLEMENT' and e.source_id='${settlementId}'
+      group by l.account_code, l.direction`,
+  );
+  const batchBooked = Object.fromEntries(batchJournal.rows.map((r) => [`${r.code}:${r.direction}`, Number(r.cents)]));
+  const batchCents = Number(settlement.json.settlement.amountCents);
+  check('settlement: a seller keeps their commission out of cash they already hold, so the batch reduces the receivable',
+    batchBooked['SELLER_COMMISSION_PAY:DEBIT'] === batchCents && batchBooked['SELLER_RECEIVABLE:CREDIT'] === batchCents &&
+      !batchBooked['PROVIDER_COLLECTIONS:CREDIT'],
+    { booked: batchBooked, batchCents });
+
+  const sellerStatement = await api('GET', '/api/business/statement', { token: sellerToken });
+  const cash = sellerStatement.json && sellerStatement.json.cash;
+  check('cash book: the seller’s statement says what they collected, what they kept and what they still owe',
+    sellerStatement.status === 200 && !!cash && cash.commissionSettledCents === batchCents &&
+      cash.remittanceCents === cash.collectedNetCents - cash.refundedCents - cash.commissionSettledCents &&
+      cash.afterAccruedCents === cash.remittanceCents - cash.commissionAccruedCents,
+    cash);
+
+  const operatorCash = await api('GET', `/api/admin/business/accounts/${sellerId}/cash-book`, { token: finance.token });
+  check('cash book: finance reads the same figure the seller reads',
+    operatorCash.status === 200 && operatorCash.json.cash.remittanceCents === cash.remittanceCents &&
+      operatorCash.json.cash.collectedNetCents === cash.collectedNetCents,
+    operatorCash.json && operatorCash.json.cash);
+
+  check('cash book: a seller with no payouts reports an empty cash-out side, in R-coins',
+    !!cash && cash.cashOutCount === 0 && cash.cashOutNetRCoins === 0 && cash.awaitingCashOutRCoins === 0 && cash.cashOut.length === 0,
+    cash && { count: cash.cashOutCount, net: cash.cashOutNetRCoins });
+
   // ---- L. scope boundaries for BD reads ----------------------------------
   const otherSeller = await api('POST', '/api/admin/business/accounts', {
     token: admin, body: { kind: 'COIN_SELLER', displayName: `E2E other ${stamp}`, code: `SLR-OTH-${stamp}`, parentId: managerId, password: 'e2eotherpass1' },
@@ -476,6 +511,10 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const strangerSeller = await api('POST', '/api/business/login', { body: { code: `SLR-OTH-${stamp}`, password: 'e2eotherpass1' } });
   const peek = await api('GET', `/api/business/orders/${racedId}`, { token: strangerSeller.json && strangerSeller.json.token });
   check('seller: another seller’s order id answers 404, not its contents', peek.status === 404, { status: peek.status });
+  const otherCash = await api('GET', '/api/business/statement', { token: strangerSeller.json && strangerSeller.json.token });
+  check('cash book: another seller’s statement carries none of this seller’s cash',
+    otherCash.status === 200 && otherCash.json.cash.collectedNetCents === 0 && otherCash.json.cash.remittanceCents === 0,
+    otherCash.json && otherCash.json.cash);
   check('seller: the owner can still read its own order', foreignOrder.status === 200 && foreignOrder.json.order.id === racedId, { status: foreignOrder.status });
   check('bd: territory orders exclude the other seller’s book',
     agentOrders.status === 200 && (agentOrders.json.orders || []).every((o) => o.sellerId === sellerId),
@@ -485,6 +524,9 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   check('bd: a statement is its own commission, not the whole company’s',
     agentStatement.status === 200 && (agentStatement.json.entries || []).every((e) => e.beneficiaryId === agentId),
     { entries: (agentStatement.json && agentStatement.json.entries || []).length });
+  check('bd: a manager holds no cash, so its statement carries no cash book',
+    agentStatement.status === 200 && agentStatement.json.cash === undefined,
+    { cash: agentStatement.json && agentStatement.json.cash });
 
   // ---- M. suspension, evidence, expiry, and the audit trail --------------
   const suspended = await api('POST', `/api/admin/business/accounts/${sellerId}/status`, { token: admin, body: { status: 'SUSPENDED', reason: 'e2e suspicious volume' } });

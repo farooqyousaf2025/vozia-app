@@ -1,14 +1,16 @@
 // ---------------------------------------------------------------------------
-// Daily quests and the check-in (migration 0020).
+// Daily quests, the check-in (migration 0020) and the rankings podium dial (0045).
 //
-// Two things live on this screen, and they are deliberately together because they set the same
-// thing: the pace of a member's day. The catalogue says which actions count and what finishing
-// them pays; the dials say when "today" ends and how much a check-in pays.
+// These live together because they set the same thing: the pace of a member's day and what
+// showing up pays. The catalogue says which actions count and what finishing them pays; the
+// dials say when "today" ends, how much a check-in pays, and what a finished leaderboard
+// window pays its top places.
 //
 // None of these values is an XP grant by itself. A quest pays only when the server records the
-// qualifying action (a gift posted in the ledger, a message stored in a room), and a check-in pays
-// only through POST /api/quests/checkin. That is why this page can be generous with numbers and
-// still never be a way to mint experience from a phone.
+// qualifying action (a gift posted in the ledger, a message stored in a room), a check-in pays
+// only through POST /api/quests/checkin, and a podium reward only through POST /api/rankings/claim
+// against a window that has already closed. That is why this page can be generous with numbers
+// and still never be a way to mint experience or diamonds from a phone.
 // ---------------------------------------------------------------------------
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Badge } from '../components/ui/Badge';
@@ -51,6 +53,7 @@ export default function QuestsPage() {
   const toast = useToast();
   const { can } = useAuth();
   const canManage = can('config:manage');
+  const canReadConfig = can('finance:read');
 
   const [data, setData] = useState<AdminQuestsResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -117,6 +120,8 @@ export default function QuestsPage() {
           </Button>
         </div>
       )}
+
+      <RankingRewardsCard canRead={canReadConfig} canWrite={canManage} />
 
       {data !== null && (
         <>
@@ -349,6 +354,161 @@ function SettingsCard({
           </div>
         )}
       </form>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The podium dial (`rankings.rewards`, migration 0045). The server only pays a contiguous
+// 1..n ladder of positive whole amounts, so this form keeps the rows contiguous: a place is
+// added at the end and only the last place can be removed. `writeConfig` replaces the whole
+// blob, so whatever else the row carries is sent back as read.
+// ---------------------------------------------------------------------------
+interface RankingRewardPlace {
+  position: number;
+  amount: number;
+}
+interface RankingRewardsConfig {
+  rewards?: RankingRewardPlace[];
+}
+
+const DEFAULT_LADDER: RankingRewardPlace[] = [
+  { position: 1, amount: 500 },
+  { position: 2, amount: 300 },
+  { position: 3, amount: 200 },
+];
+const MAX_PLACES = 10;
+const MAX_REWARD = 10_000_000;
+
+function ladderOf(value: RankingRewardsConfig | null): RankingRewardPlace[] {
+  return Array.isArray(value?.rewards) && value!.rewards!.length > 0 ? value!.rewards! : DEFAULT_LADDER;
+}
+
+function RankingRewardsCard({ canRead, canWrite }: { canRead: boolean; canWrite: boolean }) {
+  const toast = useToast();
+  const [stored, setStored] = useState<RankingRewardsConfig | null>(null);
+  const [amounts, setAmounts] = useState<string[]>(DEFAULT_LADDER.map((place) => String(place.amount)));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!canRead) return;
+    let cancelled = false;
+    api
+      .readConfig<RankingRewardsConfig>('rankings.rewards')
+      .then((result) => {
+        if (cancelled) return;
+        const value = result.value ?? {};
+        setStored(value);
+        setAmounts(ladderOf(value).map((place) => String(place.amount)));
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof ApiError ? err.message : 'Could not read the podium rewards.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canRead]);
+
+  const parsed = amounts.map((raw) => Number.parseInt(raw.trim(), 10));
+  const rowError = (index: number): string | null =>
+    !Number.isInteger(parsed[index]) || parsed[index] < 1 || parsed[index] > MAX_REWARD
+      ? `A whole number from 1 to ${formatNumber(MAX_REWARD)}.`
+      : null;
+  const hasErrors = amounts.some((_, index) => rowError(index) !== null);
+  const storedLadder = ladderOf(stored);
+  const dirty =
+    stored !== null &&
+    !hasErrors &&
+    (parsed.length !== storedLadder.length || parsed.some((amount, index) => amount !== storedLadder[index]?.amount));
+
+  const save = async () => {
+    if (busy || !canWrite || stored === null || hasErrors) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const rewards = parsed.map((amount, index) => ({ position: index + 1, amount }));
+      const result = await api.writeConfig('rankings.rewards', { ...stored, rewards });
+      const value = (result.value ?? {}) as RankingRewardsConfig;
+      setStored(value);
+      setAmounts(ladderOf(value).map((place) => String(place.amount)));
+      toast.success('Podium rewards saved. Claims already paid keep the amount they were given.');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save the podium rewards.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!canRead) return null;
+  if (stored === null && error === null) return null;
+
+  return (
+    <Card
+      title="Rankings podium rewards"
+      subtitle="Bonus diamonds paid to the top places of a finished Daily, Weekly or Monthly window on the Host, Rich and Gifter boards."
+      actions={
+        canWrite && (
+          <Button size="sm" variant="primary" onClick={() => void save()} loading={busy} disabled={!dirty || hasErrors}>
+            Save rewards
+          </Button>
+        )
+      }
+    >
+      <div className="space-y-2">
+        {amounts.map((raw, index) => (
+          <div key={index} className="flex items-center gap-3">
+            <span className="grid h-9 w-16 shrink-0 place-items-center rounded-lg border border-edge/60 bg-elevated text-[11px] font-semibold text-muted">
+              Place {index + 1}
+            </span>
+            <Input
+              aria-label={`Bonus diamonds for place ${index + 1}`}
+              inputMode="numeric"
+              value={raw}
+              onChange={(event) =>
+                setAmounts((current) => current.map((value, i) => (i === index ? event.target.value : value)))
+              }
+              error={rowError(index)}
+              disabled={!canWrite}
+              className="max-w-48"
+            />
+            <span className="text-[11px] text-faint">bonus diamonds</span>
+            {canWrite && index === amounts.length - 1 && amounts.length > 1 && (
+              <IconButton
+                label={`Remove place ${index + 1}`}
+                tone="danger"
+                onClick={() => setAmounts((current) => current.slice(0, -1))}
+              >
+                <IconTrash className="h-4 w-4" />
+              </IconButton>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {canWrite && amounts.length < MAX_PLACES && (
+        <Button
+          size="sm"
+          className="mt-3"
+          icon={<IconPlus className="h-4 w-4" />}
+          onClick={() => setAmounts((current) => [...current, '100'])}
+        >
+          Add place {amounts.length + 1}
+        </Button>
+      )}
+
+      <p className="mt-3 text-[11px] text-faint">
+        A reward is collected by the member from the rankings screen, once per board and finished window,
+        and is minted through the promotional-diamond rail with its expiry policy. The live board pays
+        nothing: only a window that has already closed can be claimed, and test accounts never take part.
+      </p>
+
+      {error !== null && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 py-2 text-xs text-rose-200">
+          <IconAlert className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      )}
     </Card>
   );
 }

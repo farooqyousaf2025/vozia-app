@@ -24,6 +24,7 @@ import {
 } from '../services/commission.service';
 import {
   createBusinessAccount,
+  getBusinessAccount,
   listBusinessAccounts,
   listSellersForBd,
   readConfig,
@@ -41,12 +42,14 @@ import {
   listSellerPackageKeys,
   rejectOrder,
   savePackage,
+  sellerCashBook,
   setPackageActive,
   setSellerPackages,
   reverseOrder,
 } from '../services/seller-recharge.service';
 import { accountBalance, listFinAccounts, listJournal, trialBalance } from '../services/finance-journal.service';
 import { reconciliationCsv, reconciliationReport } from '../services/reconciliation.service';
+import { listReceiptsForOrder, readReceiptForAdmin, safeDownloadName } from '../services/receipt.service';
 
 /**
  * The operator side of §21-§23: partners, orders, packages, rates, settlements, the journal and
@@ -186,6 +189,21 @@ export const accountTerritory = asyncHandler(async (req: Request, res: Response)
   res.json({ sellers: await listSellersForBd(uuid(req.params.id, 'id')) });
 });
 
+/**
+ * The cash one seller is holding for the platform (0042) — the same book that seller reads on its
+ * own statement, so finance and the partner argue about one number instead of two. A BD manager
+ * collects nothing, so asking for its cash book is a bad request rather than a misleading zero.
+ */
+export const accountCashBook = asyncHandler(async (req: Request, res: Response) => {
+  const id = uuid(req.params.id, 'id');
+  const account = await getBusinessAccount(id);
+  if (!account) throw ApiError.notFound('Business account not found');
+  if (account.kind !== 'COIN_SELLER') {
+    throw ApiError.badRequest('Only a coin seller collects cash for the platform', 'not_a_coin_seller');
+  }
+  res.json({ cash: await sellerCashBook(id) });
+});
+
 // ---------------------------------------------------------------------------
 // Recharge orders
 // ---------------------------------------------------------------------------
@@ -235,6 +253,29 @@ export const reverseRecharge = asyncHandler(async (req: Request, res: Response) 
 /** Orders that passed their verification window. Wired to the scheduler, and callable by hand. */
 export const sweepRechargeExpiry = asyncHandler(async (_req: Request, res: Response) => {
   res.json(await expireStaleOrders());
+});
+
+// --- Payment receipts (migration 0041) ---
+
+/**
+ * The documents a seller put forward for one order.
+ *
+ * Reading the list is a finance read; opening the file is a review decision, because looking at a
+ * stranger's bank slip is the act that approves money, not a way of satisfying curiosity about it.
+ */
+export const rechargeReceipts = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ receipts: await listReceiptsForOrder(uuid(req.params.id, 'id')) });
+});
+
+export const rechargeReceiptFile = asyncHandler(async (req: Request, res: Response) => {
+  const file = await readReceiptForAdmin(uuid(req.params.id, 'id'), 'order');
+  res.setHeader('content-type', file.contentType);
+  res.setHeader('content-disposition', `inline; filename="${safeDownloadName(file.fileName)}"`);
+  // No store, no etag: these bytes are somebody's account number, and a review queue is read on
+  // shared machines. The static `/uploads` mount is the opposite contract, which is why receipts
+  // are not in it.
+  res.setHeader('cache-control', 'no-store');
+  res.send(file.bytes);
 });
 
 export const rechargeStatuses = asyncHandler(async (_req: Request, res: Response) => {

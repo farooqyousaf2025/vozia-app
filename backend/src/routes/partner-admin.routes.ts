@@ -20,6 +20,8 @@ router.patch('/accounts/:id', requirePermission('business:manage'), partner.upda
 router.post('/accounts/:id/status', requirePermission('business:manage'), partner.accountStatus);
 router.post('/accounts/:id/password', requirePermission('business:manage'), partner.accountPassword);
 router.get('/accounts/:id/sellers', requirePermission('business:manage'), partner.accountTerritory);
+// The cash a seller is holding is a finance question, not a partner-management one (0042).
+router.get('/accounts/:id/cash-book', requirePermission('finance:read'), partner.accountCashBook);
 router.get('/accounts/:id/packages', requirePermission('business:manage'), partner.readPackages);
 router.put('/accounts/:id/packages', requirePermission('business:manage'), partner.assignPackages);
 
@@ -36,6 +38,12 @@ router.post('/recharges/:id/approve', requirePermission('recharge:review'), part
 router.post('/recharges/:id/reject', requirePermission('recharge:review'), partner.rejectRecharge);
 router.post('/recharges/:id/reverse', requirePermission('recharge:review'), partner.reverseRecharge);
 router.post('/recharges/sweep-expiry', requirePermission('recharge:review'), partner.sweepRechargeExpiry);
+
+// --- Payment receipts (migration 0041): the slip a manual settlement is judged on ---
+router.get('/recharges/:id/receipts', requirePermission('finance:read'), partner.rechargeReceipts);
+// Opening a document is the review act, so it takes the review capability rather than finance's
+// read. This route answers for order receipts only; a payout slip is in the withdrawal queue.
+router.get('/receipts/:id/raw', requirePermission('recharge:review'), partner.rechargeReceiptFile);
 
 // --- Commission: rates, accruals, settlement batches ---
 router.get('/commissions/rules', requirePermission('finance:read'), partner.commissionRules);
