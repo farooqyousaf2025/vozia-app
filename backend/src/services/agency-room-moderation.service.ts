@@ -1,6 +1,7 @@
 import { many, one, query, withTransaction } from '../config/db';
 import { ApiError } from '../utils/http';
-import { disconnectFromRoom, fetchSeats, type SeatDto } from './room.service';
+import { disconnectFromRoom, fetchSeats } from './room.service';
+import { SeatDto } from '../utils/serialize';
 import { mutePublishedAudio, setPublishPermission } from './livekit.service';
 
 type AgencyRoomScope = {
