@@ -1216,7 +1216,7 @@ private fun AgencyHostPerformanceComparisonCard(
         }
         Triple(host, value, goalRow)
     }.sortedWith(
-        compareByDescending<Triple<AgencyHostRow, Int?, AgencyHostGoalRow?>> { it.second ?: -1 }
+        compareByDescending<Triple<AgencyHostRow, Int?, com.voiza.app.domain.model.AgencyHostGoalRow?>> { it.second ?: -1 }
             .thenBy { it.first.username.lowercase() },
     )
     VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
