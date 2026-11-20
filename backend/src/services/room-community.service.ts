@@ -168,7 +168,7 @@ export async function takeSeatOrRequest(
   const room = await loadRoom(roomId);
   if (room.status !== 'ACTIVE') throw ApiError.conflict('This room is closed', 'room_closed');
   if (seatIndex >= room.seat_capacity) throw ApiError.badRequest('No such seat in this room');
-  if (seatIndex === 0 && room.host_id !== userId) {
+  if (seatIndex === 0 && room.host_id !== userId && room.owner_type !== 'SYSTEM') {
     throw ApiError.forbidden('Only the host can sit in the host seat', 'seat_reserved');
   }
   if (!room.host_id || room.host_id === userId || !room.speaker_approval_required) {
