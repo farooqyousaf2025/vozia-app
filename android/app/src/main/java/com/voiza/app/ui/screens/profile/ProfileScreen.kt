@@ -210,7 +210,11 @@ fun ProfileScreen(
             }
         }
 
-        // Host inbox is recipient-scoped by the API; members without an active agency assignment see an empty state.\n        HostAgencyAnnouncementsCard()\n        Spacer(Modifier.height(8.dp))\n\n        // ---- Actions ----
+        // Host inbox is recipient-scoped by the API; members without an active agency assignment see an empty state.
+        HostAgencyAnnouncementsCard()
+        Spacer(Modifier.height(8.dp))
+
+        // ---- Actions ----
         VoizaButton(
             text = "Daily quests",
             onClick = onOpenQuests,

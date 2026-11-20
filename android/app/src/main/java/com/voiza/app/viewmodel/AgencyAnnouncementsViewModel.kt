@@ -39,8 +39,8 @@ class AgencyAnnouncementsViewModel : ViewModel() {
     fun setTitle(value: String) = _state.update { it.copy(title = value.take(100), error = null, notice = null) }
     fun setBody(value: String) = _state.update { it.copy(body = value.take(3000), error = null, notice = null) }
 
-    fun loadOwner() = viewModelScope.launch {
-        _state.update { it.copy(loading = true, error = null) }
+    fun loadOwner(silent: Boolean = false) = viewModelScope.launch {
+        _state.update { it.copy(loading = if (silent) it.loading else it.items.isEmpty(), error = if (silent) it.error else null) }
         when (val result = apiCall { ServiceLocator.apiService.agencyAnnouncements() }) {
             is ApiResult.Success -> _state.update { s -> s.copy(
                 loading = false,
@@ -71,8 +71,8 @@ class AgencyAnnouncementsViewModel : ViewModel() {
         }
     }
 
-    fun loadHostInbox() = viewModelScope.launch {
-        _state.update { it.copy(loading = true, error = null) }
+    fun loadHostInbox(silent: Boolean = false) = viewModelScope.launch {
+        _state.update { it.copy(loading = if (silent) it.loading else it.items.isEmpty(), error = if (silent) it.error else null) }
         when (val result = apiCall { ServiceLocator.apiService.myAgencyAnnouncements() }) {
             is ApiResult.Success -> _state.update { s -> s.copy(
                 loading = false,
