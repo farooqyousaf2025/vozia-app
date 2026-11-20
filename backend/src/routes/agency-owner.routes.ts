@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as agency from '../controllers/agency-owner.controller';
 import * as moderation from '../controllers/agency-room-moderation.controller';
+import * as announcements from '../controllers/agency-announcement.controller';
 import { requireAgencyOwner, requireMasterAgency } from '../middleware/auth';
 
 /**
@@ -11,6 +12,8 @@ import { requireAgencyOwner, requireMasterAgency } from '../middleware/auth';
 const router = Router();
 
 router.get('/position', requireAgencyOwner, agency.position);
+router.get('/announcements', requireAgencyOwner, announcements.ownerList);
+router.post('/announcements', requireAgencyOwner, announcements.publish);
 router.get('/hosts', requireAgencyOwner, agency.hosts);
 router.get('/activity', requireAgencyOwner, agency.hostActivity);
 router.get('/attendance', requireAgencyOwner, agency.hostAttendance);
