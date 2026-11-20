@@ -584,7 +584,7 @@ private fun AgencyHostGoalsCard(
             TextButton(onClick = { targetDraft = (targetDraft - 1).coerceAtLeast(1) }, enabled = !saving && targetDraft > 1) {
                 Text("−", color = OnDarkHigh, fontSize = 18.sp)
             }
-            Text("\${targetDraft} / 7 days", color = OnDarkHigh, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text("${targetDraft} / 7 days", color = OnDarkHigh, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             TextButton(onClick = { targetDraft = (targetDraft + 1).coerceAtMost(7) }, enabled = !saving && targetDraft < 7) {
                 Text("+", color = OnDarkHigh, fontSize = 18.sp)
             }
@@ -599,7 +599,7 @@ private fun AgencyHostGoalsCard(
             error != null && goals == null -> Text(error, color = DangerRed, fontSize = 11.sp)
             goals == null -> Text("Host goals are not available.", color = OnDarkMedium, fontSize = 12.sp)
             else -> {
-                FigureRow("Hosts meeting goal", "\${goals.hostsMeetingGoal} / \${goals.activeHostCount}", Mint)
+                FigureRow("Hosts meeting goal", "${goals.hostsMeetingGoal} / ${goals.activeHostCount}", Mint)
                 Spacer(Modifier.height(8.dp))
                 if (goals.hosts.isEmpty()) {
                     Text("No active hosts are currently assigned to this agency.", color = OnDarkMedium, fontSize = 11.sp)
@@ -607,9 +607,9 @@ private fun AgencyHostGoalsCard(
                     goals.hosts.forEach { host ->
                         Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("@\${host.username}", color = OnDarkHigh, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                Text("@${host.username}", color = OnDarkHigh, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                                 Text(
-                                    if (host.metTarget) "Goal met" else "\${host.remainingDays} days to go",
+                                    if (host.metTarget) "Goal met" else "${host.remainingDays} days to go",
                                     color = if (host.metTarget) Mint else WarningAmber,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.SemiBold,
@@ -625,7 +625,7 @@ private fun AgencyHostGoalsCard(
                                 )
                             }
                             Text(
-                                "\${host.attendanceDays} / \${host.targetDays} attendance days · \${host.progressPercent}%",
+                                "${host.attendanceDays} / ${host.targetDays} attendance days · ${host.progressPercent}%",
                                 color = OnDarkMedium, fontSize = 10.sp,
                             )
                         }
