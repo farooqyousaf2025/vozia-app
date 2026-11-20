@@ -520,7 +520,8 @@ export async function createRoom(hostUserId: string, input: CreateRoomInput): Pr
   });
 
   const room = await loadRoom(roomId);
-  await ensureLivekitRoom(room.livekit_room_name, { maxParticipants: 1000 });
+  const sessionSid = await ensureLivekitRoom(room.livekit_room_name, { maxParticipants: 1000 });
+  if (sessionSid) await query('UPDATE rooms SET livekit_session_sid = $2 WHERE id = $1', [roomId, sessionSid]);
   return { ...toRoom(room), seats: await fetchSeats(roomId) };
 }
 
@@ -554,6 +555,11 @@ export async function joinRoom(
     [roomId, userId],
   );
 
+  // Ensure the media session and persist its generation before writing presence. A delayed
+  // room_finished webhook for the previous SID can then never clear this new join.
+  const sessionSid = await ensureLivekitRoom(room.livekit_room_name, { maxParticipants: 1000 });
+  if (sessionSid) await query('UPDATE rooms SET livekit_session_sid = $2 WHERE id = $1', [roomId, sessionSid]);
+
   const role = room.host_id === userId ? 'HOST' : alreadySeated ? 'SPEAKER' : 'AUDIENCE';
   await one(
     `INSERT INTO room_participants (room_id, user_id, role, seat_index)
@@ -563,9 +569,6 @@ export async function joinRoom(
     [roomId, userId, role, alreadySeated?.seat_index ?? null],
   );
   await redis.pfadd(presenceKeys.roomListeners(roomId), userId);
-
-  // The database room is permanent; the LiveKit media session is disposable and may need recreation.
-  await ensureLivekitRoom(room.livekit_room_name, { maxParticipants: 1000 });
 
   const seats = await fetchSeats(roomId);
   const level: AccessLevel = room.host_id === userId ? 'host' : alreadySeated ? 'speaker' : 'audience';
@@ -595,6 +598,8 @@ export async function getLivekitAccess(userId: string, roomId: string): Promise<
     'SELECT seat_index, is_muted FROM room_seats WHERE room_id = $1 AND user_id = $2',
     [roomId, userId],
   );
+  const sessionSid = await ensureLivekitRoom(room.livekit_room_name, { maxParticipants: 1000 });
+  if (sessionSid) await query('UPDATE rooms SET livekit_session_sid = $2 WHERE id = $1', [roomId, sessionSid]);
   const level: AccessLevel = room.host_id === userId ? 'host' : seat ? 'speaker' : 'audience';
   return issueRoomToken({
     roomName: room.livekit_room_name,
