@@ -831,6 +831,10 @@ export const api = {  // ---- auth ---------------------------------------------
   // The fourth sellable catalogue (migration 0026): bought and worn like a frame, so the same four
   // calls, and the same rule that `key` is a receipt identity — it goes in the body of a create and
   // nowhere in an update, where the path already names the row.
+  setDefaultRide(key: string | null): Promise<{ defaultRideKey: string | null }> {
+    return request<{ defaultRideKey: string | null }>('/api/admin/rides/default', { method: 'PUT', body: { key } });
+  },
+
   createRide(input: RideInput): Promise<{ ride: ProfileRide }> {
     return request<{ ride: ProfileRide }>('/api/admin/rides', { method: 'POST', body: input });
   },
