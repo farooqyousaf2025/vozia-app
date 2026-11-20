@@ -540,7 +540,7 @@ export const api = {  // ---- auth ---------------------------------------------
   // ---- rooms -------------------------------------------------------------------
   listRooms(params: RoomListQuery = {}): Promise<RoomListResult> {
     return request<RoomListResult>(
-      `/api/admin/rooms${query({ status: params.status, search: params.search })}`,
+      `/api/admin/rooms${query({ status: params.status, search: params.search, ownerType: params.ownerType, type: params.type, agencyId: params.agencyId })}`,
     );
   },
 

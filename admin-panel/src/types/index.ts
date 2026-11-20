@@ -191,6 +191,8 @@ export interface AdminRoom {
   closedAt?: string | null;
   host: RoomHostSummary;
   ownerType?: 'MEMBER' | 'SYSTEM';
+  agencyId?: string | null;
+  agencyName?: string | null;
   onlineSeatCount: number;
   seats?: RoomOccupant[];
   audience?: RoomOccupant[];
@@ -950,8 +952,11 @@ export interface UserListQuery {
 }
 
 export interface RoomListQuery {
-  status?: RoomStatus | '';
+  status?: RoomStatus | 'ALL' | '';
   search?: string;
+  ownerType?: 'MEMBER' | 'SYSTEM' | '';
+  type?: RoomType | '';
+  agencyId?: string;
 }
 
 export interface WithdrawalListQuery {

@@ -42,6 +42,13 @@ export default function RoomsPage() {
   const [error, setError] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'ACTIVE' | 'CLOSED' | 'ALL'>('ACTIVE');
+  const [ownerFilter, setOwnerFilter] = useState<'ALL' | 'MEMBER' | 'SYSTEM'>('ALL');
+  const [roomTypeFilter, setRoomTypeFilter] = useState<'ALL' | 'PUBLIC' | 'PRIVATE'>('ALL');
+  const [agencyFilter, setAgencyFilter] = useState('ALL');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [search, setSearch] = useState('');
+  const [agencyOptions, setAgencyOptions] = useState<Array<{ id: string; name: string }>>([]);
 
   const [closeTarget, setCloseTarget] = useState<AdminRoom | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -53,15 +60,33 @@ export default function RoomsPage() {
 
   const load = useCallback(async () => {
     try {
-      const result = await api.listRooms({ status: 'ACTIVE' });
+      const result = await api.listRooms({
+        status: statusFilter,
+        search,
+        ownerType: ownerFilter === 'ALL' ? '' : ownerFilter,
+        type: roomTypeFilter === 'ALL' ? '' : roomTypeFilter,
+        agencyId: agencyFilter === 'ALL' ? undefined : agencyFilter,
+      });
       setRooms(result.rooms);
       roomsRef.current = result.rooms;
+      setAgencyOptions((current) => {
+        const merged = new Map(current.map((agency) => [agency.id, agency]));
+        result.rooms.forEach((room) => {
+          if (room.agencyId && room.agencyName) merged.set(room.agencyId, { id: room.agencyId, name: room.agencyName });
+        });
+        return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name));
+      });
       setError(null);
       setLastUpdated(new Date());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to reach the backend.');
     }
-  }, []);
+  }, [statusFilter, search, ownerFilter, roomTypeFilter, agencyFilter]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearch(searchDraft.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchDraft]);
 
   useEffect(() => {
     void load();
@@ -139,7 +164,7 @@ export default function RoomsPage() {
       {rooms !== null && (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {[
-            { label: 'Active rooms', value: formatCompact(rooms.length), detail: 'currently monitored', tone: 'text-violet-200', accent: 'border-violet-400/20' },
+            { label: 'Rooms in view', value: formatCompact(rooms.length), detail: statusFilter === 'ALL' ? 'active and closed rooms' : statusFilter === 'ACTIVE' ? 'currently monitored' : 'historical rooms', tone: 'text-violet-200', accent: 'border-violet-400/20' },
             { label: 'Listeners', value: formatCompact(rooms.reduce((sum, room) => sum + room.listenerCount, 0)), detail: 'audience across rooms', tone: 'text-sky-200', accent: 'border-sky-400/20' },
             { label: 'Occupied seats', value: formatCompact(rooms.reduce((sum, room) => sum + room.onlineSeatCount, 0)), detail: 'speakers on stage', tone: 'text-fuchsia-200', accent: 'border-fuchsia-400/20' },
             { label: 'System rooms', value: formatCompact(rooms.filter((room) => room.ownerType === 'SYSTEM').length), detail: 'Vozia-operated rooms', tone: 'text-premium', accent: 'border-premium/25' },
@@ -155,6 +180,46 @@ export default function RoomsPage() {
 
       <SeatPolicyCard />
 
+      <Card>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="xl:col-span-2">
+            <Input label="Search rooms" placeholder="Room title, number, host or agency" value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} />
+          </div>
+          <label className="block text-xs font-medium text-muted">
+            Room status
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)} className="focus-ring mt-1.5 h-9 w-full rounded-lg border border-edge bg-elevated px-3 text-sm text-ink">
+              <option value="ACTIVE">Active</option><option value="CLOSED">Closed</option><option value="ALL">All rooms</option>
+            </select>
+          </label>
+          <label className="block text-xs font-medium text-muted">
+            Owner
+            <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value as typeof ownerFilter)} className="focus-ring mt-1.5 h-9 w-full rounded-lg border border-edge bg-elevated px-3 text-sm text-ink">
+              <option value="ALL">All owners</option><option value="MEMBER">Member-owned</option><option value="SYSTEM">Vozia system</option>
+            </select>
+          </label>
+          <label className="block text-xs font-medium text-muted">
+            Visibility
+            <select value={roomTypeFilter} onChange={(event) => setRoomTypeFilter(event.target.value as typeof roomTypeFilter)} className="focus-ring mt-1.5 h-9 w-full rounded-lg border border-edge bg-elevated px-3 text-sm text-ink">
+              <option value="ALL">All types</option><option value="PUBLIC">Public</option><option value="PRIVATE">Private</option>
+            </select>
+          </label>
+          <label className="block text-xs font-medium text-muted md:col-span-2 xl:col-span-2">
+            Agency
+            <select value={agencyFilter} onChange={(event) => setAgencyFilter(event.target.value)} className="focus-ring mt-1.5 h-9 w-full rounded-lg border border-edge bg-elevated px-3 text-sm text-ink">
+              <option value="ALL">All agencies</option>
+              {agencyOptions.map((agency) => <option key={agency.id} value={agency.id}>{agency.name}</option>)}
+            </select>
+          </label>
+          <div className="flex items-end justify-between gap-2 md:col-span-2 xl:col-span-3">
+            <p className="pb-2 text-xs text-faint">{rooms === null ? 'Loading room directory…' : `${rooms.length} room(s) in this view · up to 200 results`}</p>
+            <Button size="sm" variant="ghost" onClick={() => {
+              setStatusFilter('ACTIVE'); setOwnerFilter('ALL'); setRoomTypeFilter('ALL');
+              setAgencyFilter('ALL'); setSearchDraft(''); setSearch('');
+            }}>Reset filters</Button>
+          </div>
+        </div>
+      </Card>
+
       <Card bodyClassName="p-0">
         {rooms === null && error === null ? (
           <div className="grid h-64 place-items-center text-violet-300">
@@ -162,8 +227,8 @@ export default function RoomsPage() {
           </div>
         ) : rooms !== null && rooms.length === 0 ? (
           <EmptyState
-            title="No active rooms"
-            message="Every party has to start somewhere. Live rooms appear here automatically."
+            title={statusFilter === 'CLOSED' ? 'No closed rooms found' : 'No rooms match these filters'}
+            message={statusFilter === 'ACTIVE' ? 'Live rooms appear here automatically. Try changing the search or filters if you expected a room.' : 'Try clearing one or more filters to widen the room directory.'}
             icon={<IconMic className="h-6 w-6" />}
           />
         ) : (
@@ -172,6 +237,8 @@ export default function RoomsPage() {
               <Th width="28%">Room</Th>
               <Th>Host</Th>
               <Th>Category</Th>
+              <Th>Status</Th>
+              <Th>Agency</Th>
               <Th align="center">Seats</Th>
               <Th align="center">Listeners</Th>
               <Th align="right">Gift value</Th>
@@ -199,6 +266,8 @@ export default function RoomsPage() {
                     </span>
                   </Td>
                   <Td>{categoryBadge(room.category)}</Td>
+                  <Td><Badge tone={room.status === 'ACTIVE' ? 'green' : 'slate'}>{room.status}</Badge></Td>
+                  <Td><span className="text-xs text-muted">{room.agencyName ?? (room.ownerType === 'SYSTEM' ? 'Vozia' : '—')}</span></Td>
                   <Td align="center">
                     <span className="tabular-nums">
                       <span className={room.onlineSeatCount > 0 ? 'text-ink' : ''}>{room.onlineSeatCount}</span>
@@ -220,9 +289,11 @@ export default function RoomsPage() {
                       <Button size="sm" variant="ghost" onClick={() => navigate(`/rooms/${room.id}`)}>
                         Console
                       </Button>
-                      <IconButton label={`Close ${room.title}`} tone="danger" onClick={() => setCloseTarget(room)}>
-                        <IconBan className="h-4 w-4" />
-                      </IconButton>
+                      {can('room:moderate') && room.status === 'ACTIVE' && (
+                        <IconButton label={`Close ${room.title}`} tone="danger" onClick={() => setCloseTarget(room)}>
+                          <IconBan className="h-4 w-4" />
+                        </IconButton>
+                      )}
                     </div>
                   </Td>
                 </Tr>
@@ -250,6 +321,7 @@ export default function RoomsPage() {
       {drawerRoom !== null && (
         <RoomDrawer
           room={drawerRoom}
+          canModerate={can('room:moderate') && drawerRoom.status === 'ACTIVE'}
           onClose={() => setDrawerRoomId(null)}
           onDisconnected={() => void load()}
         />
@@ -425,11 +497,12 @@ function CloseRoomModal({ room, onClose, onClosed }: CloseRoomModalProps) {
 // ---------------------------------------------------------------------------
 interface RoomDrawerProps {
   room: AdminRoom;
+  canModerate: boolean;
   onClose: () => void;
   onDisconnected: () => void;
 }
 
-function OccupantRow({ room, occupant, onDisconnected }: { room: AdminRoom; occupant: RoomOccupant; onDisconnected: () => void }) {
+function OccupantRow({ room, occupant, canModerate, onDisconnected }: { room: AdminRoom; occupant: RoomOccupant; canModerate: boolean; onDisconnected: () => void }) {
   const toast = useToast();
   const [pending, setPending] = useState(false);
 
@@ -463,14 +536,14 @@ function OccupantRow({ room, occupant, onDisconnected }: { room: AdminRoom; occu
           {occupant.role !== undefined ? ` · ${occupant.role}` : ''}
         </p>
       </div>
-      <Button size="sm" variant="ghost" loading={pending} onClick={() => void disconnect()} icon={<IconPlugUnplug className="h-3.5 w-3.5" />}>
+      {canModerate && <Button size="sm" variant="ghost" loading={pending} onClick={() => void disconnect()} icon={<IconPlugUnplug className="h-3.5 w-3.5" />}>
         Disconnect
-      </Button>
+      </Button>}
     </li>
   );
 }
 
-function RoomDrawer({ room, onClose, onDisconnected }: RoomDrawerProps) {
+function RoomDrawer({ room, canModerate, onClose, onDisconnected }: RoomDrawerProps) {
   const toast = useToast();
   const [manualUserId, setManualUserId] = useState('');
   const [manualPending, setManualPending] = useState(false);
@@ -553,7 +626,7 @@ function RoomDrawer({ room, onClose, onDisconnected }: RoomDrawerProps) {
             ) : (
               <ul className="space-y-2">
                 {seats.map((occupant) => (
-                  <OccupantRow key={occupant.userId} room={room} occupant={occupant} onDisconnected={onDisconnected} />
+                  <OccupantRow key={occupant.userId} room={room} occupant={occupant} canModerate={canModerate} onDisconnected={onDisconnected} />
                 ))}
               </ul>
             )}
@@ -570,13 +643,13 @@ function RoomDrawer({ room, onClose, onDisconnected }: RoomDrawerProps) {
             ) : (
               <ul className="space-y-2">
                 {audience.map((occupant) => (
-                  <OccupantRow key={occupant.userId} room={room} occupant={occupant} onDisconnected={onDisconnected} />
+                  <OccupantRow key={occupant.userId} room={room} occupant={occupant} canModerate={canModerate} onDisconnected={onDisconnected} />
                 ))}
               </ul>
             )}
           </section>
 
-          <section className="rounded-lg border border-edge/60 bg-elevated/30 p-3">
+          {canModerate && <section className="rounded-lg border border-edge/60 bg-elevated/30 p-3">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-faint">Disconnect by user id</h3>
             <p className="mt-1 text-[11px] text-faint">
               Universal escape hatch — works even when the live snapshot omits the roster. Paste any user
@@ -599,7 +672,7 @@ function RoomDrawer({ room, onClose, onDisconnected }: RoomDrawerProps) {
                 Kick
               </Button>
             </div>
-          </section>
+          </section>}
 
           {!hasRoster && (
             <p className="text-[11px] text-faint">
