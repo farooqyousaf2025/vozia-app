@@ -111,7 +111,7 @@ export default function UsersPage() {
   }, [load]);
 
   const replaceRow = (updated: UserRow) => {
-    setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+    setRows((current) => current.map((row) => (row.id === updated.id ? { ...updated, agency: updated.agency ?? row.agency } : row)));
   };
 
   // VIP is the gift spend tier (gifts.min_vip_level), so it is written here and
