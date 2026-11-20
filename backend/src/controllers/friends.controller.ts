@@ -63,10 +63,10 @@ export const locationSharing = asyncHandler(async (req: Request, res: Response) 
   res.json(await setFriendLocationSharing(req.user!.sub, req.body.enabled));
 });
 export const updateLocation = asyncHandler(async (req: Request, res: Response) => {
-  const latitude = Number(req.body?.latitude);
-  const longitude = Number(req.body?.longitude);
-  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
-      !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+  const latitude = req.body?.latitude;
+  const longitude = req.body?.longitude;
+  if (typeof latitude !== 'number' || !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+      typeof longitude !== 'number' || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
     throw ApiError.badRequest('Valid latitude and longitude are required', 'invalid_location');
   }
   res.json(await updateOwnFriendLocation(req.user!.sub, latitude, longitude));
