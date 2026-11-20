@@ -1,5 +1,8 @@
 package com.voiza.app.ui.screens.agency
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.clickable
@@ -34,6 +37,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -43,6 +47,8 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.voiza.app.domain.model.AgencyAccount
+import com.voiza.app.domain.model.AgencyHostAttendanceReport
+import com.voiza.app.data.export.toAttendanceCsv
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyHostGoals
 import com.voiza.app.domain.model.AgencyHostRecognition
@@ -91,6 +97,26 @@ fun AgencyDashboardScreen(
     ),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var pendingAttendanceExport by remember { mutableStateOf<AgencyHostAttendanceReport?>(null) }
+    val attendanceExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri ->
+        val report = pendingAttendanceExport
+        if (uri != null && report != null) {
+            val saved = runCatching {
+                context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use {
+                    it.write(report.toAttendanceCsv())
+                } ?: error("Could not open the selected file.")
+            }.isSuccess
+            Toast.makeText(
+                context,
+                if (saved) "Attendance CSV saved." else "Could not save attendance CSV.",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+        pendingAttendanceExport = null
+    }
 
     // A rate or an accrual can change while the member is elsewhere in the app.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.load() }
@@ -159,6 +185,12 @@ fun AgencyDashboardScreen(
                     error = state.attendanceError,
                     onDaysChange = viewModel::setAttendanceDays,
                     onRefresh = { viewModel.loadHostAttendance() },
+                    onExport = {
+                        state.hostAttendance?.let { report ->
+                            pendingAttendanceExport = report
+                            attendanceExportLauncher.launch("vozia-host-attendance-${report.days}d.csv")
+                        }
+                    },
                 )
             }
             item {
@@ -517,11 +549,13 @@ private fun AgencyHostAttendanceCard(
     error: String?,
     onDaysChange: (Int) -> Unit,
     onRefresh: () -> Unit,
+    onExport: () -> Unit,
 ) {
     VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             SectionLabel("Host attendance & check-ins")
             Spacer(Modifier.weight(1f))
+            TextButton(onClick = onExport, enabled = report != null && !loading) { Text("Export CSV") }
             TextButton(onClick = onRefresh, enabled = !loading) { Text("Refresh") }
         }
         Text("Verified host joins confirmed by LiveKit, for your currently assigned active hosts.", color = OnDarkMedium, fontSize = 11.sp)
