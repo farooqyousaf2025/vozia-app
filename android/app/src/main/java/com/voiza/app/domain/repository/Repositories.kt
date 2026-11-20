@@ -7,6 +7,7 @@ import com.voiza.app.domain.model.AgencyRoomModerationAudit
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyHostAttendanceReport
+import com.voiza.app.domain.model.AgencyHostGoals
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencySubRow
