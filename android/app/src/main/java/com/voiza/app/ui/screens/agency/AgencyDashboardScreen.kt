@@ -180,6 +180,7 @@ fun AgencyDashboardScreen(
         var hostQuery by remember(position.id) { mutableStateOf("") }
         var hostStatusFilter by remember(position.id) { mutableStateOf("All") }
         var hostSort by remember(position.id) { mutableStateOf("Username") }
+        var selectedHostUsername by remember(position.id) { mutableStateOf<String?>(null) }
 
         LazyColumn(
             contentPadding = PaddingValues(bottom = 24.dp),
@@ -276,6 +277,12 @@ fun AgencyDashboardScreen(
                     onStatusFilterChange = { hostStatusFilter = it },
                     sort = hostSort,
                     onSortChange = { hostSort = it },
+                    selectedHostUsername = selectedHostUsername,
+                    onHostSelected = { selectedHostUsername = it },
+                    attendance = state.hostAttendance,
+                    goals = state.hostGoals,
+                    recognition = state.hostRecognition,
+                    leaderboard = state.hostLeaderboard,
                     onExport = {
                         pendingRosterExport = state.hosts.toList()
                         rosterExportLauncher.launch("vozia-host-roster.csv")
@@ -1051,6 +1058,12 @@ private fun RosterCard(
     onStatusFilterChange: (String) -> Unit,
     sort: String,
     onSortChange: (String) -> Unit,
+    selectedHostUsername: String?,
+    onHostSelected: (String?) -> Unit,
+    attendance: AgencyHostAttendanceReport?,
+    goals: AgencyHostGoals?,
+    recognition: AgencyHostRecognition?,
+    leaderboard: AgencyHostLeaderboard?,
     onExport: () -> Unit,
 ) {
     val matchingHosts = hosts.filter { host ->
@@ -1141,7 +1154,26 @@ private fun RosterCard(
             if (filteredHosts.isEmpty()) {
                 Text("No hosts match this search or status filter.", color = OnDarkMedium, fontSize = 12.sp)
             } else {
-                filteredHosts.forEach { host -> HostRow(host) }
+                filteredHosts.forEach { host ->
+                    HostRow(
+                        host = host,
+                        selected = selectedHostUsername.equals(host.username, ignoreCase = true),
+                        onClick = {
+                            onHostSelected(if (selectedHostUsername.equals(host.username, ignoreCase = true)) null else host.username)
+                        },
+                    )
+                }
+            }
+            val selectedHost = hosts.firstOrNull { it.username.equals(selectedHostUsername, ignoreCase = true) }
+            if (selectedHost != null) {
+                HostProfileDetails(
+                    host = selectedHost,
+                    attendance = attendance,
+                    goals = goals,
+                    recognition = recognition,
+                    leaderboard = leaderboard,
+                    onClose = { onHostSelected(null) },
+                )
             }
         }
         Spacer(Modifier.height(6.dp))
@@ -1155,8 +1187,16 @@ private fun RosterCard(
 }
 
 @Composable
-private fun HostRow(host: AgencyHostRow) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 5.dp)) {
+private fun HostRow(host: AgencyHostRow, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) RCoinGreen.copy(alpha = 0.08f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 7.dp),
+    ) {
         Avatar(url = host.avatarUrl, name = host.username, size = 32.dp)
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -1185,6 +1225,100 @@ private fun HostRow(host: AgencyHostRow) {
                 textAlign = TextAlign.End,
             )
         }
+    }
+}
+
+
+@Composable
+private fun HostProfileDetails(
+    host: AgencyHostRow,
+    attendance: AgencyHostAttendanceReport?,
+    goals: AgencyHostGoals?,
+    recognition: AgencyHostRecognition?,
+    leaderboard: AgencyHostLeaderboard?,
+    onClose: () -> Unit,
+) {
+    val attendanceRow = attendance?.hosts?.firstOrNull { it.username.equals(host.username, ignoreCase = true) }
+    val goalRow = goals?.hosts?.firstOrNull { it.username.equals(host.username, ignoreCase = true) }
+    val recognitionRow = recognition?.hosts?.firstOrNull { it.username.equals(host.username, ignoreCase = true) }
+    val leaderboardRow = leaderboard?.hosts?.firstOrNull { it.username.equals(host.username, ignoreCase = true) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(RCoinGreen.copy(alpha = 0.06f))
+            .padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionLabel("Host profile")
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onClose) { Text("Close") }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Avatar(url = host.avatarUrl, name = host.username, size = 42.dp)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("@${host.username}", color = OnDarkHigh, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("${host.statusLabel} · joined ${shortDate(host.joinedAt)}", color = OnDarkMedium, fontSize = 10.sp)
+                Text(host.commissionLabel, color = OnDarkMedium, fontSize = 10.sp)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            ProfileMetric("All-time coins", coins(host.accruedCoins), Modifier.weight(1f))
+            ProfileMetric("Last 30 days", coins(host.last30dCoins), Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(8.dp))
+        SectionLabel("Verified attendance · ${attendance?.days ?: 7} days")
+        if (attendance == null) {
+            Text("Attendance report is not available yet. Refresh the attendance report to load it.", color = OnDarkMedium, fontSize = 11.sp)
+        } else if (attendanceRow == null) {
+            Text("No host attendance row is available in this report window.", color = OnDarkMedium, fontSize = 11.sp)
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                ProfileMetric("Check-ins", attendanceRow.checkIns.toString(), Modifier.weight(1f))
+                ProfileMetric("Attendance days", attendanceRow.attendanceDays.toString(), Modifier.weight(1f))
+            }
+            Text(
+                "Last verified check-in: ${attendanceRow.lastCheckInAt?.let(::shortDate) ?: "None in this window"} (UTC)",
+                color = OnDarkMedium,
+                fontSize = 10.sp,
+            )
+        }
+        goalRow?.let { goal ->
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Weekly goal: ${goal.attendanceDays}/${goal.targetDays} days · ${goal.progressPercent}%${if (goal.metTarget) " · Met" else " · ${goal.remainingDays} to go"}",
+                color = if (goal.metTarget) Mint else OnDarkHigh,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        leaderboardRow?.let { rank ->
+            Text("${leaderboard?.days ?: 7}-day leaderboard: #${rank.rank} · ${rank.checkIns} check-ins", color = OnDarkMedium, fontSize = 10.sp)
+        }
+        val earned = recognitionRow?.milestones?.filter { it.unlockedAt != null }.orEmpty()
+        if (earned.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            Text("Earned milestones", color = OnDarkHigh, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            earned.forEach { milestone ->
+                Text("• ${milestone.title} · ${shortDate(milestone.unlockedAt)}", color = Mint, fontSize = 10.sp)
+            }
+        }
+        Text(
+            "Details use the existing agency-scoped roster and verified attendance summaries. No private account identifiers or unverified live hours are shown.",
+            color = OnDarkMedium.copy(alpha = 0.75f),
+            fontSize = 9.sp,
+        )
+    }
+}
+
+@Composable
+private fun ProfileMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(label, color = OnDarkMedium, fontSize = 9.sp)
+        Text(value, color = OnDarkHigh, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
