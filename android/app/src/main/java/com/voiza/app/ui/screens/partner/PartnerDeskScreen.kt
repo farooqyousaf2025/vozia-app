@@ -172,6 +172,10 @@ fun PartnerDeskScreen(
             subtitle = account?.let { "${it.kindLabel} · ${it.code}" }
                 ?: "Your orders, your commission, and the cash you hold for the platform.",
             onBack = onBack,
+                        query = "",
+                        onQueryChange = {},
+                        statusFilter = "All",
+                        onStatusFilterChange = {},
         )
         Spacer(Modifier.height(10.dp))
 
@@ -289,10 +293,6 @@ fun PartnerDeskScreen(
                             onAttachProof = { order ->
                                 attach(PartnerDeskViewModel.ReceiptTarget(order.id, null, order.reference))
                             },
-                        query = "",
-                        onQueryChange = {},
-                        statusFilter = "All",
-                        onStatusFilterChange = {},
                         )
                     }
                 }
