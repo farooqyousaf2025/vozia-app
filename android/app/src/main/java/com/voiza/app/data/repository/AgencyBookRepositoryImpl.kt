@@ -4,6 +4,7 @@ import com.voiza.app.domain.model.AgencyLiveRoom
 import com.voiza.app.domain.model.AgencyRoomMember
 import com.voiza.app.domain.model.AgencyRoomModerationAudit
 import com.voiza.app.data.remote.dto.AgencyMuteMemberBody
+import com.voiza.app.data.remote.dto.AgencyHostGoalsUpdateBody
 import com.voiza.app.data.remote.dto.AgencyRoomModerationBody
 import com.voiza.app.data.mapper.toDomain
 import com.voiza.app.data.mapper.toAttendanceDomain
@@ -17,6 +18,7 @@ import com.voiza.app.data.remote.apiCall
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyHostAttendanceReport
+import com.voiza.app.domain.model.AgencyHostGoals
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencySubRow
@@ -93,6 +95,18 @@ class AgencyBookRepositoryImpl(
         apiCall { api.agencyHostAttendance(if (days == 30) 30 else 7) }.flatMapSuccess { envelope ->
             envelope.toAttendanceDomain()?.let { ApiResult.Success(it) }
                 ?: ApiResult.Failure("The attendance report was empty.")
+        }
+
+    override suspend fun hostGoals(): ApiResult<AgencyHostGoals> =
+        apiCall { api.agencyHostGoals() }.flatMapSuccess { envelope ->
+            envelope.toGoalsDomain()?.let { ApiResult.Success(it) }
+                ?: ApiResult.Failure("The host goals report was empty.")
+        }
+
+    override suspend fun updateHostGoals(targetDays: Int): ApiResult<AgencyHostGoals> =
+        apiCall { api.updateAgencyHostGoals(AgencyHostGoalsUpdateBody(targetDays.coerceIn(1, 7))) }.flatMapSuccess { envelope ->
+            envelope.toGoalsDomain()?.let { ApiResult.Success(it) }
+                ?: ApiResult.Failure("The updated host goals report was empty.")
         }
 
     override suspend fun hosts(limit: Int): ApiResult<List<AgencyHostRow>> =
