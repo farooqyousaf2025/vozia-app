@@ -135,6 +135,16 @@ fun AgencyDashboardScreen(
         ) {
             item { PositionCard(position) }
             item { AgencyPerformanceCard(position, state.hosts, state.activeRooms) }
+            item {
+                AgencyHostActivityCard(
+                    report = state.hostActivity,
+                    selectedDays = state.activityDays,
+                    loading = state.activityLoading,
+                    error = state.activityError,
+                    onDaysChange = viewModel::setActivityDays,
+                    onRefresh = { viewModel.loadHostActivity() },
+                )
+            }
             item { OwedCard(position.account) }
             item {
                 AgencyActiveRoomsCard(
@@ -367,6 +377,80 @@ private fun AgencyPerformanceCard(
             color = OnDarkMedium.copy(alpha = 0.75f),
             fontSize = 10.sp,
         )
+    }
+}
+
+@Composable
+private fun AgencyHostActivityCard(
+    report: com.voiza.app.domain.model.AgencyHostActivityReport?,
+    selectedDays: Int,
+    loading: Boolean,
+    error: String?,
+    onDaysChange: (Int) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionLabel("Host activity report")
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onRefresh, enabled = !loading) { Text("Refresh") }
+        }
+        Text("Recorded room activity for your currently assigned active hosts.", color = OnDarkMedium, fontSize = 11.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
+            listOf(7, 30).forEach { days ->
+                TextButton(onClick = { onDaysChange(days) }, enabled = selectedDays != days || !loading) {
+                    Text(if (selectedDays == days) "✓ $days days" else "$days days", color = if (selectedDays == days) Mint else OnDarkMedium)
+                }
+            }
+        }
+        if (loading && report == null) {
+            Text("Loading host activity…", color = OnDarkMedium, fontSize = 12.sp)
+        } else if (error != null && report == null) {
+            Text(error, color = DangerRed, fontSize = 11.sp)
+        } else if (report == null) {
+            Text("No activity report is available.", color = OnDarkMedium, fontSize = 12.sp)
+        } else {
+            val totals = report.totals
+            FigureRow("Rooms created", totals.roomsCreated.toString(), OnDarkHigh)
+            FigureRow("Rooms with visitors", totals.roomsWithVisitors.toString(), Cyan)
+            FigureRow("Member room visits", totals.memberVisits.toString(), Mint)
+            FigureRow("Unique visitors", totals.uniqueVisitors.toString(), OnDarkHigh)
+            Spacer(Modifier.height(10.dp))
+            Text("Daily activity · UTC", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            report.daily.asReversed().forEach { day ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(day.date, color = OnDarkMedium, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                    Text("${day.roomsCreated} rooms · ${day.memberVisits} visits", color = OnDarkHigh, fontSize = 10.sp)
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text("Host comparison", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            val activeHosts = report.hosts.filter { it.roomsCreated > 0 || it.memberVisits > 0 }
+            if (activeHosts.isEmpty()) {
+                Text("No recorded room activity in this period.", color = OnDarkMedium, fontSize = 11.sp)
+            } else {
+                activeHosts.take(10).forEach { host ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("@${host.username}", color = OnDarkHigh, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Text("${host.roomsCreated} rooms · ${host.uniqueVisitors} unique visitors", color = OnDarkMedium, fontSize = 10.sp)
+                        }
+                        Text("${host.memberVisits} visits", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+            Text(
+                "A visit is one recorded non-host entry into a room. This report does not estimate host online hours or session duration. Only hosts currently assigned to this agency are included; dates use UTC.",
+                color = OnDarkMedium.copy(alpha = 0.75f),
+                fontSize = 10.sp,
+            )
+        }
     }
 }
 

@@ -5,6 +5,7 @@ import com.voiza.app.domain.model.AgencyLiveRoom
 import com.voiza.app.domain.model.AgencyRoomMember
 import com.voiza.app.domain.model.AgencyRoomModerationAudit
 import com.voiza.app.domain.model.AgencyHostRow
+import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencySubRow
@@ -511,6 +512,9 @@ interface AgencyBookRepository {
     suspend fun banMember(roomId: String, userId: String, minutes: Int?): ApiResult<Unit> = ApiResult.Failure("Not supported")
     /** Name, position in the hierarchy, the split, and what is owed in the account's own currency. */
     suspend fun position(): ApiResult<AgencyPosition>
+
+    /** Read-only activity for the currently assigned active hosts; days is 7 or 30. */
+    suspend fun hostActivity(days: Int = 7): ApiResult<AgencyHostActivityReport> = ApiResult.Failure("Not supported")
 
     /** The hosts this agency is responsible for, newest first. */
     suspend fun hosts(limit: Int = 50): ApiResult<List<AgencyHostRow>>

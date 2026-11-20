@@ -61,6 +61,42 @@ data class AgencyPositionEnvelope(
 )
 
 /** GET /api/agency/hosts. */
+data class AgencyActivityTotalsDto(
+    @SerializedName("roomsCreated") val roomsCreated: Int? = null,
+    @SerializedName("roomsWithVisitors") val roomsWithVisitors: Int? = null,
+    @SerializedName("memberVisits") val memberVisits: Int? = null,
+    @SerializedName("uniqueVisitors") val uniqueVisitors: Int? = null,
+)
+
+data class AgencyActivityDayDto(
+    @SerializedName("date") val date: String? = null,
+    @SerializedName("roomsCreated") val roomsCreated: Int? = null,
+    @SerializedName("roomsWithVisitors") val roomsWithVisitors: Int? = null,
+    @SerializedName("memberVisits") val memberVisits: Int? = null,
+    @SerializedName("uniqueVisitors") val uniqueVisitors: Int? = null,
+)
+
+data class AgencyHostActivityRowDto(
+    @SerializedName("username") val username: String? = null,
+    @SerializedName("avatarUrl") val avatarUrl: String? = null,
+    @SerializedName("roomsCreated") val roomsCreated: Int? = null,
+    @SerializedName("roomsWithVisitors") val roomsWithVisitors: Int? = null,
+    @SerializedName("memberVisits") val memberVisits: Int? = null,
+    @SerializedName("uniqueVisitors") val uniqueVisitors: Int? = null,
+)
+
+data class AgencyHostActivityReportDto(
+    @SerializedName("days") val days: Int? = null,
+    @SerializedName("timezone") val timezone: String? = null,
+    @SerializedName("totals") val totals: AgencyActivityTotalsDto? = null,
+    @SerializedName("daily") val daily: List<AgencyActivityDayDto>? = null,
+    @SerializedName("hosts") val hosts: List<AgencyHostActivityRowDto>? = null,
+)
+
+data class AgencyHostActivityEnvelope(
+    @SerializedName("report") val report: AgencyHostActivityReportDto? = null,
+)
+
 data class AgencyHostDto(
     @SerializedName("username") val username: String? = null,
     @SerializedName("avatarUrl") val avatarUrl: String? = null,

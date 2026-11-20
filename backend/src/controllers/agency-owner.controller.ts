@@ -3,6 +3,7 @@ import { asyncHandler, optionalInt } from '../utils/http';
 import {
   agencySelfPosition,
   agencySelfRoster,
+  agencySelfHostActivity,
   agencySelfSettlements,
   agencySelfSubs,
 } from '../services/agency.service';
@@ -20,6 +21,15 @@ const agencyId = (req: Request): string => req.agencyRow!.id;
 
 export const position = asyncHandler(async (req: Request, res: Response) => {
   res.json({ agency: await agencySelfPosition(agencyId(req)) });
+});
+
+export const hostActivity = asyncHandler(async (req: Request, res: Response) => {
+  const days = optionalInt(req.query?.days, 'days', { min: 7, max: 30 }) ?? 7;
+  if (days !== 7 && days !== 30) {
+    res.status(400).json({ error: 'days must be 7 or 30' });
+    return;
+  }
+  res.json({ report: await agencySelfHostActivity(agencyId(req), days) });
 });
 
 export const hosts = asyncHandler(async (req: Request, res: Response) => {

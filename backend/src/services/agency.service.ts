@@ -1468,6 +1468,126 @@ export async function agencySelfRoster(agencyId: string, limit: number): Promise
   }));
 }
 
+
+/**
+ * Activity for the agency's currently assigned active hosts.
+ * Room creation and non-host participant rows are separate facts. This reports recorded room-entry
+ * events, not estimated host-online time. Dates are UTC calendar days.
+ */
+export type AgencyHostActivityDay = {
+  date: string; roomsCreated: number; roomsWithVisitors: number; memberVisits: number; uniqueVisitors: number;
+};
+export type AgencyHostActivityRow = {
+  username: string; avatarUrl: string | null; roomsCreated: number; roomsWithVisitors: number;
+  memberVisits: number; uniqueVisitors: number;
+};
+export type AgencyHostActivityReport = {
+  days: number; timezone: 'UTC';
+  totals: { roomsCreated: number; roomsWithVisitors: number; memberVisits: number; uniqueVisitors: number };
+  daily: AgencyHostActivityDay[]; hosts: AgencyHostActivityRow[];
+};
+
+export async function agencySelfHostActivity(agencyId: string, days: number): Promise<AgencyHostActivityReport> {
+  const windowDays = days === 30 ? 30 : 7;
+  const [dailyRows, hostRows, uniqueRow] = await Promise.all([
+    many<{ date: string; rooms_created: string | number; rooms_with_visitors: string | number; member_visits: string | number; unique_visitors: string | number }>(
+      \`WITH bounds AS (
+         SELECT ((now() AT TIME ZONE 'UTC')::date - ($2::int - 1))::timestamp AT TIME ZONE 'UTC' AS start_at,
+                now() AS end_at
+       ), roster AS (
+         SELECT ah.host_user_id FROM agency_hosts ah JOIN agencies a ON a.id = ah.agency_id
+          WHERE ah.agency_id = $1 AND ah.status = 'ACTIVE' AND a.status = 'ACTIVE'
+       ), created AS (
+         SELECT (r.created_at AT TIME ZONE 'UTC')::date AS activity_date, COUNT(*)::int AS rooms_created
+           FROM rooms r JOIN roster h ON h.host_user_id = r.host_id CROSS JOIN bounds b
+          WHERE r.created_at >= b.start_at AND r.created_at < b.end_at GROUP BY 1
+       ), visits AS (
+         SELECT (p.joined_at AT TIME ZONE 'UTC')::date AS activity_date,
+                COUNT(*)::int AS member_visits, COUNT(DISTINCT p.user_id)::int AS unique_visitors,
+                COUNT(DISTINCT p.room_id)::int AS rooms_with_visitors
+           FROM room_participants p JOIN rooms r ON r.id = p.room_id
+           JOIN roster h ON h.host_user_id = r.host_id CROSS JOIN bounds b
+          WHERE p.user_id <> r.host_id AND p.joined_at >= b.start_at AND p.joined_at < b.end_at
+          GROUP BY 1
+       )
+       SELECT to_char(calendar.activity_date::date, 'YYYY-MM-DD') AS date,
+              COALESCE(c.rooms_created, 0)::int AS rooms_created,
+              COALESCE(v.rooms_with_visitors, 0)::int AS rooms_with_visitors,
+              COALESCE(v.member_visits, 0)::int AS member_visits,
+              COALESCE(v.unique_visitors, 0)::int AS unique_visitors
+         FROM generate_series(
+                (SELECT (start_at AT TIME ZONE 'UTC')::date FROM bounds),
+                (now() AT TIME ZONE 'UTC')::date, INTERVAL '1 day'
+              ) AS calendar(activity_date)
+         LEFT JOIN created c ON c.activity_date = calendar.activity_date::date
+         LEFT JOIN visits v ON v.activity_date = calendar.activity_date::date
+        ORDER BY calendar.activity_date\`,
+      [agencyId, windowDays],
+    ),
+    many<{ username: string; avatar_url: string | null; rooms_created: string | number; rooms_with_visitors: string | number; member_visits: string | number; unique_visitors: string | number }>(
+      \`WITH bounds AS (
+         SELECT ((now() AT TIME ZONE 'UTC')::date - ($2::int - 1))::timestamp AT TIME ZONE 'UTC' AS start_at,
+                now() AS end_at
+       ), roster AS (
+         SELECT ah.host_user_id, u.username, u.avatar_url FROM agency_hosts ah
+         JOIN agencies a ON a.id = ah.agency_id JOIN users u ON u.id = ah.host_user_id
+         WHERE ah.agency_id = $1 AND ah.status = 'ACTIVE' AND a.status = 'ACTIVE'
+       ), created AS (
+         SELECT r.host_id, COUNT(*)::int AS rooms_created FROM rooms r CROSS JOIN bounds b
+         WHERE r.created_at >= b.start_at AND r.created_at < b.end_at GROUP BY r.host_id
+       ), visits AS (
+         SELECT r.host_id, COUNT(*)::int AS member_visits,
+                COUNT(DISTINCT p.user_id)::int AS unique_visitors,
+                COUNT(DISTINCT p.room_id)::int AS rooms_with_visitors
+         FROM room_participants p JOIN rooms r ON r.id = p.room_id CROSS JOIN bounds b
+         WHERE p.user_id <> r.host_id AND p.joined_at >= b.start_at AND p.joined_at < b.end_at
+         GROUP BY r.host_id
+       )
+       SELECT roster.username, roster.avatar_url,
+              COALESCE(c.rooms_created, 0)::int AS rooms_created,
+              COALESCE(v.rooms_with_visitors, 0)::int AS rooms_with_visitors,
+              COALESCE(v.member_visits, 0)::int AS member_visits,
+              COALESCE(v.unique_visitors, 0)::int AS unique_visitors
+       FROM roster LEFT JOIN created c ON c.host_id = roster.host_user_id
+       LEFT JOIN visits v ON v.host_id = roster.host_user_id
+       ORDER BY COALESCE(v.member_visits, 0) DESC, COALESCE(c.rooms_created, 0) DESC, roster.username\`,
+      [agencyId, windowDays],
+    ),
+    one<{ unique_visitors: string | number }>(
+      \`WITH bounds AS (
+         SELECT ((now() AT TIME ZONE 'UTC')::date - ($2::int - 1))::timestamp AT TIME ZONE 'UTC' AS start_at,
+                now() AS end_at
+       )
+       SELECT COUNT(DISTINCT p.user_id)::int AS unique_visitors
+       FROM room_participants p JOIN rooms r ON r.id = p.room_id
+       JOIN agency_hosts ah ON ah.host_user_id = r.host_id JOIN agencies a ON a.id = ah.agency_id
+       CROSS JOIN bounds b
+       WHERE ah.agency_id = $1 AND ah.status = 'ACTIVE' AND a.status = 'ACTIVE'
+         AND p.user_id <> r.host_id AND p.joined_at >= b.start_at AND p.joined_at < b.end_at\`,
+      [agencyId, windowDays],
+    ),
+  ]);
+  const daily: AgencyHostActivityDay[] = dailyRows.map(row => ({
+    date: row.date, roomsCreated: minor(row.rooms_created), roomsWithVisitors: minor(row.rooms_with_visitors),
+    memberVisits: minor(row.member_visits), uniqueVisitors: minor(row.unique_visitors),
+  }));
+  const hosts: AgencyHostActivityRow[] = hostRows.map(row => ({
+    username: row.username, avatarUrl: row.avatar_url, roomsCreated: minor(row.rooms_created),
+    roomsWithVisitors: minor(row.rooms_with_visitors), memberVisits: minor(row.member_visits),
+    uniqueVisitors: minor(row.unique_visitors),
+  }));
+  return {
+    days: windowDays, timezone: 'UTC',
+    totals: {
+      roomsCreated: hosts.reduce((sum, row) => sum + row.roomsCreated, 0),
+      roomsWithVisitors: hosts.reduce((sum, row) => sum + row.roomsWithVisitors, 0),
+      memberVisits: hosts.reduce((sum, row) => sum + row.memberVisits, 0),
+      uniqueVisitors: minor(uniqueRow?.unique_visitors ?? 0),
+    },
+    daily, hosts,
+  };
+}
+
 /** A master's allocation table: each sub-agency, and what it keeps after its share comes up. */
 export async function agencySelfSubs(agencyId: string): Promise<AgencySelfSub[]> {
   const rows = await many<AgencyRow>(

@@ -3,6 +3,11 @@ package com.voiza.app.data.mapper
 import com.voiza.app.data.remote.dto.AgencyAccountDto
 import com.voiza.app.data.remote.dto.AgencyEarningsDto
 import com.voiza.app.data.remote.dto.AgencyHostDto
+import com.voiza.app.data.remote.dto.AgencyHostActivityEnvelope
+import com.voiza.app.domain.model.AgencyHostActivityReport
+import com.voiza.app.domain.model.AgencyHostActivityTotals
+import com.voiza.app.domain.model.AgencyHostActivityDay
+import com.voiza.app.domain.model.AgencyHostActivityRow
 import com.voiza.app.data.remote.dto.AgencyHostsEnvelope
 import com.voiza.app.data.remote.dto.AgencyMasterDto
 import com.voiza.app.data.remote.dto.AgencyPositionDto
@@ -80,6 +85,27 @@ fun AgencyPositionDto.toDomain(): AgencyPosition {
         master = master?.toDomain(),
         earnings = earnings?.toDomain() ?: AgencyEarnings(0, 0, 0, 0, 0, 0),
         account = account?.toDomain(),
+    )
+}
+
+fun AgencyHostActivityEnvelope.toDomain(): AgencyHostActivityReport? {
+    val report = report ?: return null
+    val totals = report.totals
+    return AgencyHostActivityReport(
+        days = report.days ?: 7,
+        timezone = report.timezone ?: "UTC",
+        totals = AgencyHostActivityTotals(
+            totals?.roomsCreated ?: 0, totals?.roomsWithVisitors ?: 0,
+            totals?.memberVisits ?: 0, totals?.uniqueVisitors ?: 0,
+        ),
+        daily = report.daily.orEmpty().mapNotNull { row ->
+            val date = row.date?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            AgencyHostActivityDay(date, row.roomsCreated ?: 0, row.roomsWithVisitors ?: 0, row.memberVisits ?: 0, row.uniqueVisitors ?: 0)
+        },
+        hosts = report.hosts.orEmpty().mapNotNull { row ->
+            val username = row.username?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            AgencyHostActivityRow(username, row.avatarUrl, row.roomsCreated ?: 0, row.roomsWithVisitors ?: 0, row.memberVisits ?: 0, row.uniqueVisitors ?: 0)
+        },
     )
 }
 
