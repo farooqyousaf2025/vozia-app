@@ -10,9 +10,11 @@ import {
   setFriendLocationSharing,
   updateOwnFriendLocation,
   listFriendDistances,
+  getFriendLocationSharing,
 } from '../services/friends.service';
 import { emitToUser } from '../services/socket.service';
 import { asyncHandler, optionalInt, requireString } from '../utils/http';
+import { ApiError } from '../utils/http';
 
 export const sendRequest = asyncHandler(async (req: Request, res: Response) => {
   const targetId = requireString(req.params.id, 'userId', { min: 36, max: 36 });
@@ -57,7 +59,7 @@ export const doNotContact = asyncHandler(async (req: Request, res: Response) => 
   res.json(await setDoNotContact(req.user!.sub, targetId, value));
 });
 export const locationSharing = asyncHandler(async (req: Request, res: Response) => {
-  if (typeof req.body?.enabled !== 'boolean') throw new Error('enabled must be boolean');
+  if (typeof req.body?.enabled !== 'boolean') throw ApiError.badRequest('enabled must be boolean', 'invalid_location_sharing');
   res.json(await setFriendLocationSharing(req.user!.sub, req.body.enabled));
 });
 export const updateLocation = asyncHandler(async (req: Request, res: Response) => {
@@ -65,10 +67,14 @@ export const updateLocation = asyncHandler(async (req: Request, res: Response) =
   const longitude = Number(req.body?.longitude);
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
       !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
-    throw new Error('Valid latitude and longitude are required');
+    throw ApiError.badRequest('Valid latitude and longitude are required', 'invalid_location');
   }
   res.json(await updateOwnFriendLocation(req.user!.sub, latitude, longitude));
 });
 export const locations = asyncHandler(async (req: Request, res: Response) => {
   res.json({ locations: await listFriendDistances(req.user!.sub) });
+});
+
+export const locationSharingStatus = asyncHandler(async (req: Request, res: Response) => {
+  res.json(await getFriendLocationSharing(req.user!.sub));
 });
