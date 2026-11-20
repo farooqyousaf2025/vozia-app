@@ -23,6 +23,7 @@ export const PERMISSIONS = [
   'user:vip',
   'room:read',
   'room:moderate',
+  'room:create',
   'gift:manage',
   // Uploading the art a gift, effect or badge points at. Separate from `gift:manage` on
   // purpose: whoever maintains room effects and rank badges should not thereby gain the
@@ -108,6 +109,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, readonly Permission[]> = {
     'user:vip',
     'room:read',
     'room:moderate',
+    'room:create',
     'game:read',
     'game:manage',
     'gift:manage',
