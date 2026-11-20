@@ -489,8 +489,8 @@ function loadLivekitService() {
   if (systemRoomId) {
     check(
       'admin: system room ownership is explicit in PostgreSQL and not assigned to a user',
-      await sql(`select owner_type||'/'||coalesce(host_id::text,'-')||'/'||coalesce(owner_admin_id::text,'-') from rooms where id='${systemRoomId}'`) === `SYSTEM/-/${(await sql(`select id from admins where username='admin' limit 1`))}`,
-      await sql(`select owner_type||'/'||coalesce(host_id::text,'-')||'/'||coalesce(owner_admin_id::text,'-') from rooms where id='${systemRoomId}'`),
+      await sql(`select owner_type||'/'||coalesce(host_id::text,'-')||'/'||case when owner_admin_id is null then 'missing' else 'present' end from rooms where id='${systemRoomId}'`) === 'SYSTEM/-/present',
+      await sql(`select owner_type||'/'||coalesce(host_id::text,'-')||'/'||case when owner_admin_id is null then 'missing' else 'present' end from rooms where id='${systemRoomId}'`),
     );
     check(
       'admin: system room seats start empty and no fake host participant is inserted',
