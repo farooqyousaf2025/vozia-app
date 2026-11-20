@@ -691,6 +691,19 @@ fun RoomCard(
                     maxLines = 1,
                 )
             }
+            val roomDetails = buildList {
+                add("${room.seatCapacity} seats")
+                room.language?.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }
+                room.region?.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }
+            }
+            Text(
+                text = roomDetails.joinToString(" · "),
+                color = OnDarkMedium.copy(alpha = 0.78f),
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 5.dp),
+            )
         }
     }
     }
