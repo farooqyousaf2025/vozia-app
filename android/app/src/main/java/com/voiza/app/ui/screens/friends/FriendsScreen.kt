@@ -139,7 +139,7 @@ fun FriendsScreen(
                 }
             }
             listener = callback
-            try { manager.requestLocationUpdates(provider, 60_000L, 100f, callback, Looper.getMainLooper()) }
+            try { manager.requestLocationUpdates(provider, 60_000L, 0f, callback, Looper.getMainLooper()) }
             catch (_: SecurityException) { listener = null }
         }
         val observer = LifecycleEventObserver { _, event ->
