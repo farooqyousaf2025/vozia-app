@@ -100,7 +100,7 @@ export async function searchUsers(opts: {
   if (opts.search) {
     params.push(`%${opts.search}%`);
     const p = params.length;
-    where.push(`(u.username ILIKE ${p} OR u.phone ILIKE ${p} OR u.id::text = $${p})`);
+    where.push(`(u.username ILIKE ${p} OR u.phone ILIKE ${p} OR u.id::text = ${p} OR a.name ILIKE ${p})`);
   }
   if (opts.status) where.push(`u.status = $${params.push(opts.status)}`);
   if (opts.userType) where.push(`u.user_type = $${params.push(opts.userType)}`);
