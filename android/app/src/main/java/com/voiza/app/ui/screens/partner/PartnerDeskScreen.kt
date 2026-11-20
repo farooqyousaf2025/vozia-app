@@ -224,6 +224,8 @@ fun PartnerDeskScreen(
         var tab by remember(account.id) { mutableStateOf(DeskTab.OVERVIEW) }
         var sellerQuery by remember(account.id) { mutableStateOf("") }
         var sellerStatusFilter by remember(account.id) { mutableStateOf("All") }
+        var orderQuery by remember(account.id) { mutableStateOf("") }
+        var orderStatusFilter by remember(account.id) { mutableStateOf("All") }
         val tabs = if (account.isSeller) {
             listOf(DeskTab.OVERVIEW, DeskTab.ORDERS, DeskTab.SALES, DeskTab.STATEMENT)
         } else {
@@ -277,6 +279,10 @@ fun PartnerDeskScreen(
                             total = state.ordersTotal,
                             error = state.ordersError,
                             isSeller = account.isSeller,
+                            query = orderQuery,
+                            onQueryChange = { orderQuery = it },
+                            statusFilter = orderStatusFilter,
+                            onStatusFilterChange = { orderStatusFilter = it },
                             onMarkPaid = { markPaidFor = it },
                             onCancel = { cancelFor = it },
                             onAttachProof = { order ->
@@ -428,10 +434,27 @@ private fun OrdersCard(
     total: Int,
     error: String?,
     isSeller: Boolean,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    statusFilter: String,
+    onStatusFilterChange: (String) -> Unit,
     onMarkPaid: (RechargeOrder) -> Unit,
     onCancel: (RechargeOrder) -> Unit,
     onAttachProof: (RechargeOrder) -> Unit,
 ) {
+    val filteredOrders = orders.filter { order ->
+        val needle = query.trim()
+        val matchesQuery = needle.isBlank() || order.reference.contains(needle, ignoreCase = true) ||
+            order.username.contains(needle, ignoreCase = true) || order.paymentRef.orEmpty().contains(needle, ignoreCase = true)
+        val matchesStatus = when (statusFilter) {
+            "Awaiting payment" -> order.status == RechargeOrderStatus.AWAITING_PAYMENT
+            "In review" -> order.status == RechargeOrderStatus.AWAITING_VERIFICATION
+            "Credited" -> order.status == RechargeOrderStatus.CREDITED
+            "Issues" -> order.status in setOf(RechargeOrderStatus.REJECTED, RechargeOrderStatus.REVERSED, RechargeOrderStatus.CANCELLED, RechargeOrderStatus.EXPIRED)
+            else -> true
+        }
+        matchesQuery && matchesStatus
+    }
     VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
         DeskSectionLabel(if (total > 0) "Recharge orders · $total" else "Recharge orders")
         if (error != null) {
@@ -447,8 +470,44 @@ private fun OrdersCard(
             )
             return@VoizaCard
         }
-        orders.forEach { order ->
-            OrderRow(order, isSeller, onMarkPaid, onCancel, onAttachProof)
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            placeholder = { Text("Search reference, customer or payment ref", fontSize = 12.sp) },
+            textStyle = MaterialTheme.typography.bodyMedium.copy(color = OnDarkHigh),
+            colors = deskFieldColors(),
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("All", "Awaiting payment", "In review", "Credited", "Issues").forEach { filter ->
+                Text(
+                    text = filter,
+                    color = if (statusFilter == filter) RCoinGreen else OnDarkMedium,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (statusFilter == filter) RCoinGreen.copy(alpha = 0.14f) else Color.Transparent)
+                        .clickable { onStatusFilterChange(filter) }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(7.dp))
+        Text("Showing ${filteredOrders.size} loaded orders · ${total} total", color = OnDarkMedium, fontSize = 10.sp)
+        if (filteredOrders.isEmpty()) {
+            Text("No loaded orders match this search or status filter.", color = OnDarkMedium, fontSize = 12.sp)
+        } else {
+            filteredOrders.forEach { order -> OrderRow(order, isSeller, onMarkPaid, onCancel, onAttachProof) }
+        }
+        if (isSeller) {
+            Text(
+                "Payment claims and proof remain subject to finance verification. This filter never changes order status.",
+                color = OnDarkMedium.copy(alpha = 0.75f),
+                fontSize = 10.sp,
+            )
         }
     }
 }
