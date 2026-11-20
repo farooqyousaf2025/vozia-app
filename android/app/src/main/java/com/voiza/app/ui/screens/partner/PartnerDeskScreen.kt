@@ -271,6 +271,9 @@ fun PartnerDeskScreen(
                 DeskTab.OVERVIEW -> {
                     item { AccountCard(account) }
                     item { NumbersCard(state.dashboard, state.dashboardError) }
+                    if (account.isBd) {
+                        item { BdTerritorySnapshotCard(state.sellers, state.sellersError, account.kind == com.voiza.app.domain.model.PartnerKind.BD_MANAGER) }
+                    }
                     if (account.isSeller) {
                         item {
                             VoizaButton(
