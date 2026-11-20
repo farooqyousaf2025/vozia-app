@@ -132,7 +132,7 @@ fun FriendsScreen(
             val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
             val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
             if (!fine && !coarse) return
-            val provider = if (fine && manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) LocationManager.GPS_PROVIDER else LocationManager.NETWORK_PROVIDER
+            val provider = if (fine && manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) LocationManager.GPS_PROVIDER else manager.getProviders(true).firstOrNull() ?: return
             val callback = object : LocationListener {
                 override fun onLocationChanged(location: Location) {
                     viewModel.updateLocation(location.latitude, location.longitude)
