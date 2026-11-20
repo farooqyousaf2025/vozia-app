@@ -7,6 +7,7 @@ import com.voiza.app.domain.model.AgencyRoomModerationAudit
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyHostAttendanceReport
+import com.voiza.app.domain.model.AgencyHostGoals
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencySubRow
@@ -494,7 +495,7 @@ interface RoleApplicationRepository {
 }
 
 /**
- * The agency's own book (`/api/agency`, migrations 0033 and 0040): what a roster of hosts earned, how
+ * The agency's own book (`/api/agency`, migrations 0033, 0040 and 0058): what a roster of hosts earned, how
  * much of it went to a master, and which payout batches exist.
  *
  * No method takes an agency id. The server reads the signed-in member and answers with the one agency
@@ -519,6 +520,10 @@ interface AgencyBookRepository {
 
     /** Verified LiveKit host check-ins for currently assigned active hosts; days is 7 or 30. */
     suspend fun hostAttendance(days: Int = 7): ApiResult<AgencyHostAttendanceReport> = ApiResult.Failure("Not supported")
+
+    /** Agency-owned weekly target and read-only progress for currently assigned active hosts. */
+    suspend fun hostGoals(): ApiResult<AgencyHostGoals> = ApiResult.Failure("Not supported")
+    suspend fun updateHostGoals(targetDays: Int): ApiResult<AgencyHostGoals> = ApiResult.Failure("Not supported")
 
     /** The hosts this agency is responsible for, newest first. */
     suspend fun hosts(limit: Int = 50): ApiResult<List<AgencyHostRow>>

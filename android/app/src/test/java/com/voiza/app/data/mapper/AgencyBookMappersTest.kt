@@ -3,6 +3,7 @@ package com.voiza.app.data.mapper
 import com.google.gson.Gson
 import com.voiza.app.data.remote.dto.AgencyHostsEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostAttendanceEnvelope
+import com.voiza.app.data.remote.dto.AgencyHostGoalsEnvelope
 import com.voiza.app.data.remote.dto.AgencyPositionEnvelope
 import com.voiza.app.data.remote.dto.AgencySettlementsEnvelope
 import com.voiza.app.data.remote.dto.AgencySubsEnvelope
@@ -163,6 +164,32 @@ class AgencyBookMappersTest {
         assertEquals(listOf("ali_live", "sara"), report.hosts.map { it.username })
         assertEquals(2, report.hosts.first().attendanceDays)
         assertEquals("2026-11-20T18:30:00.000Z", report.hosts.first().lastCheckInAt)
+    }
+
+    @Test
+    fun `host goals mapper preserves server progress and safely defaults missing values`() {
+        val goals = gson.fromJson(
+            """{"goals":{
+                "weeklyAttendanceTargetDays":3,"windowDays":7,"timezone":"UTC",
+                "activeHostCount":2,"hostsMeetingGoal":1,"updatedAt":"2026-11-21T00:00:00.000Z",
+                "hosts":[
+                  {"username":"ali_live","attendanceDays":3,"targetDays":3,"progressPercent":100,"remainingDays":0,"metTarget":true},
+                  null,
+                  {"username":"sara","attendanceDays":1,"targetDays":3,"progressPercent":33,"remainingDays":2,"metTarget":false},
+                  {"username":"   ","attendanceDays":0}
+                ]
+            }}""",
+            AgencyHostGoalsEnvelope::class.java,
+        ).toGoalsDomain()!!
+
+        assertEquals(3, goals.weeklyAttendanceTargetDays)
+        assertEquals(2, goals.activeHostCount)
+        assertEquals(1, goals.hostsMeetingGoal)
+        assertEquals(listOf("ali_live", "sara"), goals.hosts.map { it.username })
+        assertTrue(goals.hosts.first().metTarget)
+        assertEquals(100, goals.hosts.first().progressPercent)
+        assertEquals(2, goals.hosts.last().remainingDays)
+        assertFalse(goals.hosts.last().metTarget)
     }
 
     @Test

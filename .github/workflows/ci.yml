@@ -138,6 +138,15 @@ jobs:
       # games suite drives the engine lifecycle, fees and settlement money. Both also
       # open their own `pg` pool from DATABASE_URL to assert what the HTTP calls left
       # in the ledger, so the env block is not decoration.
+      - name: Agency host goals suite
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://voiza:voiza@localhost:5432/voiza
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci-only-jwt-secret-not-a-default
+        timeout-minutes: 5
+        run: npm run test:agency:goals
+
       - name: Business accounts suite (BD, sellers, commissions)
         working-directory: backend
         env:

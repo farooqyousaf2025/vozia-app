@@ -28,6 +28,7 @@
     "test:partner": "node scripts/partner-e2e.cjs",
     "test:receipts": "node scripts/receipt-e2e.cjs",
     "test:agency:hierarchy": "node scripts/agency-hierarchy-e2e.cjs",
+    "test:agency:goals": "node scripts/agency-host-goals-e2e.cjs",
     "test:qa": "node scripts/qa-e2e.cjs",
     "test:revenue": "node scripts/revenue-e2e.cjs",
     "test:concurrency": "node scripts/concurrency-e2e.cjs",

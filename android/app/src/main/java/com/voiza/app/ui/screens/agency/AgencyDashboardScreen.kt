@@ -1,6 +1,7 @@
 package com.voiza.app.ui.screens.agency
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -43,6 +44,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.voiza.app.domain.model.AgencyAccount
 import com.voiza.app.domain.model.AgencyHostRow
+import com.voiza.app.domain.model.AgencyHostGoals
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencyRoomModerationAudit
@@ -153,6 +155,16 @@ fun AgencyDashboardScreen(
                     error = state.attendanceError,
                     onDaysChange = viewModel::setAttendanceDays,
                     onRefresh = { viewModel.loadHostAttendance() },
+                )
+            }
+            item {
+                AgencyHostGoalsCard(
+                    goals = state.hostGoals,
+                    loading = state.goalsLoading,
+                    saving = state.goalsSaving,
+                    error = state.goalsError,
+                    onSave = viewModel::saveHostGoals,
+                    onRefresh = viewModel::loadHostGoals,
                 )
             }
             item { OwedCard(position.account) }
@@ -541,6 +553,92 @@ private fun AgencyHostAttendanceCard(
             "A check-in is recorded only when LiveKit confirms the host joined their room. This report does not claim working hours or estimate session duration. Only currently assigned active hosts are included; dates use UTC.",
             color = OnDarkMedium.copy(alpha = 0.75f),
             fontSize = 10.sp,
+        )
+    }
+}
+
+@Composable
+private fun AgencyHostGoalsCard(
+    goals: AgencyHostGoals?,
+    loading: Boolean,
+    saving: Boolean,
+    error: String?,
+    onSave: (Int) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    var targetDraft by remember(goals?.weeklyAttendanceTargetDays) {
+        mutableStateOf(goals?.weeklyAttendanceTargetDays ?: 5)
+    }
+    VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionLabel("Host goals & progress")
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onRefresh, enabled = !loading && !saving) { Text("Refresh") }
+        }
+        Text(
+            "Set a shared weekly attendance goal for your active host roster. Progress uses verified check-ins from the last 7 UTC days.",
+            color = OnDarkMedium, fontSize = 11.sp,
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { targetDraft = (targetDraft - 1).coerceAtLeast(1) }, enabled = !saving && targetDraft > 1) {
+                Text("−", color = OnDarkHigh, fontSize = 18.sp)
+            }
+            Text("${targetDraft} / 7 days", color = OnDarkHigh, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            TextButton(onClick = { targetDraft = (targetDraft + 1).coerceAtMost(7) }, enabled = !saving && targetDraft < 7) {
+                Text("+", color = OnDarkHigh, fontSize = 18.sp)
+            }
+            Spacer(Modifier.weight(1f))
+            TextButton(
+                onClick = { onSave(targetDraft) },
+                enabled = !saving && goals != null && targetDraft != goals.weeklyAttendanceTargetDays,
+            ) { Text(if (saving) "Saving…" else "Save goal", color = Mint) }
+        }
+        when {
+            loading && goals == null -> Text("Loading host goals…", color = OnDarkMedium, fontSize = 12.sp)
+            error != null && goals == null -> Text(error, color = DangerRed, fontSize = 11.sp)
+            goals == null -> Text("Host goals are not available.", color = OnDarkMedium, fontSize = 12.sp)
+            else -> {
+                FigureRow("Hosts meeting goal", "${goals.hostsMeetingGoal} / ${goals.activeHostCount}", Mint)
+                Spacer(Modifier.height(8.dp))
+                if (goals.hosts.isEmpty()) {
+                    Text("No active hosts are currently assigned to this agency.", color = OnDarkMedium, fontSize = 11.sp)
+                } else {
+                    goals.hosts.forEach { host ->
+                        Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("@${host.username}", color = OnDarkHigh, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                Text(
+                                    if (host.metTarget) "Goal met" else "${host.remainingDays} days to go",
+                                    color = if (host.metTarget) Mint else WarningAmber,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                            Box(
+                                modifier = Modifier.fillMaxWidth().height(6.dp)
+                                    .clip(RoundedCornerShape(8.dp)).background(Color(0xFF303044)),
+                            ) {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth((host.progressPercent / 100f).coerceIn(0f, 1f))
+                                        .fillMaxSize().background(Mint),
+                                )
+                            }
+                            Text(
+                                "${host.attendanceDays} / ${host.targetDays} attendance days · ${host.progressPercent}%",
+                                color = OnDarkMedium, fontSize = 10.sp,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (error != null && goals != null) {
+            Text(error, color = DangerRed, fontSize = 10.sp)
+        }
+        Text(
+            "Targets are informational only. They do not change host status, commissions, bonuses or payouts. Only currently assigned active hosts are shown.",
+            color = OnDarkMedium.copy(alpha = 0.75f), fontSize = 10.sp,
         )
     }
 }

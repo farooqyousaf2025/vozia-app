@@ -77,7 +77,9 @@ CREATE TABLE IF NOT EXISTS agencies (
     CHECK (commission_bps BETWEEN 0 AND 10000),
   status          agency_status NOT NULL DEFAULT 'PENDING',
   created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
+  updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  weekly_attendance_target_days SMALLINT NOT NULL DEFAULT 5
+    CONSTRAINT agencies_weekly_attendance_target_days_check CHECK (weekly_attendance_target_days BETWEEN 1 AND 7)
 );
 
 -- ---------------------------------------------------------------------------

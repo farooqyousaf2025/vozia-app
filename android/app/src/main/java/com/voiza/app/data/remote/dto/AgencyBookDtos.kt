@@ -134,6 +134,31 @@ data class AgencyHostAttendanceEnvelope(
     @SerializedName("report") val report: AgencyHostAttendanceReportDto? = null,
 )
 
+data class AgencyHostGoalRowDto(
+    @SerializedName("username") val username: String? = null,
+    @SerializedName("avatarUrl") val avatarUrl: String? = null,
+    @SerializedName("attendanceDays") val attendanceDays: Int? = null,
+    @SerializedName("targetDays") val targetDays: Int? = null,
+    @SerializedName("progressPercent") val progressPercent: Int? = null,
+    @SerializedName("remainingDays") val remainingDays: Int? = null,
+    @SerializedName("metTarget") val metTarget: Boolean? = null,
+)
+data class AgencyHostGoalsDto(
+    @SerializedName("weeklyAttendanceTargetDays") val weeklyAttendanceTargetDays: Int? = null,
+    @SerializedName("windowDays") val windowDays: Int? = null,
+    @SerializedName("timezone") val timezone: String? = null,
+    @SerializedName("activeHostCount") val activeHostCount: Int? = null,
+    @SerializedName("hostsMeetingGoal") val hostsMeetingGoal: Int? = null,
+    @SerializedName("hosts") val hosts: List<AgencyHostGoalRowDto>? = null,
+    @SerializedName("updatedAt") val updatedAt: String? = null,
+)
+data class AgencyHostGoalsEnvelope(
+    @SerializedName("goals") val goals: AgencyHostGoalsDto? = null,
+)
+data class AgencyHostGoalsUpdateBody(
+    @SerializedName("weeklyAttendanceTargetDays") val weeklyAttendanceTargetDays: Int,
+)
+
 data class AgencyHostDto(
     @SerializedName("username") val username: String? = null,
     @SerializedName("avatarUrl") val avatarUrl: String? = null,

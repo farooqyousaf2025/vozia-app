@@ -10,6 +10,8 @@ import com.voiza.app.data.remote.dto.AgencyRoomModerationActionEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostsEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostActivityEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostAttendanceEnvelope
+import com.voiza.app.data.remote.dto.AgencyHostGoalsEnvelope
+import com.voiza.app.data.remote.dto.AgencyHostGoalsUpdateBody
 import com.voiza.app.data.remote.dto.AgencyPositionEnvelope
 import com.voiza.app.data.remote.dto.AgencySettlementsEnvelope
 import com.voiza.app.data.remote.dto.AgencySubsEnvelope
@@ -133,6 +135,7 @@ import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -703,6 +706,12 @@ interface VoizaApiService {
 
     @GET("api/agency/attendance")
     suspend fun agencyHostAttendance(@Query("days") days: Int = 7): AgencyHostAttendanceEnvelope
+
+    @GET("api/agency/goals")
+    suspend fun agencyHostGoals(): AgencyHostGoalsEnvelope
+
+    @PUT("api/agency/goals")
+    suspend fun updateAgencyHostGoals(@Body body: AgencyHostGoalsUpdateBody): AgencyHostGoalsEnvelope
 
     @GET("api/agency/hosts")
     suspend fun agencyHosts(@Query("limit") limit: Int? = null): AgencyHostsEnvelope

@@ -5,11 +5,14 @@ import com.voiza.app.data.remote.dto.AgencyEarningsDto
 import com.voiza.app.data.remote.dto.AgencyHostDto
 import com.voiza.app.data.remote.dto.AgencyHostActivityEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostAttendanceEnvelope
+import com.voiza.app.data.remote.dto.AgencyHostGoalsEnvelope
 import com.voiza.app.domain.model.AgencyHostActivityWeek
 import com.voiza.app.domain.model.AgencyHostAttendanceReport
 import com.voiza.app.domain.model.AgencyHostAttendanceTotals
 import com.voiza.app.domain.model.AgencyHostAttendanceDay
 import com.voiza.app.domain.model.AgencyHostAttendanceRow
+import com.voiza.app.domain.model.AgencyHostGoals
+import com.voiza.app.domain.model.AgencyHostGoalRow
 import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyHostActivityTotals
 import com.voiza.app.domain.model.AgencyHostActivityDay
@@ -136,6 +139,28 @@ fun AgencyHostAttendanceEnvelope.toAttendanceDomain(): AgencyHostAttendanceRepor
             val username = row.username?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
             AgencyHostAttendanceRow(username, row.avatarUrl, row.checkIns ?: 0, row.attendanceDays ?: 0, row.lastCheckInAt)
         },
+    )
+}
+
+fun AgencyHostGoalsEnvelope.toGoalsDomain(): AgencyHostGoals? {
+    val goals = goals ?: return null
+    val target = (goals.weeklyAttendanceTargetDays ?: 5).coerceIn(1, 7)
+    val hosts = goals.hosts.orEmpty().filterNotNull().mapNotNull { row ->
+        val username = row.username?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val days = (row.attendanceDays ?: 0).coerceIn(0, 7)
+        val rowTarget = (row.targetDays ?: target).coerceIn(1, 7)
+        AgencyHostGoalRow(
+            username = username, avatarUrl = row.avatarUrl, attendanceDays = days, targetDays = rowTarget,
+            progressPercent = (row.progressPercent ?: ((days * 100) / rowTarget)).coerceIn(0, 100),
+            remainingDays = (row.remainingDays ?: (rowTarget - days).coerceAtLeast(0)).coerceIn(0, rowTarget),
+            metTarget = row.metTarget ?: (days >= rowTarget),
+        )
+    }
+    return AgencyHostGoals(
+        weeklyAttendanceTargetDays = target, windowDays = goals.windowDays ?: 7,
+        timezone = goals.timezone ?: "UTC", activeHostCount = goals.activeHostCount ?: hosts.size,
+        hostsMeetingGoal = goals.hostsMeetingGoal ?: hosts.count { it.metTarget },
+        hosts = hosts, updatedAt = goals.updatedAt.orEmpty(),
     )
 }
 

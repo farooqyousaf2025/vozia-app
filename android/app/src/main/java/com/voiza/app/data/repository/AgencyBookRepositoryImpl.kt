@@ -4,9 +4,11 @@ import com.voiza.app.domain.model.AgencyLiveRoom
 import com.voiza.app.domain.model.AgencyRoomMember
 import com.voiza.app.domain.model.AgencyRoomModerationAudit
 import com.voiza.app.data.remote.dto.AgencyMuteMemberBody
+import com.voiza.app.data.remote.dto.AgencyHostGoalsUpdateBody
 import com.voiza.app.data.remote.dto.AgencyRoomModerationBody
 import com.voiza.app.data.mapper.toDomain
 import com.voiza.app.data.mapper.toAttendanceDomain
+import com.voiza.app.data.mapper.toGoalsDomain
 import com.voiza.app.data.mapper.toHosts
 import com.voiza.app.data.mapper.toPosition
 import com.voiza.app.data.mapper.toSettlements
@@ -17,15 +19,16 @@ import com.voiza.app.data.remote.apiCall
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyHostAttendanceReport
+import com.voiza.app.domain.model.AgencyHostGoals
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencySubRow
 import com.voiza.app.domain.repository.AgencyBookRepository
 
 /**
- * The agency's own book over HTTP (migrations 0033 and 0040).
+ * The agency's own book over HTTP (migrations 0033, 0040 and 0058).
  *
- * Four GETs and no session write-back: reading a roster changes nothing, and the figures here are
+ * Read-only reports and an owner-configurable informational goal, with no financial write-back: reading a roster changes nothing, and the figures here are
  * the journal's, not a balance the app has to refresh elsewhere. A refusal is returned as the
  * server's own sentence — including the 403 a member without an agency gets from every route and the
  * one a sub-agency gets from [subAgencies] — so the screen reports what the backend said rather than
@@ -93,6 +96,18 @@ class AgencyBookRepositoryImpl(
         apiCall { api.agencyHostAttendance(if (days == 30) 30 else 7) }.flatMapSuccess { envelope ->
             envelope.toAttendanceDomain()?.let { ApiResult.Success(it) }
                 ?: ApiResult.Failure("The attendance report was empty.")
+        }
+
+    override suspend fun hostGoals(): ApiResult<AgencyHostGoals> =
+        apiCall { api.agencyHostGoals() }.flatMapSuccess { envelope ->
+            envelope.toGoalsDomain()?.let { ApiResult.Success(it) }
+                ?: ApiResult.Failure("The host goals report was empty.")
+        }
+
+    override suspend fun updateHostGoals(targetDays: Int): ApiResult<AgencyHostGoals> =
+        apiCall { api.updateAgencyHostGoals(AgencyHostGoalsUpdateBody(targetDays.coerceIn(1, 7))) }.flatMapSuccess { envelope ->
+            envelope.toGoalsDomain()?.let { ApiResult.Success(it) }
+                ?: ApiResult.Failure("The updated host goals report was empty.")
         }
 
     override suspend fun hosts(limit: Int): ApiResult<List<AgencyHostRow>> =
