@@ -577,13 +577,41 @@ private fun AgencyHostAttendanceCard(
                 FigureRow("Host attendance days", totals.hostAttendanceDays.toString(), Cyan)
                 Spacer(Modifier.height(10.dp))
                 Text("Daily check-ins · UTC", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Bars compare each day with the busiest day in this selected period.",
+                    color = OnDarkMedium.copy(alpha = 0.75f),
+                    fontSize = 10.sp,
+                )
+                val maxDailyCheckIns = report.daily.maxOfOrNull { it.checkIns }?.coerceAtLeast(1) ?: 1
                 report.daily.asReversed().forEach { day ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Text(day.date, color = OnDarkMedium, fontSize = 10.sp, modifier = Modifier.weight(1f))
-                        Text("${day.hostsCheckedIn} hosts · ${day.checkIns} check-ins", color = OnDarkHigh, fontSize = 10.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(day.date, color = OnDarkMedium, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                            Text(
+                                "${day.hostsCheckedIn} hosts · ${day.checkIns} check-ins",
+                                color = OnDarkHigh,
+                                fontSize = 10.sp,
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF303044)),
+                        ) {
+                            if (day.checkIns > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth((day.checkIns.toFloat() / maxDailyCheckIns).coerceIn(0f, 1f))
+                                        .height(6.dp)
+                                        .background(Mint, RoundedCornerShape(8.dp)),
+                                )
+                            }
+                        }
                     }
                 }
                 Spacer(Modifier.height(10.dp))
