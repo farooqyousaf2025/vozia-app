@@ -35,3 +35,16 @@ data class AgencyRoomModerationActionEnvelope(
     @SerializedName("removed") val removed: Boolean? = null,
     @SerializedName("expiresAt") val expiresAt: String? = null,
 )
+
+data class AgencyRoomModerationAuditDto(
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("targetUserId") val targetUserId: String? = null,
+    @SerializedName("targetUsername") val targetUsername: String? = null,
+    @SerializedName("action") val action: String? = null,
+    @SerializedName("reason") val reason: String? = null,
+    @SerializedName("details") val details: Map<String, Any?>? = null,
+    @SerializedName("createdAt") val createdAt: String? = null,
+)
+data class AgencyRoomModerationAuditEnvelope(
+    @SerializedName("entries") val entries: List<AgencyRoomModerationAuditDto>? = null,
+)
