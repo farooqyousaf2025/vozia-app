@@ -158,6 +158,7 @@ fun AgencyDashboardScreen(
 
         var hostQuery by remember(position.id) { mutableStateOf("") }
         var hostStatusFilter by remember(position.id) { mutableStateOf("All") }
+        var hostSort by remember(position.id) { mutableStateOf("Username") }
 
         LazyColumn(
             contentPadding = PaddingValues(bottom = 24.dp),
@@ -252,6 +253,8 @@ fun AgencyDashboardScreen(
                     onQueryChange = { hostQuery = it },
                     statusFilter = hostStatusFilter,
                     onStatusFilterChange = { hostStatusFilter = it },
+                    sort = hostSort,
+                    onSortChange = { hostSort = it },
                 )
             }
             item { BatchesCard(state.settlements, state.batchesError) }
@@ -1021,8 +1024,10 @@ private fun RosterCard(
     onQueryChange: (String) -> Unit,
     statusFilter: String,
     onStatusFilterChange: (String) -> Unit,
+    sort: String,
+    onSortChange: (String) -> Unit,
 ) {
-    val filteredHosts = hosts.filter { host ->
+    val matchingHosts = hosts.filter { host ->
         val matchesQuery = query.isBlank() || host.username.contains(query.trim(), ignoreCase = true)
         val matchesStatus = when (statusFilter) {
             "Active" -> host.status == AgencyStatus.ACTIVE
@@ -1031,6 +1036,11 @@ private fun RosterCard(
             else -> true
         }
         matchesQuery && matchesStatus
+    }
+    val filteredHosts = when (sort) {
+        "30-day coins" -> matchingHosts.sortedWith(compareByDescending<AgencyHostRow> { it.last30dCoins }.thenBy { it.username.lowercase() })
+        "All-time coins" -> matchingHosts.sortedWith(compareByDescending<AgencyHostRow> { it.accruedCoins }.thenBy { it.username.lowercase() })
+        else -> matchingHosts.sortedBy { it.username.lowercase() }
     }
     VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
         SectionLabel("Your hosts · ${hosts.size}")
@@ -1073,6 +1083,23 @@ private fun RosterCard(
                             .background(if (statusFilter == filter) RCoinGreen.copy(alpha = 0.14f) else Color.Transparent)
                             .clickable { onStatusFilterChange(filter) }
                             .padding(horizontal = 9.dp, vertical = 6.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Sort", color = OnDarkMedium, fontSize = 10.sp)
+                listOf("Username", "30-day coins", "All-time coins").forEach { option ->
+                    Text(
+                        text = option,
+                        color = if (sort == option) RCoinGreen else OnDarkMedium,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (sort == option) RCoinGreen.copy(alpha = 0.14f) else Color.Transparent)
+                            .clickable { onSortChange(option) }
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
                     )
                 }
             }
