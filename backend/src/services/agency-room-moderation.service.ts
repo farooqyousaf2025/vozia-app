@@ -130,10 +130,16 @@ export async function agencyUnbanRoomMember(actorUserId: string, agencyId: strin
 export async function listAgencyRoomModerationAudit(actorUserId: string, agencyId: string, roomId: string, limit = 50) {
   const scope = await assignedRoom(actorUserId, agencyId, roomId);
   return many(
-    `SELECT id, target_user_id AS "targetUserId", action, reason, details, created_at AS "createdAt"
-       FROM agency_room_moderation_audit
-      WHERE agency_id = $1 AND room_id = $2
-      ORDER BY created_at DESC LIMIT $3`,
+    `SELECT a.id, a.target_user_id AS "targetUserId",
+            target.username AS "targetUsername",
+            a.actor_user_id AS "actorUserId",
+            actor.username AS "actorUsername",
+            a.action, a.reason, a.details, a.created_at AS "createdAt"
+       FROM agency_room_moderation_audit a
+       LEFT JOIN users target ON target.id = a.target_user_id
+       LEFT JOIN users actor ON actor.id = a.actor_user_id
+      WHERE a.agency_id = $1 AND a.room_id = $2
+      ORDER BY a.created_at DESC LIMIT $3`,
     [scope.agency_id, roomId, limit],
   );
 }

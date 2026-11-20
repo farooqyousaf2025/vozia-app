@@ -161,3 +161,15 @@ data class AgencyRoomMember(
     val role: String,
     val isMuted: Boolean,
 )
+
+/** Immutable moderation audit entry returned by the agency-scoped audit endpoint. */
+data class AgencyRoomModerationAudit(
+    val id: String,
+    val targetUserId: String,
+    val targetUsername: String,
+    val actorUserId: String,
+    val actorUsername: String,
+    val action: String,
+    val reason: String?,
+    val createdAt: String?,
+)

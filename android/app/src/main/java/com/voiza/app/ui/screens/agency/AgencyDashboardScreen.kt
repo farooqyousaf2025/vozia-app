@@ -45,6 +45,7 @@ import com.voiza.app.domain.model.AgencyAccount
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
+import com.voiza.app.domain.model.AgencyRoomModerationAudit
 import com.voiza.app.domain.model.AgencySettlementStatus
 import com.voiza.app.domain.model.AgencyStatus
 import com.voiza.app.domain.model.AgencySubRow
@@ -142,6 +143,10 @@ fun AgencyDashboardScreen(
                     members = state.roomMembers,
                     membersLoading = state.roomMembersLoading,
                     membersError = state.roomMembersError,
+                    history = state.moderationHistory,
+                    historyLoading = state.historyLoading,
+                    historyError = state.historyError,
+                    onRefreshHistory = viewModel::loadModerationHistory,
                     busyUserId = state.moderationBusyUserId,
                     onToggle = viewModel::toggleRoomMembers,
                     onMute = viewModel::muteRoomMember,
@@ -175,6 +180,10 @@ private fun AgencyActiveRoomsCard(
     members: List<com.voiza.app.domain.model.AgencyRoomMember>,
     membersLoading: Boolean,
     membersError: String?,
+    history: List<AgencyRoomModerationAudit>,
+    historyLoading: Boolean,
+    historyError: String?,
+    onRefreshHistory: (String) -> Unit,
     busyUserId: String?,
     onToggle: (String) -> Unit,
     onMute: (String, String, Boolean) -> Unit,
@@ -231,6 +240,39 @@ private fun AgencyActiveRoomsCard(
                                     enabled = busyUserId != member.userId,
                                     onClick = { pendingAction = member to "ban" },
                                 ) { Text("Ban", color = DangerRed) }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Moderation history", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { onRefreshHistory(room.id) }) { Text("Refresh") }
+                    }
+                    when {
+                        historyLoading -> Text("Loading audit records…", color = OnDarkMedium, fontSize = 11.sp)
+                        historyError != null -> Text(historyError, color = DangerRed, fontSize = 11.sp)
+                        history.isEmpty() -> Text("No moderation actions recorded for this room.", color = OnDarkMedium, fontSize = 11.sp)
+                        else -> history.forEach { entry ->
+                            Column(Modifier.fillMaxWidth().padding(start = 8.dp, top = 4.dp, bottom = 6.dp)) {
+                                val actionLabel = when (entry.action.uppercase()) {
+                                    "MUTE" -> "muted"
+                                    "UNMUTE" -> "unmuted"
+                                    "KICK" -> "kicked"
+                                    "BAN" -> "banned"
+                                    "UNBAN" -> "unbanned"
+                                    else -> entry.action.lowercase()
+                                }
+                                Text(
+                                    "@${entry.actorUsername} ${actionLabel} @${entry.targetUsername}",
+                                    color = OnDarkHigh,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                val timestamp = entry.createdAt?.replace("T", " ")?.take(16) ?: "Time unavailable"
+                                Text(timestamp, color = OnDarkMedium, fontSize = 10.sp)
+                                if (!entry.reason.isNullOrBlank()) {
+                                    Text("Reason: ${entry.reason}", color = OnDarkMedium, fontSize = 10.sp)
+                                }
                             }
                         }
                     }
