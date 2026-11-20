@@ -2,6 +2,7 @@ package com.voiza.app.data.repository
 
 import com.voiza.app.domain.model.AgencyLiveRoom
 import com.voiza.app.domain.model.AgencyRoomMember
+import com.voiza.app.domain.model.AgencyRoomModerationAudit
 import com.voiza.app.data.remote.dto.AgencyMuteMemberBody
 import com.voiza.app.data.remote.dto.AgencyRoomModerationBody
 import com.voiza.app.data.mapper.toHosts
@@ -43,6 +44,21 @@ class AgencyBookRepositoryImpl(
             envelope.members.orEmpty().mapNotNull { row ->
                 val id = row.userId?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 AgencyRoomMember(id, row.username.orEmpty(), row.role.orEmpty(), row.isMuted ?: false)
+            }
+        }
+
+    override suspend fun moderationHistory(roomId: String, limit: Int): ApiResult<List<AgencyRoomModerationAudit>> =
+        apiCall { api.agencyRoomModerationAudit(roomId, limit.coerceIn(1, 100)) }.mapSuccess { envelope ->
+            envelope.entries.orEmpty().mapNotNull { row ->
+                val id = row.id?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                AgencyRoomModerationAudit(
+                    id = id,
+                    targetUserId = row.targetUserId.orEmpty(),
+                    targetUsername = row.targetUsername?.takeIf { it.isNotBlank() } ?: row.targetUserId.orEmpty(),
+                    action = row.action.orEmpty(),
+                    reason = row.reason,
+                    createdAt = row.createdAt,
+                )
             }
         }
 
