@@ -429,3 +429,45 @@ export async function markRead(userId: string, partnerId: string): Promise<{ rea
   );
   return { read: true };
 }
+
+export type FriendLocationDto = { friendId: string; distanceMeters: number | null };
+export async function setFriendLocationSharing(userId: string, enabled: boolean) {
+  if (enabled) {
+    await query(`INSERT INTO friend_location_sharing(user_id, enabled, updated_at)
+      VALUES ($1, TRUE, now()) ON CONFLICT(user_id) DO UPDATE SET enabled = TRUE, updated_at = now()`, [userId]);
+  } else {
+    await query('UPDATE friend_location_sharing SET enabled = FALSE, updated_at = now() WHERE user_id = $1', [userId]);
+    await query('DELETE FROM friend_live_locations WHERE user_id = $1', [userId]);
+  }
+  return { enabled };
+}
+export async function updateOwnFriendLocation(userId: string, latitude: number, longitude: number) {
+  const sharing = await one<{ enabled: boolean }>('SELECT enabled FROM friend_location_sharing WHERE user_id = $1', [userId]);
+  if (!sharing?.enabled) throw ApiError.forbidden('Enable location sharing first', 'location_sharing_disabled');
+  await query(`INSERT INTO friend_live_locations(user_id, latitude, longitude, updated_at)
+    VALUES ($1,$2,$3,now()) ON CONFLICT(user_id) DO UPDATE
+      SET latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude, updated_at = now()`,
+    [userId, latitude, longitude]);
+  return { updated: true };
+}
+export async function listFriendDistances(userId: string): Promise<FriendLocationDto[]> {
+  const rows = await many<{ friend_id: string; distance_meters: number | null }>(
+    `SELECT f.friend_id,
+      CASE WHEN mine.user_id IS NOT NULL AND theirs.user_id IS NOT NULL
+        THEN ROUND(6371000 * 2 * ASIN(SQRT(
+          POWER(SIN(RADIANS(theirs.latitude - mine.latitude) / 2), 2) +
+          COS(RADIANS(mine.latitude)) * COS(RADIANS(theirs.latitude)) *
+          POWER(SIN(RADIANS(theirs.longitude - mine.longitude) / 2), 2)
+        )))::int ELSE NULL END AS distance_meters
+     FROM (
+       SELECT CASE WHEN user_a_id = $1 THEN user_b_id ELSE user_a_id END AS friend_id
+         FROM friendships WHERE user_a_id = $1 OR user_b_id = $1
+     ) f
+     JOIN friend_location_sharing mine_share ON mine_share.user_id = $1 AND mine_share.enabled = TRUE
+     JOIN friend_location_sharing their_share ON their_share.user_id = f.friend_id AND their_share.enabled = TRUE
+     LEFT JOIN friend_live_locations mine ON mine.user_id = $1 AND mine.updated_at > now() - INTERVAL '5 minutes'
+     LEFT JOIN friend_live_locations theirs ON theirs.user_id = f.friend_id AND theirs.updated_at > now() - INTERVAL '5 minutes'`,
+    [userId],
+  );
+  return rows.map(row => ({ friendId: row.friend_id, distanceMeters: row.distance_meters == null ? null : Number(row.distance_meters) }));
+}

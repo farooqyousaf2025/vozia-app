@@ -6,6 +6,7 @@ import {
   agencySelfSettlements,
   agencySelfSubs,
 } from '../services/agency.service';
+import { listAgencyActiveRooms } from '../services/agency-room-moderation.service';
 
 /**
  * An agency's own book, read by the member who runs it.
@@ -34,4 +35,9 @@ export const subAgencies = asyncHandler(async (req: Request, res: Response) => {
 export const settlements = asyncHandler(async (req: Request, res: Response) => {
   const limit = optionalInt(req.query?.limit, 'limit', { min: 1, max: 100 }) ?? 25;
   res.json({ settlements: await agencySelfSettlements(agencyId(req), limit) });
+});
+
+
+export const rooms = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ rooms: await listAgencyActiveRooms(req.user!.sub, agencyId(req)) });
 });

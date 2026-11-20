@@ -137,3 +137,33 @@ export async function listAgencyRoomModerationAudit(actorUserId: string, agencyI
     [scope.agency_id, roomId, limit],
   );
 }
+
+
+/** Active rooms owned by hosts currently assigned to this authenticated agency. */
+export async function listAgencyActiveRooms(actorUserId: string, agencyId: string) {
+  return many<{
+    id: string; title: string; room_number: string; status: string;
+    host_username: string; listener_count: number; created_at: Date;
+  }>(
+    `SELECT r.id, r.title, r.room_number, r.status, u.username AS host_username,
+            GREATEST(
+              (SELECT COUNT(DISTINCT p.user_id)::int FROM room_participants p
+                WHERE p.room_id = r.id AND p.left_at IS NULL),
+              (SELECT COUNT(DISTINCT s.user_id)::int FROM room_seats s
+                WHERE s.room_id = r.id AND s.user_id IS NOT NULL)
+            ) AS listener_count,
+            r.created_at
+       FROM agencies a
+       JOIN agency_hosts ah ON ah.agency_id = a.id AND ah.status = 'ACTIVE'
+       JOIN rooms r ON r.host_id = ah.host_user_id AND r.status = 'ACTIVE'
+       JOIN users u ON u.id = r.host_id
+      WHERE a.owner_user_id = $1 AND a.id = $2 AND a.status = 'ACTIVE'
+      ORDER BY listener_count DESC, r.created_at DESC
+      LIMIT 100`,
+    [actorUserId, agencyId],
+  ).then(rows => rows.map(row => ({
+    id: row.id, title: row.title, roomNumber: row.room_number, status: row.status,
+    hostUsername: row.host_username, memberCount: Number(row.listener_count),
+    createdAt: new Date(row.created_at).toISOString(),
+  })));
+}
