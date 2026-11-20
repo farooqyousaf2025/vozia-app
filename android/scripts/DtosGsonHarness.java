@@ -435,12 +435,12 @@ public class DtosGsonHarness {
             if (!kinds.containsAll(capturedKinds)) {
                 throw new IllegalStateException("the capture is missing a legacy store kind: " + kinds);
             }
-            StoreItemDto bubbleDto = G.fromJson("{\\"kind\\":\\"BUBBLE\\",\\"key\\":\\"bubble-neon\\","
-                    + "\\"name\\":\\"Neon\\",\\"art\\":\\"\\",\\"priceDiamonds\\":500,"
-                    + "\\"periodDays\\":30,\\"owned\\":false,\\"equipped\\":false,"
-                    + "\\"bubble\\":{\\"key\\":\\"bubble-neon\\",\\"name\\":\\"Neon\\","
-                    + "\\"background\\":\\"#201040\\",\\"accent\\":\\"#a78bfa\\","
-                    + "\\"textColor\\":\\"#ffffff\\",\\"motif\\":\\"STAR\\"}}", StoreItemDto.class);
+            StoreItemDto bubbleDto = G.fromJson("{\"kind\":\"BUBBLE\",\"key\":\"bubble-neon\","
+                    + "\"name\":\"Neon\",\"art\":\"\",\"priceDiamonds\":500,"
+                    + "\"periodDays\":30,\"owned\":false,\"equipped\":false,"
+                    + "\"bubble\":{\"key\":\"bubble-neon\",\"name\":\"Neon\","
+                    + "\"background\":\"#201040\",\"accent\":\"#a78bfa\","
+                    + "\"textColor\":\"#ffffff\",\"motif\":\"STAR\"}}", StoreItemDto.class);
             if (!"BUBBLE".equals(bubbleDto.getKind()) || bubbleDto.getBubble() == null
                     || !"#201040".equals(bubbleDto.getBubble().getBackground())) {
                 throw new IllegalStateException("the BUBBLE catalogue style did not decode");
