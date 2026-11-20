@@ -199,6 +199,17 @@ fun AgencyDashboardScreen(
                 )
             }
             item {
+                AgencyHostPerformanceInsightsCard(
+                    hosts = state.hosts,
+                    attendance = state.hostAttendance,
+                    attendanceDays = state.attendanceDays,
+                    attendanceLoading = state.attendanceLoading,
+                    goals = state.hostGoals,
+                    onAttendanceDaysChange = viewModel::setAttendanceDays,
+                    onRefreshAttendance = { viewModel.loadHostAttendance() },
+                )
+            }
+            item {
                 AgencyHostActivityCard(
                     report = state.hostActivity,
                     selectedDays = state.activityDays,
@@ -499,6 +510,78 @@ private fun AgencyPerformanceCard(
     }
 }
 
+@Composable
+private fun AgencyHostPerformanceInsightsCard(
+    hosts: List<AgencyHostRow>,
+    attendance: AgencyHostAttendanceReport?,
+    attendanceDays: Int,
+    attendanceLoading: Boolean,
+    goals: AgencyHostGoals?,
+    onAttendanceDaysChange: (Int) -> Unit,
+    onRefreshAttendance: () -> Unit,
+) {
+    val activeUsernames = hosts.filter { it.status == AgencyStatus.ACTIVE }.map { it.username.lowercase() }.toSet()
+    val missedGoals = goals?.hosts.orEmpty()
+        .filter { it.username.lowercase() in activeUsernames && !it.metTarget }
+        .sortedWith(compareBy<com.voiza.app.domain.model.AgencyHostGoalRow> { it.progressPercent }.thenBy { it.username.lowercase() })
+    val daily = attendance?.daily.orEmpty().sortedBy { it.date }
+    val comparisonDays = daily.takeLast(14)
+    val previousWeek = comparisonDays.take(7).sumOf { it.checkIns }
+    val recentWeek = comparisonDays.takeLast(7).sumOf { it.checkIns }
+    val hasTrend = attendance?.days == 30 && comparisonDays.size == 14
+    val trendDeclined = hasTrend && recentWeek < previousWeek
+    val trendChange = if (hasTrend && previousWeek > 0) ((recentWeek - previousWeek).toFloat() * 100f / previousWeek).toInt() else null
+    VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
+        SectionLabel("Host performance insights")
+        Text("Early follow-up signals from verified attendance and the current weekly goals. These are indicators, not predictions.", color = OnDarkMedium, fontSize = 11.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Attendance trend · agency-wide", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            TextButton(onClick = onRefreshAttendance, enabled = !attendanceLoading) { Text("Refresh") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(7, 30).forEach { days ->
+                TextButton(onClick = { onAttendanceDaysChange(days) }, enabled = attendanceDays != days || !attendanceLoading) {
+                    Text(if (attendanceDays == days) "✓ $days days" else "$days days", color = if (attendanceDays == days) Mint else OnDarkMedium)
+                }
+            }
+        }
+        when {
+            attendanceLoading && attendance == null -> Text("Loading verified attendance…", color = OnDarkMedium, fontSize = 11.sp)
+            attendance == null -> Text("Attendance trend is unavailable. Refresh to try again.", color = OnDarkMedium, fontSize = 11.sp)
+            !hasTrend -> Text("Select the 30-day attendance window to compare the latest 7 days with the previous 7 days.", color = OnDarkMedium, fontSize = 10.sp)
+            else -> {
+                val trendColor = if (trendDeclined) WarningAmber else Mint
+                val trendLabel = when {
+                    recentWeek < previousWeek -> "↓ Attendance check-ins declined"
+                    recentWeek > previousWeek -> "↑ Attendance check-ins increased"
+                    else -> "Attendance check-ins are unchanged"
+                }
+                Text(trendLabel, color = trendColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                FigureRow("Previous 7 days", previousWeek.toString(), OnDarkMedium)
+                FigureRow("Latest 7 days", recentWeek.toString(), OnDarkHigh)
+                trendChange?.let { FigureRow("Change", "${if (it > 0) "+" else ""}$it%", trendColor) }
+                Text("This compares agency-wide verified check-ins only; the available daily report does not identify a per-host daily trend.", color = OnDarkMedium.copy(alpha = 0.75f), fontSize = 9.sp)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text("Hosts below weekly attendance goal", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        when {
+            goals == null -> Text("Weekly goal data is not available yet. Refresh the goals section to load it.", color = OnDarkMedium, fontSize = 11.sp)
+            missedGoals.isEmpty() -> Text("No active assigned hosts are currently below the weekly goal.", color = Mint, fontSize = 11.sp)
+            else -> missedGoals.take(6).forEach { goal ->
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("@${goal.username}", color = OnDarkHigh, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Text("${goal.attendanceDays}/${goal.targetDays} days · ${goal.remainingDays} remaining", color = OnDarkMedium, fontSize = 10.sp)
+                    }
+                    Text("${goal.progressPercent}%", color = WarningAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        if (missedGoals.size > 6) Text("And ${missedGoals.size - 6} more hosts below goal.", color = OnDarkMedium, fontSize = 9.sp)
+        Text("Uses existing agency-scoped reports and active host assignments. No online-hour estimates, private identifiers, or new access are introduced.", color = OnDarkMedium.copy(alpha = 0.75f), fontSize = 9.sp)
+    }
+}
 @Composable
 private fun AgencyHostActivityCard(
     report: com.voiza.app.domain.model.AgencyHostActivityReport?,
