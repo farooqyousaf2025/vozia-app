@@ -191,6 +191,14 @@ fun AgencyDashboardScreen(
             item { AgencyOwnerAnnouncementsCard() }
             item { AgencyPerformanceCard(position, state.hosts, state.activeRooms) }
             item {
+                AgencyHostPerformanceComparisonCard(
+                    hosts = state.hosts,
+                    attendance = state.hostAttendance,
+                    goals = state.hostGoals,
+                    leaderboard = state.hostLeaderboard,
+                )
+            }
+            item {
                 AgencyHostActivityCard(
                     report = state.hostActivity,
                     selectedDays = state.activityDays,
@@ -1182,6 +1190,96 @@ private fun RosterCard(
                 "reported to agencies yet. Host assignment and financial controls remain with authorized operators.",
             color = OnDarkMedium.copy(alpha = 0.75f),
             fontSize = 10.sp,
+        )
+    }
+}
+
+@Composable
+private fun AgencyHostPerformanceComparisonCard(
+    hosts: List<AgencyHostRow>,
+    attendance: AgencyHostAttendanceReport?,
+    goals: AgencyHostGoals?,
+    leaderboard: AgencyHostLeaderboard?,
+) {
+    var metric by remember { mutableStateOf("30-day coins") }
+    val attendanceByHost = attendance?.hosts.orEmpty().associateBy { it.username.lowercase() }
+    val goalsByHost = goals?.hosts.orEmpty().associateBy { it.username.lowercase() }
+    val ranked = hosts.filter { it.status == AgencyStatus.ACTIVE }.map { host ->
+        val attendanceRow = attendanceByHost[host.username.lowercase()]
+        val goalRow = goalsByHost[host.username.lowercase()]
+        val value = when (metric) {
+            "Check-ins" -> attendanceRow?.checkIns
+            "Attendance days" -> attendanceRow?.attendanceDays
+            "Goal progress" -> goalRow?.progressPercent
+            "All-time coins" -> host.accruedCoins
+            else -> host.last30dCoins
+        }
+        Triple(host, value, goalRow)
+    }.sortedWith(
+        compareByDescending<Triple<AgencyHostRow, Int?, com.voiza.app.domain.model.AgencyHostGoalRow?>> { it.second ?: -1 }
+            .thenBy { it.first.username.lowercase() },
+    )
+    VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
+        SectionLabel("Host performance comparison")
+        Text(
+            "Compare your currently assigned active hosts using existing verified attendance, goal and roster totals.",
+            color = OnDarkMedium, fontSize = 11.sp,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(vertical = 8.dp)) {
+            listOf("30-day coins", "All-time coins", "Check-ins", "Attendance days", "Goal progress").forEach { option ->
+                Text(
+                    text = option,
+                    color = if (metric == option) Mint else OnDarkMedium,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (metric == option) Mint.copy(alpha = 0.14f) else Color.Transparent)
+                        .clickable { metric = option }
+                        .padding(horizontal = 7.dp, vertical = 6.dp),
+                )
+            }
+        }
+        if (ranked.isEmpty()) {
+            Text("No active assigned hosts are available to compare.", color = OnDarkMedium, fontSize = 11.sp)
+        } else {
+            val maxValue = ranked.mapNotNull { it.second }.maxOrNull()?.coerceAtLeast(1) ?: 1
+            ranked.forEachIndexed { index, row ->
+                val (host, value, goal) = row
+                Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("#${index + 1}", color = if (index == 0) WarningAmber else Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(8.dp))
+                        Text("@${host.username}", color = OnDarkHigh, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text(
+                            value?.let { if (metric.contains("coins")) coins(it) else if (metric == "Goal progress") "$it%" else it.toString() }
+                                ?: "Not available",
+                            color = OnDarkHigh, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(start = 28.dp, top = 4.dp)
+                            .height(5.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF303044)),
+                    ) {
+                        if (value != null && value > 0) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth((value.toFloat() / maxValue).coerceIn(0f, 1f))
+                                    .height(5.dp).background(Mint, RoundedCornerShape(8.dp)),
+                            )
+                        }
+                    }
+                    if (metric != "Goal progress" && goal != null) {
+                        Text(
+                            "Weekly goal: ${goal.attendanceDays}/${goal.targetDays} days",
+                            color = OnDarkMedium, fontSize = 9.sp, modifier = Modifier.padding(start = 28.dp, top = 2.dp),
+                        )
+                    }
+                }
+            }
+        }
+        Text(
+            "Ranks use only the selected metric; ties are ordered by username. Missing report values are shown as unavailable, not treated as zero. Coins are existing accrued totals, not payouts.",
+            color = OnDarkMedium.copy(alpha = 0.75f), fontSize = 9.sp,
         )
     }
 }
