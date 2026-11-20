@@ -171,14 +171,14 @@ export default function RoomsPage() {
                       <p className="truncate font-semibold text-ink">{room.title}</p>
                       <p className="text-xs text-faint">
                         #{room.roomNumber} · <span className="uppercase">{room.type}</span>
-                        {room.ownerType === 'SYSTEM' && <span className="ml-2 text-violet-300">SYSTEM-OWNED</span>}
+                        {room.ownerType === 'SYSTEM' && <span className="ml-2 rounded-full border border-premium/30 bg-premium/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-premium">VOZIA SYSTEM</span>}
                       </p>
                     </div>
                   </Td>
                   <Td>
                     <span className="flex items-center gap-2">
                       <Avatar name={room.host.username} src={room.host.avatarUrl} size="xs" />
-                      <span className="truncate">{room.host.username}</span>
+                      <span className="truncate">{room.ownerType === 'SYSTEM' ? 'Vozia Operations' : room.host.username}</span>
                     </span>
                   </Td>
                   <Td>{categoryBadge(room.category)}</Td>

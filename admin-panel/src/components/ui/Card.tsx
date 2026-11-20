@@ -49,7 +49,7 @@ interface StatCardProps {
 export function StatCard({ label, value, sub, icon, tone = 'violet' }: StatCardProps) {
   const styles = toneStyles[tone];
   return (
-    <div className="panel p-4 transition hover:border-violet-500/40">
+    <div className="panel p-4 transition duration-200 hover:-translate-y-0.5 hover:border-violet-400/35">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wider text-faint">{label}</p>

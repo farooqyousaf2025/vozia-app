@@ -2,69 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
-/* --------------------------------------------------------------------------
-   Design tokens — dark, high-contrast admin theme.
-   Values are rgb triplets so Tailwind can apply alpha via <alpha-value>.
-   -------------------------------------------------------------------------- */
+/* Vozia Android + Admin shared Luxury Dark design tokens. */
 :root {
-  --c-bg: 8 7 20;           /* page background          */
-  --c-surface: 18 16 38;    /* cards / sidebar          */
-  --c-elevated: 27 24 56;   /* inputs, table headers    */
-  --c-edge: 47 42 88;       /* borders / dividers       */
-  --c-ink: 237 233 254;     /* primary text             */
-  --c-muted: 167 158 214;   /* secondary text           */
-  --c-faint: 113 104 158;   /* tertiary text / icons    */
-
+  --c-bg: 9 9 13;
+  --c-surface: 17 17 24;
+  --c-elevated: 24 24 32;
+  --c-edge: 46 44 58;
+  --c-ink: 255 255 255;
+  --c-muted: 166 163 176;
+  --c-faint: 111 108 121;
+  --c-violet: 128 80 232;
+  --c-violet-light: 185 166 242;
+  --c-premium: 216 180 106;
   color-scheme: dark;
 }
-
 @layer base {
-  html,
-  body,
-  #root {
-    height: 100%;
-  }
-
+  html, body, #root { height: 100%; }
+  html { background: #09090D; }
   body {
     @apply bg-base text-ink antialiased;
     font-family: theme('fontFamily.sans');
+    background-image:
+      radial-gradient(ellipse at 12% -12%, rgba(128, 80, 232, 0.13), transparent 38%),
+      radial-gradient(ellipse at 100% 0%, rgba(216, 180, 106, 0.045), transparent 30%);
+    background-attachment: fixed;
   }
-
-  ::selection {
-    background: rgba(217, 70, 239, 0.35);
-  }
-
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: rgb(var(--c-edge)) transparent;
-  }
-
-  ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  ::selection { background: rgba(128, 80, 232, 0.38); }
+  * { scrollbar-width: thin; scrollbar-color: rgb(var(--c-edge)) transparent; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
     background: rgb(var(--c-edge));
     border-radius: 8px;
     border: 2px solid rgb(var(--c-bg));
   }
 }
-
 @layer components {
-  /* Reusable surface used by Card and page-level panels. */
   .panel {
-    @apply rounded-xl border border-edge/60 bg-surface;
+    @apply rounded-2xl border bg-surface;
+    border-color: rgba(255, 255, 255, 0.085);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.16);
   }
-
   .panel-header {
-    @apply flex items-center justify-between gap-3 border-b border-edge/60 px-5 py-4;
+    @apply flex items-center justify-between gap-3 border-b px-5 py-4;
+    border-color: rgba(255, 255, 255, 0.07);
   }
-
-  /* Focus ring used by every interactive element. */
   .focus-ring {
-    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-base;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-base;
   }
 }

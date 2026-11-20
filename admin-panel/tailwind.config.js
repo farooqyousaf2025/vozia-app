@@ -13,17 +13,18 @@ export default {
         ink: 'rgb(var(--c-ink) / <alpha-value>)',
         muted: 'rgb(var(--c-muted) / <alpha-value>)',
         faint: 'rgb(var(--c-faint) / <alpha-value>)',
+        premium: 'rgb(var(--c-premium) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
       },
       backgroundImage: {
-        'brand-gradient': 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)',
-        'brand-gradient-soft': 'linear-gradient(135deg, rgba(139,92,246,0.18) 0%, rgba(217,70,239,0.18) 100%)',
+        'brand-gradient': 'linear-gradient(135deg, #512B9C 0%, #8050E8 62%, #9A6BF0 100%)',
+        'brand-gradient-soft': 'linear-gradient(135deg, rgba(128,80,232,0.20) 0%, rgba(185,166,242,0.08) 100%)',
       },
       boxShadow: {
-        glow: '0 0 28px rgba(139, 92, 246, 0.35)',
-        'glow-sm': '0 0 14px rgba(139, 92, 246, 0.30)',
+        glow: '0 0 28px rgba(128, 80, 232, 0.28)',
+        'glow-sm': '0 0 14px rgba(128, 80, 232, 0.22)',
       },
       keyframes: {
         'fade-in': { from: { opacity: '0' }, to: { opacity: '1' } },
