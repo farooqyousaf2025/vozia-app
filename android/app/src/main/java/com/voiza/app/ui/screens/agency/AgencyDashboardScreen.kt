@@ -179,6 +179,7 @@ fun AgencyDashboardScreen(
 
         var hostQuery by remember(position.id) { mutableStateOf("") }
         var hostStatusFilter by remember(position.id) { mutableStateOf("All") }
+        var hostGoalFilter by remember(position.id) { mutableStateOf("All hosts") }
         var hostSort by remember(position.id) { mutableStateOf("Username") }
         var selectedHostUsername by remember(position.id) { mutableStateOf<String?>(null) }
 
@@ -294,6 +295,8 @@ fun AgencyDashboardScreen(
                     onQueryChange = { hostQuery = it },
                     statusFilter = hostStatusFilter,
                     onStatusFilterChange = { hostStatusFilter = it },
+                    goalFilter = hostGoalFilter,
+                    onGoalFilterChange = { hostGoalFilter = it },
                     sort = hostSort,
                     onSortChange = { hostSort = it },
                     selectedHostUsername = selectedHostUsername,
@@ -1147,6 +1150,8 @@ private fun RosterCard(
     onQueryChange: (String) -> Unit,
     statusFilter: String,
     onStatusFilterChange: (String) -> Unit,
+    goalFilter: String,
+    onGoalFilterChange: (String) -> Unit,
     sort: String,
     onSortChange: (String) -> Unit,
     selectedHostUsername: String?,
@@ -1157,6 +1162,7 @@ private fun RosterCard(
     leaderboard: AgencyHostLeaderboard?,
     onExport: () -> Unit,
 ) {
+    val goalsByUsername = goals?.hosts.orEmpty().associateBy { it.username.lowercase() }
     val matchingHosts = hosts.filter { host ->
         val matchesQuery = query.isBlank() || host.username.contains(query.trim(), ignoreCase = true)
         val matchesStatus = when (statusFilter) {
@@ -1165,7 +1171,13 @@ private fun RosterCard(
             "Suspended" -> host.status == AgencyStatus.SUSPENDED
             else -> true
         }
-        matchesQuery && matchesStatus
+        val goal = goalsByUsername[host.username.lowercase()]
+        val matchesGoal = when (goalFilter) {
+            "Below weekly goal" -> host.status == AgencyStatus.ACTIVE && goal != null && !goal.metTarget
+            "Meeting weekly goal" -> host.status == AgencyStatus.ACTIVE && goal?.metTarget == true
+            else -> true
+        }
+        matchesQuery && matchesStatus && matchesGoal
     }
     val filteredHosts = when (sort) {
         "30-day coins" -> matchingHosts.sortedWith(compareByDescending<AgencyHostRow> { it.last30dCoins }.thenBy { it.username.lowercase() })
@@ -1219,6 +1231,26 @@ private fun RosterCard(
                     )
                 }
             }
+            Spacer(Modifier.height(6.dp))
+            Text("Weekly goal", color = OnDarkMedium, fontSize = 10.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.padding(top = 4.dp)) {
+                listOf("All hosts", "Below weekly goal", "Meeting weekly goal").forEach { filter ->
+                    Text(
+                        text = filter,
+                        color = if (goalFilter == filter) Mint else OnDarkMedium,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (goalFilter == filter) Mint.copy(alpha = 0.14f) else Color.Transparent)
+                            .clickable { onGoalFilterChange(filter) }
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    )
+                }
+            }
+            if (goalFilter != "All hosts" && goals == null) {
+                Text("Weekly goal data is unavailable. Refresh the goals section and try again.", color = WarningAmber, fontSize = 10.sp)
+            }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Sort", color = OnDarkMedium, fontSize = 10.sp)
@@ -1243,7 +1275,7 @@ private fun RosterCard(
                 fontSize = 10.sp,
             )
             if (filteredHosts.isEmpty()) {
-                Text("No hosts match this search or status filter.", color = OnDarkMedium, fontSize = 12.sp)
+                Text("No hosts match this search, status or weekly-goal filter.", color = OnDarkMedium, fontSize = 12.sp)
             } else {
                 filteredHosts.forEach { host ->
                     HostRow(
