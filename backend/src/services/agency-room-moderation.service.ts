@@ -77,7 +77,7 @@ export async function agencyKickRoomMember(actorUserId: string, agencyId: string
 }
 
 export async function agencyBanRoomMember(actorUserId: string, agencyId: string, roomId: string, targetUserId: string, reason?: string | null, minutes?: number | null): Promise<{ seats: SeatDto[]; wasPresent: boolean; expiresAt: string | null }> {
-  const scope = await assignedRoom(actorUserId, roomId);
+  const scope = await assignedRoom(actorUserId, agencyId, roomId);
   await assertTarget(scope, targetUserId);
   const expiresAt = minutes ? new Date(Date.now() + minutes * 60_000) : null;
   await withTransaction(async (client) => {
@@ -108,7 +108,7 @@ export async function agencyBanRoomMember(actorUserId: string, agencyId: string,
 }
 
 export async function agencyUnbanRoomMember(actorUserId: string, agencyId: string, roomId: string, targetUserId: string): Promise<{ removed: boolean }> {
-  const scope = await assignedRoom(actorUserId, roomId);
+  const scope = await assignedRoom(actorUserId, agencyId, roomId);
   if (targetUserId === scope.host_user_id) throw ApiError.forbidden('Agency moderators cannot act on the room owner', 'agency_host_protected');
   return withTransaction(async (client) => {
     const deleted = await client.query(
@@ -128,7 +128,7 @@ export async function agencyUnbanRoomMember(actorUserId: string, agencyId: strin
 }
 
 export async function listAgencyRoomModerationAudit(actorUserId: string, agencyId: string, roomId: string, limit = 50) {
-  const scope = await assignedRoom(actorUserId, roomId);
+  const scope = await assignedRoom(actorUserId, agencyId, roomId);
   return many(
     `SELECT id, target_user_id AS "targetUserId", action, reason, details, created_at AS "createdAt"
        FROM agency_room_moderation_audit
