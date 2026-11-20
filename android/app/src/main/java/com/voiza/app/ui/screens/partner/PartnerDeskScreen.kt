@@ -69,6 +69,7 @@ import com.voiza.app.domain.model.PartnerDashboard
 import com.voiza.app.domain.model.PartnerSellerRow
 import com.voiza.app.data.export.toPartnerSellerCsv
 import com.voiza.app.data.export.toRechargeOrderCsv
+import com.voiza.app.data.export.toPartnerStatementCsv
 import com.voiza.app.domain.model.PartnerStatement
 import com.voiza.app.domain.model.RechargeOrder
 import com.voiza.app.domain.model.RechargeOrderStatus
@@ -131,6 +132,7 @@ fun PartnerDeskScreen(
     var fileError by remember { mutableStateOf<String?>(null) }
     var pendingSellerExport by remember { mutableStateOf<List<PartnerSellerRow>?>(null) }
     var pendingOrderExport by remember { mutableStateOf<List<RechargeOrder>?>(null) }
+    var pendingStatementExport by remember { mutableStateOf<PartnerStatement?>(null) }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -174,6 +176,21 @@ fun PartnerDeskScreen(
             banner = if (saved) "Recharge orders CSV saved." else "Could not save recharge orders CSV."
         }
         pendingOrderExport = null
+    }
+
+    val statementExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri ->
+        val statement = pendingStatementExport
+        if (uri != null && statement != null) {
+            val saved = runCatching {
+                context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use {
+                    it.write(statement.toPartnerStatementCsv())
+                } ?: error("Could not open the selected file.")
+            }.isSuccess
+            banner = if (saved) "Partner statement CSV saved." else "Could not save partner statement CSV."
+        }
+        pendingStatementExport = null
     }
 
     // A write's outcome lands once: success closes the dialog and leaves a banner; a failure stays
@@ -353,7 +370,16 @@ fun PartnerDeskScreen(
                         onOpen = viewModel::openSellerReport,
                     )
                 }
-                DeskTab.STATEMENT -> item { StatementSection(state.statement, state.statementError) }
+                DeskTab.STATEMENT -> item {
+                    StatementSection(
+                        statement = state.statement,
+                        error = state.statementError,
+                        onExport = { statement ->
+                            pendingStatementExport = statement
+                            statementExportLauncher.launch("vozia-partner-statement.csv")
+                        },
+                    )
+                }
             }
         }
     }
@@ -879,7 +905,7 @@ private fun SellerReportView(
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun StatementSection(statement: PartnerStatement?, error: String?) {
+private fun StatementSection(statement: PartnerStatement?, error: String?, onExport: (PartnerStatement) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (error != null) {
             VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
@@ -890,6 +916,10 @@ private fun StatementSection(statement: PartnerStatement?, error: String?) {
         if (statement == null) {
             LoadingProgress(overlay = false)
             return@Column
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Loaded statement · " + statement.entries.size + " commission lines · " + statement.settlements.size + " batches", color = OnDarkMedium, fontSize = 10.sp, modifier = Modifier.weight(1f))
+            TextButton(onClick = { onExport(statement) }) { Text("Export CSV") }
         }
         statement.cash?.let { CashBookCard(it) }
         EntriesCard(statement.entries, statement.totalEntries)
