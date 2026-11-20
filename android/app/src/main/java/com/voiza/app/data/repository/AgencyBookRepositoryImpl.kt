@@ -55,6 +55,8 @@ class AgencyBookRepositoryImpl(
                     id = id,
                     targetUserId = row.targetUserId.orEmpty(),
                     targetUsername = row.targetUsername?.takeIf { it.isNotBlank() } ?: row.targetUserId.orEmpty(),
+                    actorUserId = row.actorUserId.orEmpty(),
+                    actorUsername = row.actorUsername?.takeIf { it.isNotBlank() } ?: row.actorUserId.orEmpty(),
                     action = row.action.orEmpty(),
                     reason = row.reason,
                     createdAt = row.createdAt,
