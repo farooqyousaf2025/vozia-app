@@ -59,7 +59,6 @@ async function memberToken(phone, username) {
   await addCheckin(hostA, 1);
   await addCheckin(hostA, 2);
   await addCheckin(hostB, 0);
-  for (let day = 3; day < 100; day += 1) await addCheckin(hostA, day);
 
   const initial = await api('GET', '/api/agency/goals', { token: owner.token });
   const initialHosts = initial.json && initial.json.goals && initial.json.goals.hosts || [];
@@ -104,6 +103,8 @@ async function memberToken(phone, username) {
   report('rejected target changes leave the saved target unchanged',
     final.status === 200 && final.json.goals.weeklyAttendanceTargetDays === 3,
     final.json && final.json.goals && final.json.goals.weeklyAttendanceTargetDays);
+
+  for (let day = 3; day < 100; day += 1) await addCheckin(hostA, day);
 
   const recognition = await api('GET', '/api/agency/recognition', { token: owner.token });
   const recognitionHosts = recognition.json && recognition.json.recognition && recognition.json.recognition.hosts || [];
