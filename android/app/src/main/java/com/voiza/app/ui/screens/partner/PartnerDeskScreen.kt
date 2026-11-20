@@ -67,6 +67,7 @@ import com.voiza.app.domain.model.PartnerAccount
 import com.voiza.app.domain.model.PartnerAccountStatus
 import com.voiza.app.domain.model.PartnerDashboard
 import com.voiza.app.domain.model.PartnerSellerRow
+import com.voiza.app.data.export.toPartnerSellerCsv
 import com.voiza.app.domain.model.PartnerStatement
 import com.voiza.app.domain.model.RechargeOrder
 import com.voiza.app.domain.model.RechargeOrderStatus
@@ -127,6 +128,7 @@ fun PartnerDeskScreen(
     var receiptTarget by remember { mutableStateOf<PartnerDeskViewModel.ReceiptTarget?>(null) }
     var banner by remember { mutableStateOf<String?>(null) }
     var fileError by remember { mutableStateOf<String?>(null) }
+    var pendingSellerExport by remember { mutableStateOf<List<PartnerSellerRow>?>(null) }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -140,6 +142,21 @@ fun PartnerDeskScreen(
                 is ReceiptRead.Ok -> viewModel.attachReceipt(target, read.fileName, read.base64)
             }
         }
+    }
+
+    val sellerExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri ->
+        val sellers = pendingSellerExport
+        if (uri != null && sellers != null) {
+            val saved = runCatching {
+                context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use {
+                    it.write(sellers.toPartnerSellerCsv())
+                } ?: error("Could not open the selected file.")
+            }.isSuccess
+            banner = if (saved) "Seller network CSV saved." else "Could not save seller network CSV."
+        }
+        pendingSellerExport = null
     }
 
     // A write's outcome lands once: success closes the dialog and leaves a banner; a failure stays
@@ -305,6 +322,10 @@ fun PartnerDeskScreen(
                         onQueryChange = { sellerQuery = it },
                         statusFilter = sellerStatusFilter,
                         onStatusFilterChange = { sellerStatusFilter = it },
+                        onExport = { filtered ->
+                            pendingSellerExport = filtered
+                            sellerExportLauncher.launch("vozia-bd-seller-network.csv")
+                        },
                         onOpen = viewModel::openSellerReport,
                     )
                 }
@@ -633,6 +654,7 @@ private fun SellersCard(
     onQueryChange: (String) -> Unit,
     statusFilter: String,
     onStatusFilterChange: (String) -> Unit,
+    onExport: (List<PartnerSellerRow>) -> Unit,
     onOpen: (String) -> Unit,
 ) {
     val filteredSellers = sellers.filter { seller ->
@@ -682,7 +704,12 @@ private fun SellersCard(
             }
         }
         Spacer(Modifier.height(7.dp))
-        Text("Showing ${filteredSellers.size} of ${sellers.size} sellers", color = OnDarkMedium, fontSize = 10.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Showing ${filteredSellers.size} of ${sellers.size} sellers", color = OnDarkMedium, fontSize = 10.sp, modifier = Modifier.weight(1f))
+            TextButton(onClick = { onExport(filteredSellers) }, enabled = filteredSellers.isNotEmpty()) {
+                Text("Export CSV")
+            }
+        }
         if (filteredSellers.isEmpty()) {
             Text("No sellers match this search or status filter.", color = OnDarkMedium, fontSize = 12.sp)
         } else {
