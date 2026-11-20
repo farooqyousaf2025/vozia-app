@@ -12,6 +12,7 @@ import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyHostAttendanceReport
 import com.voiza.app.domain.model.AgencyHostGoals
 import com.voiza.app.domain.model.AgencyHostRecognition
+import com.voiza.app.domain.model.AgencyHostLeaderboard
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencySubRow
@@ -62,6 +63,10 @@ class AgencyBookViewModel(
         val hostRecognition: AgencyHostRecognition? = null,
         val recognitionLoading: Boolean = false,
         val recognitionError: String? = null,
+        val hostLeaderboard: AgencyHostLeaderboard? = null,
+        val leaderboardDays: Int = 7,
+        val leaderboardLoading: Boolean = false,
+        val leaderboardError: String? = null,
         val activeRooms: List<AgencyLiveRoom> = emptyList(),
         val expandedRoomId: String? = null,
         val roomMembers: List<AgencyRoomMember> = emptyList(),
@@ -154,6 +159,27 @@ class AgencyBookViewModel(
             when (val result = agencyBookRepository.hostGoals()) {
                 is ApiResult.Success -> _state.update { it.copy(hostGoals = result.data, goalsLoading = false) }
                 is ApiResult.Failure -> _state.update { it.copy(goalsLoading = false, goalsError = result.message) }
+            }
+        }
+    }
+
+    fun setLeaderboardDays(days: Int) {
+        val selected = if (days == 30) 30 else 7
+        if (_state.value.leaderboardDays == selected && _state.value.hostLeaderboard != null) return
+        _state.update { it.copy(leaderboardDays = selected) }
+        loadHostLeaderboard(selected)
+    }
+
+    fun loadHostLeaderboard(days: Int = _state.value.leaderboardDays) {
+        viewModelScope.launch {
+            _state.update { it.copy(leaderboardLoading = true, leaderboardError = null) }
+            when (val result = agencyBookRepository.hostLeaderboard(days)) {
+                is ApiResult.Success -> _state.update {
+                    it.copy(hostLeaderboard = result.data, leaderboardDays = days, leaderboardLoading = false)
+                }
+                is ApiResult.Failure -> _state.update {
+                    it.copy(leaderboardLoading = false, leaderboardError = result.message)
+                }
             }
         }
     }
@@ -256,6 +282,7 @@ class AgencyBookViewModel(
         val attendance = agencyBookRepository.hostAttendance(_state.value.attendanceDays)
         val goals = agencyBookRepository.hostGoals()
         val recognition = agencyBookRepository.hostRecognition()
+        val leaderboard = agencyBookRepository.hostLeaderboard(_state.value.leaderboardDays)
         val roster = agencyBookRepository.hosts()
         // Master-only, and skipped rather than called: the server's own answer for a sub is a refusal.
         val allocations = if (position.isMaster) agencyBookRepository.subAgencies() else null
@@ -274,6 +301,9 @@ class AgencyBookViewModel(
                 hostRecognition = (recognition as? ApiResult.Success)?.data ?: it.hostRecognition,
                 recognitionError = (recognition as? ApiResult.Failure)?.message,
                 recognitionLoading = false,
+                hostLeaderboard = (leaderboard as? ApiResult.Success)?.data ?: it.hostLeaderboard,
+                leaderboardError = (leaderboard as? ApiResult.Failure)?.message,
+                leaderboardLoading = false,
                 activeRooms = (rooms as? ApiResult.Success)?.data ?: it.activeRooms,
                 roomsError = (rooms as? ApiResult.Failure)?.message,
                 hosts = (roster as? ApiResult.Success)?.data ?: it.hosts,
