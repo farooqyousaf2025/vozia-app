@@ -296,6 +296,13 @@ private fun RosterCard(
     }
     VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
         SectionLabel("Your hosts · ${hosts.size}")
+        if (hosts.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                HostCount("Active", hosts.count { it.status == AgencyStatus.ACTIVE }, RCoinGreen)
+                HostCount("Pending", hosts.count { it.status == AgencyStatus.PENDING }, WarningAmber)
+                HostCount("Suspended", hosts.count { it.status == AgencyStatus.SUSPENDED }, DangerRed)
+            }
+        }
         if (error != null) {
             Text(error, color = DangerRed, fontSize = 11.sp)
             return@VoizaCard
@@ -372,6 +379,8 @@ private fun HostRow(host: AgencyHostRow) {
                 fontSize = 10.sp,
             )
         }
+        Spacer(Modifier.width(8.dp))
+        Pill(host.status?.name ?: "Unknown", statusColor(host.status))
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {
             Text(coins(host.accruedCoins), color = RCoinGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -453,6 +462,14 @@ private fun SectionLabel(text: String) {
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(bottom = 6.dp),
     )
+}
+
+@Composable
+private fun HostCount(label: String, count: Int, color: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(count.toString(), color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = OnDarkMedium, fontSize = 10.sp)
+    }
 }
 
 @Composable
