@@ -445,7 +445,6 @@ export type CreateRoomInput = {
 /** Every active member may create a room; partner approval is not a room-creation gate. */
 export async function createRoom(hostUserId: string, input: CreateRoomInput): Promise<RoomDto & { seats: SeatDto[] }> {
   const user = await loadUser(hostUserId);
-  await assertMayHost(hostUserId);
   const seatCapacity = await resolveSeatCapacity(input.seatCapacity);
   // Asked for a paid look with no receipt behind it? Refuse before a room exists to hang it on.
   if (input.theme && isTheme(input.theme)) await assertMayWearTheme(hostUserId, input.theme);
