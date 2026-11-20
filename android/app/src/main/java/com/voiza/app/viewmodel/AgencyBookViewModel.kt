@@ -6,6 +6,7 @@ import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.di.ServiceLocator
 import com.voiza.app.domain.model.AgencyLiveRoom
 import com.voiza.app.domain.model.AgencyRoomMember
+import com.voiza.app.domain.model.AgencyRoomModerationAudit
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
@@ -45,6 +46,9 @@ class AgencyBookViewModel(
         val activeRooms: List<AgencyLiveRoom> = emptyList(),
         val expandedRoomId: String? = null,
         val roomMembers: List<AgencyRoomMember> = emptyList(),
+        val moderationHistory: List<AgencyRoomModerationAudit> = emptyList(),
+        val historyLoading: Boolean = false,
+        val historyError: String? = null,
         val roomMembersLoading: Boolean = false,
         val roomMembersError: String? = null,
         val moderationBusyUserId: String? = null,
@@ -85,10 +89,11 @@ class AgencyBookViewModel(
 
     fun toggleRoomMembers(roomId: String) {
         if (_state.value.expandedRoomId == roomId) {
-            _state.update { it.copy(expandedRoomId = null, roomMembers = emptyList(), roomMembersError = null) }
+            _state.update { it.copy(expandedRoomId = null, roomMembers = emptyList(), roomMembersError = null, moderationHistory = emptyList(), historyError = null) }
         } else {
-            _state.update { it.copy(expandedRoomId = roomId, roomMembers = emptyList(), roomMembersError = null) }
+            _state.update { it.copy(expandedRoomId = roomId, roomMembers = emptyList(), roomMembersError = null, moderationHistory = emptyList(), historyError = null) }
             loadRoomMembers(roomId)
+            loadModerationHistory(roomId)
         }
     }
 
@@ -101,6 +106,20 @@ class AgencyBookViewModel(
                 }
                 is ApiResult.Failure -> _state.update {
                     it.copy(roomMembersLoading = false, roomMembersError = result.message)
+                }
+            }
+        }
+    }
+
+    fun loadModerationHistory(roomId: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(historyLoading = true, historyError = null) }
+            when (val result = agencyBookRepository.moderationHistory(roomId, 50)) {
+                is ApiResult.Success -> _state.update {
+                    it.copy(moderationHistory = result.data, historyLoading = false)
+                }
+                is ApiResult.Failure -> _state.update {
+                    it.copy(historyLoading = false, historyError = result.message)
                 }
             }
         }
@@ -126,6 +145,7 @@ class AgencyBookViewModel(
                 is ApiResult.Success -> {
                     _state.update { it.copy(moderationBusyUserId = null) }
                     loadRoomMembers(roomId)
+                    loadModerationHistory(roomId)
                 }
                 is ApiResult.Failure -> _state.update {
                     it.copy(moderationBusyUserId = null, roomMembersError = result.message)
