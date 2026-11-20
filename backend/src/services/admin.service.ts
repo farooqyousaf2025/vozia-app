@@ -100,7 +100,7 @@ export async function searchUsers(opts: {
   if (opts.search) {
     params.push(`%${opts.search}%`);
     const p = params.length;
-    where.push(`(u.username ILIKE ${p} OR u.phone ILIKE ${p} OR u.id::text = $${p})`);
+    where.push(`(u.username ILIKE $${p} OR u.phone ILIKE $${p} OR u.id::text = $${p} OR a.name ILIKE $${p})`);
   }
   if (opts.status) where.push(`u.status = $${params.push(opts.status)}`);
   if (opts.userType) where.push(`u.user_type = $${params.push(opts.userType)}`);
@@ -116,7 +116,7 @@ export async function searchUsers(opts: {
       LIMIT $${params.push(opts.limit)} OFFSET $${params.push((opts.page - 1) * opts.limit)}`,
     params,
   );
-  const count = await one<{ n: string }>(`SELECT COUNT(*) AS n FROM users u ${clause}`, params.slice(0, where.length));
+  const count = await one<{ n: string }>(`SELECT COUNT(DISTINCT u.id) AS n FROM users u LEFT JOIN agency_hosts ah ON ah.host_user_id = u.id AND ah.status = 'ACTIVE' LEFT JOIN agencies a ON a.id = ah.agency_id ${clause}`, params.slice(0, where.length));
 
   return { users: rows, total: Number(count?.n ?? 0), page: opts.page, limit: opts.limit };
 }

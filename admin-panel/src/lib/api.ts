@@ -1779,6 +1779,7 @@ export const api = {  // ---- auth ---------------------------------------------
       businessId?: string;
       adminId?: string;
       actorKind?: 'admin' | 'business' | 'system';
+      targetId?: string;
     } = {},
   ): Promise<{ entries: AuditEntry[] }> {
     return request<{ entries: AuditEntry[] }>(
@@ -1788,6 +1789,7 @@ export const api = {  // ---- auth ---------------------------------------------
         businessId: params.businessId,
         adminId: params.adminId,
         actorKind: params.actorKind,
+        targetId: params.targetId,
       })}`,
     );
   },

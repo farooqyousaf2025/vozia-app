@@ -36,7 +36,7 @@ import { Table, TBody, Td, Th, THead, Tr } from '../components/ui/Table';
 import { ApiError, api, assetUrl } from '../lib/api';
 import { formatCompact, formatDiamonds, formatRCoin, parseSignedInt, parseUnsignedInt, relativeTime, formatDateTime } from '../lib/format';
 import { useAuth } from '../context/AuthContext';
-import type { PromoGrant, PromoPolicyConfig, StoreItemKind, UserListQuery, UserRow, UserSocialSummary, UserStatus, UserType } from '../types';
+import type { AuditEntry, PromoGrant, PromoPolicyConfig, StoreItemKind, UserListQuery, UserRow, UserSocialSummary, UserStatus, UserType } from '../types';
 
 const PAGE_LIMIT = 20;
 
@@ -71,6 +71,7 @@ export default function UsersPage() {
   const [xpTarget, setXpTarget] = useState<UserRow | null>(null);
   const [grantTarget, setGrantTarget] = useState<UserRow | null>(null);
   const [socialTarget, setSocialTarget] = useState<UserRow | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<UserRow | null>(null);
   const [promoTarget, setPromoTarget] = useState<UserRow | null>(null);
 
   const query = useMemo<UserListQuery>(
@@ -110,7 +111,7 @@ export default function UsersPage() {
   }, [load]);
 
   const replaceRow = (updated: UserRow) => {
-    setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+    setRows((current) => current.map((row) => (row.id === updated.id ? { ...updated, agency: updated.agency ?? row.agency } : row)));
   };
 
   // VIP is the gift spend tier (gifts.min_vip_level), so it is written here and
@@ -197,6 +198,7 @@ export default function UsersPage() {
                 <Th>User</Th>
                 <Th>Phone</Th>
                 <Th>Type</Th>
+                <Th>Agency</Th>
                 <Th>Status</Th>
                 <Th>VIP</Th>
                 <Th>Earned level</Th>
@@ -225,25 +227,27 @@ export default function UsersPage() {
                     </Td>
                     <Td className="tabular-nums">{user.phone}</Td>
                     <Td>
-                      <Badge tone={USER_TYPE_TONES[user.userType] ?? 'slate'}>{user.userType}</Badge>
+                      <div className="space-y-1">
+                        <Badge tone={USER_TYPE_TONES[user.userType] ?? 'slate'}>{user.userType}</Badge>
+                        {user.userType === 'HOST' && <p className="text-[10px] text-faint">Host account</p>}
+                      </div>
+                    </Td>
+                    <Td>
+                      {user.agency ? <span className="text-xs text-ink">{user.agency}</span> : <span className="text-xs text-faint">—</span>}
                     </Td>
                     <Td>
                       <Badge tone={user.status === 'ACTIVE' ? 'green' : 'red'}>{user.status}</Badge>
                     </Td>
                     <Td>
-                      <Select
+                      {can('user:vip') ? <Select
                         aria-label={`VIP level for ${user.username}`}
                         className="w-[76px]"
                         value={user.vipLevel}
                         disabled={vipBusy === user.id}
                         onChange={(e) => void changeVip(user, Number(e.target.value))}
                       >
-                        {VIP_LEVELS.map((level) => (
-                          <option key={level} value={level}>
-                            {level}
-                          </option>
-                        ))}
-                      </Select>
+                        {VIP_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
+                      </Select> : <span className="text-xs tabular-nums text-muted">{user.vipLevel}</span>}
                     </Td>
                     {/* Earned rank, read-only beside the tier an operator sets: a member climbs this
                         one by sending and receiving coins, and only an operator's correction moves it. */}
@@ -289,20 +293,20 @@ export default function UsersPage() {
                     <Td className="whitespace-nowrap">{relativeTime(user.lastSeenAt)}</Td>
                     <Td align="right" className="whitespace-nowrap pr-4">
                       <div className="flex items-center justify-end gap-1.5">
-                        <Button
+                        {can('user:wallet') && <Button
                           size="sm"
                           icon={<IconDiamond className="h-3.5 w-3.5" />}
                           onClick={() => setBalanceTarget(user)}
                         >
                           Balance
-                        </Button>
-                        <Button
+                        </Button>}
+                        {can('user:vip') && <Button
                           size="sm"
                           icon={<IconTrendUp className="h-3.5 w-3.5" />}
                           onClick={() => setXpTarget(user)}
                         >
                           Level
-                        </Button>
+                        </Button>}
                         {can('user:wallet') && (
                           <Button
                             size="sm"
@@ -312,20 +316,21 @@ export default function UsersPage() {
                             Grant
                           </Button>
                         )}
-                        <Button
+                        {can('user:wallet') && <Button
                           size="sm"
                           icon={<IconSpark className="h-3.5 w-3.5" />}
                           onClick={() => setPromoTarget(user)}
                         >
                           Bonus
-                        </Button>
+                        </Button>}
                         <IconButton
                           label={`Social graph for ${user.username}`}
                           onClick={() => setSocialTarget(user)}
                         >
                           <IconEye className="h-4 w-4" />
                         </IconButton>
-                        {user.status === 'ACTIVE' ? (
+                        {can('audit:read') && <Button size="sm" variant="ghost" onClick={() => setHistoryTarget(user)}>History</Button>}
+                        {can('user:moderate') && (user.status === 'ACTIVE' ? (
                           <IconButton label={`Ban ${user.username}`} tone="danger" onClick={() => setBanTarget(user)}>
                             <IconBan className="h-4 w-4" />
                           </IconButton>
@@ -333,7 +338,7 @@ export default function UsersPage() {
                           <IconButton label={`Unban ${user.username}`} onClick={() => setBanTarget(user)}>
                             <IconCheck className="h-4 w-4" />
                           </IconButton>
-                        )}
+                        ))}
                       </div>
                     </Td>
                   </Tr>
@@ -384,6 +389,10 @@ export default function UsersPage() {
 
       {socialTarget !== null && (
         <UserSocialModal user={socialTarget} onClose={() => setSocialTarget(null)} />
+      )}
+
+      {historyTarget !== null && (
+        <UserHistoryModal user={historyTarget} onClose={() => setHistoryTarget(null)} />
       )}
 
       {promoTarget !== null && (
@@ -1615,5 +1624,88 @@ function PromoPolicyCard({ canRead, canWrite, canWallet }: PromoPolicyCardProps)
         </div>
       )}
     </Card>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Account activity: immutable audit rows for this user, including room actions
+// whose audit details identify the affected member.
+// ---------------------------------------------------------------------------
+function UserHistoryModal({ user, onClose }: { user: UserRow; onClose: () => void }) {
+  const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    api.audit({ targetId: user.id, limit: 50 })
+      .then((result) => {
+        if (!cancelled) setEntries(result.entries);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof ApiError ? err.message : 'Could not load account history.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [user.id]);
+
+  return (
+    <Modal open onClose={onClose} size="lg" title={`Account history · ${user.username}`} subtitle={`${user.userType} · ${user.status} · ${user.agency ?? 'No active agency assignment'}`}>
+      <div className="space-y-3">
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border border-edge/60 bg-elevated/40 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wider text-faint">Account created</p>
+            <p className="mt-1 text-xs text-ink">{formatDateTime(user.createdAt)}</p>
+          </div>
+          <div className="rounded-lg border border-edge/60 bg-elevated/40 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wider text-faint">Last seen</p>
+            <p className="mt-1 text-xs text-ink">{user.lastSeenAt ? relativeTime(user.lastSeenAt) : 'Not recorded'}</p>
+          </div>
+          <div className="rounded-lg border border-edge/60 bg-elevated/40 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wider text-faint">Account id</p>
+            <p className="mt-1 truncate font-mono text-[10px] text-ink" title={user.id}>{user.id}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted">Moderation and account activity</h4>
+          <span className="text-[11px] text-faint">Latest 50 audit entries</span>
+        </div>
+        {loading ? (
+          <div className="grid h-28 place-items-center text-violet-300"><Spinner className="h-6 w-6" /></div>
+        ) : error ? (
+          <EmptyState title="History unavailable" message={error} icon={<IconAlert className="h-5 w-5" />} />
+        ) : entries.length === 0 ? (
+          <EmptyState title="No recorded actions" message="No audit entries currently reference this account." icon={<IconShieldCheck className="h-5 w-5" />} />
+        ) : (
+          <div className="max-h-[42vh] space-y-2 overflow-y-auto pr-1">
+            {entries.map((entry) => (
+              <div key={entry.id} className="rounded-lg border border-edge/60 bg-elevated/30 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Badge tone={entry.targetType === 'user' ? 'violet' : entry.targetType === 'room' ? 'sky' : 'slate'}>{entry.targetType ?? 'system'}</Badge>
+                    <span className="font-mono text-[11px] text-violet-200">{entry.action}</span>
+                  </div>
+                  <span className="text-[11px] text-faint" title={formatDateTime(entry.createdAt)}>{relativeTime(entry.createdAt)}</span>
+                </div>
+                <p className="mt-2 text-sm text-ink">{entry.summary}</p>
+                <p className="mt-1 text-[11px] text-muted">By {entry.actor} · {entry.actorKind}</p>
+                {Object.keys(entry.details ?? {}).length > 0 && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-[11px] text-violet-300">View recorded details</summary>
+                    <pre className="mt-2 overflow-x-auto rounded bg-surface/70 p-2 text-[10px] text-muted">{JSON.stringify(entry.details, null, 2)}</pre>
+                  </details>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }

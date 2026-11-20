@@ -76,6 +76,8 @@ export interface UserRow {
   phone: string;
   username: string;
   avatarUrl: string | null;
+  /** Active agency assignment, when this host is currently assigned to one. */
+  agency?: string | null;
   userType: UserType;
   status: UserStatus;
   diamondBalance: number;

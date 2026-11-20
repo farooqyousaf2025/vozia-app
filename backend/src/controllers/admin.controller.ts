@@ -1616,6 +1616,7 @@ export const audit = asyncHandler(async (req: Request, res: Response) => {
     entries: await listAudit({
       limit: requireInt(req.query?.limit ?? 100, 'limit', { min: 1, max: 500 }),
       targetType: optionalString(req.query?.targetType, 'targetType', 32),
+      targetId: optionalUuid(req.query?.targetId, 'targetId'),
       // A partner's own trail: who opened what, who claimed it was paid.
       businessId: optionalUuid(req.query?.businessId, 'businessId'),
       adminId: optionalUuid(req.query?.adminId, 'adminId'),
