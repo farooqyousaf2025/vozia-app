@@ -474,6 +474,44 @@ function loadLivekitService() {
   const adminToken = adminLogin.json && adminLogin.json.token;
   check('admin: the operator bootstrap OTP mints an admin token', adminLogin.status === 200 && !!adminToken, { status: adminLogin.status, code: adminLogin.json && adminLogin.json.error && adminLogin.json.error.code });
 
+  const systemRoomResponse = await api('POST', '/api/admin/rooms', {
+    token: adminToken,
+    body: { title: `E2E System Room ${stamp}`, category: 'PARTY', type: 'PUBLIC', seatCapacity: 3 },
+  });
+  const systemRoom = systemRoomResponse.json && systemRoomResponse.json.room;
+  const systemRoomId = systemRoom && systemRoom.id;
+  check(
+    'admin: an operator creates a system-owned room without a member host',
+    systemRoomResponse.status === 201 && !!systemRoomId &&
+      systemRoom.ownerType === 'SYSTEM' && systemRoom.host.username === 'Vozia Official',
+    { status: systemRoomResponse.status, room: systemRoom && { ownerType: systemRoom.ownerType, host: systemRoom.host } },
+  );
+  if (systemRoomId) {
+    check(
+      'admin: system room ownership is explicit in PostgreSQL and not assigned to a user',
+      await sql(`select owner_type||'/'||coalesce(host_id::text,'-')||'/'||coalesce(owner_admin_id::text,'-') from rooms where id='${systemRoomId}'`) === `SYSTEM/-/${(await sql(`select id from admins where username='admin' limit 1`))}`,
+      await sql(`select owner_type||'/'||coalesce(host_id::text,'-')||'/'||coalesce(owner_admin_id::text,'-') from rooms where id='${systemRoomId}'`),
+    );
+    check(
+      'admin: system room seats start empty and no fake host participant is inserted',
+      await sql(`select count(*) from room_seats where room_id='${systemRoomId}' and status='EMPTY' and user_id is null`) === '3' &&
+        await sql(`select count(*) from room_participants where room_id='${systemRoomId}'`) === '0',
+      { seats: await sql(`select count(*) from room_seats where room_id='${systemRoomId}' and status='EMPTY' and user_id is null`), participants: await sql(`select count(*) from room_participants where room_id='${systemRoomId}'`) },
+    );
+    const systemJoin = await api('POST', `/api/rooms/${systemRoomId}/join`, { token: a.token });
+    const systemSeat = await api('POST', `/api/rooms/${systemRoomId}/seat`, { token: a.token, body: { seatIndex: 0 } });
+    check(
+      'admin: a member can join and use seat zero in a hostless system room',
+      systemJoin.status === 200 && systemSeat.status === 200,
+      { join: systemJoin.status, seat: systemSeat.status, error: systemSeat.json && systemSeat.json.error },
+    );
+  }
+  const memberAdminAttempt = await api('POST', '/api/admin/rooms', {
+    token: a.token,
+    body: { title: `E2E Unauthorized ${stamp}`, category: 'PARTY', type: 'PUBLIC' },
+  });
+  check('admin: a member credential cannot create an operator-owned room', memberAdminAttempt.status === 403, { status: memberAdminAttempt.status });
+
   const vipGift = await api('POST', '/api/admin/gifts', {
     token: adminToken,
     body: { name: `E2E Crown ${stamp}`, iconUrl: '/assets/gifts/rose.png', diamondPrice: 50, rCoinValue: 40, category: 'SPECIAL', minVipLevel: 5, sortOrder: 900 },
