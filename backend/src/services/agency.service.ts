@@ -1764,6 +1764,66 @@ export async function agencySelfHostRecognition(agencyId: string): Promise<Agenc
   };
 }
 
+export type AgencyHostLeaderboardBadge = { code: string; title: string; unlockedAt: string };
+export type AgencyHostLeaderboardRow = {
+  rank: number; username: string; avatarUrl: string | null; attendanceDays: number;
+  checkIns: number; lastCheckInAt: string | null; badges: AgencyHostLeaderboardBadge[];
+};
+export type AgencyHostLeaderboard = {
+  days: 7 | 30; timezone: 'UTC'; activeHostCount: number; hostsWithAttendance: number;
+  totalCheckIns: number; totalAttendanceDays: number; hostsWithBadges: number;
+  hosts: AgencyHostLeaderboardRow[];
+};
+
+/**
+ * Agency-only leaderboard: verified attendance in a 7/30-day UTC window, with lifetime earned badges.
+ * Ranking ties share a place; only currently assigned active hosts are included.
+ */
+export async function agencySelfHostLeaderboard(agencyId: string, days: number): Promise<AgencyHostLeaderboard> {
+  const windowDays = days === 30 ? 30 : 7;
+  const [attendance, recognition] = await Promise.all([
+    agencySelfHostAttendance(agencyId, windowDays),
+    agencySelfHostRecognition(agencyId),
+  ]);
+  const badgesByUsername = new Map(recognition.hosts.map(host => [
+    host.username,
+    host.milestones
+      .filter(milestone => milestone.unlockedAt !== null)
+      .map(milestone => ({
+        code: milestone.code, title: milestone.title, unlockedAt: milestone.unlockedAt!,
+      })),
+  ]));
+  const ordered = [...attendance.hosts].sort((a, b) =>
+    b.attendanceDays - a.attendanceDays
+      || b.checkIns - a.checkIns
+      || a.username.localeCompare(b.username),
+  );
+  let previousAttendanceDays = -1;
+  let previousCheckIns = -1;
+  let currentRank = 0;
+  const hosts = ordered.map((host, index) => {
+    if (host.attendanceDays !== previousAttendanceDays || host.checkIns !== previousCheckIns) {
+      currentRank = index + 1;
+      previousAttendanceDays = host.attendanceDays;
+      previousCheckIns = host.checkIns;
+    }
+    return {
+      rank: currentRank, username: host.username, avatarUrl: host.avatarUrl,
+      attendanceDays: host.attendanceDays, checkIns: host.checkIns,
+      lastCheckInAt: host.lastCheckInAt, badges: badgesByUsername.get(host.username) ?? [],
+    };
+  });
+  return {
+    days: windowDays as 7 | 30, timezone: 'UTC',
+    activeHostCount: hosts.length,
+    hostsWithAttendance: hosts.filter(host => host.checkIns > 0).length,
+    totalCheckIns: hosts.reduce((sum, host) => sum + host.checkIns, 0),
+    totalAttendanceDays: hosts.reduce((sum, host) => sum + host.attendanceDays, 0),
+    hostsWithBadges: hosts.filter(host => host.badges.length > 0).length,
+    hosts,
+  };
+}
+
 export type AgencyHostAttendanceDay = { date: string; checkIns: number; hostsCheckedIn: number };
 export type AgencyHostAttendanceRow = {
   username: string; avatarUrl: string | null; checkIns: number; attendanceDays: number; lastCheckInAt: string | null;

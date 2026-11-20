@@ -10,6 +10,7 @@ import com.voiza.app.data.mapper.toDomain
 import com.voiza.app.data.mapper.toAttendanceDomain
 import com.voiza.app.data.mapper.toGoalsDomain
 import com.voiza.app.data.mapper.toRecognitionDomain
+import com.voiza.app.data.mapper.toLeaderboardDomain
 import com.voiza.app.data.mapper.toHosts
 import com.voiza.app.data.mapper.toPosition
 import com.voiza.app.data.mapper.toSettlements
@@ -22,6 +23,7 @@ import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyHostAttendanceReport
 import com.voiza.app.domain.model.AgencyHostGoals
 import com.voiza.app.domain.model.AgencyHostRecognition
+import com.voiza.app.domain.model.AgencyHostLeaderboard
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencySubRow
@@ -116,6 +118,12 @@ class AgencyBookRepositoryImpl(
         apiCall { api.agencyHostRecognition() }.flatMapSuccess { envelope ->
             envelope.toRecognitionDomain()?.let { ApiResult.Success(it) }
                 ?: ApiResult.Failure("The host recognition report was empty.")
+        }
+
+    override suspend fun hostLeaderboard(days: Int): ApiResult<AgencyHostLeaderboard> =
+        apiCall { api.agencyHostLeaderboard(if (days == 30) 30 else 7) }.flatMapSuccess { envelope ->
+            envelope.toLeaderboardDomain()?.let { ApiResult.Success(it) }
+                ?: ApiResult.Failure("The host leaderboard was empty.")
         }
 
     override suspend fun hosts(limit: Int): ApiResult<List<AgencyHostRow>> =

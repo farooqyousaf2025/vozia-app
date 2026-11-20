@@ -7,6 +7,7 @@ import com.voiza.app.data.remote.dto.AgencyHostActivityEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostAttendanceEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostGoalsEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostRecognitionEnvelope
+import com.voiza.app.data.remote.dto.AgencyHostLeaderboardEnvelope
 import com.voiza.app.domain.model.AgencyHostActivityWeek
 import com.voiza.app.domain.model.AgencyHostAttendanceReport
 import com.voiza.app.domain.model.AgencyHostAttendanceTotals
@@ -17,6 +18,9 @@ import com.voiza.app.domain.model.AgencyHostGoalRow
 import com.voiza.app.domain.model.AgencyHostMilestone
 import com.voiza.app.domain.model.AgencyHostRecognition
 import com.voiza.app.domain.model.AgencyHostRecognitionRow
+import com.voiza.app.domain.model.AgencyHostLeaderboard
+import com.voiza.app.domain.model.AgencyHostLeaderboardBadge
+import com.voiza.app.domain.model.AgencyHostLeaderboardRow
 import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyHostActivityTotals
 import com.voiza.app.domain.model.AgencyHostActivityDay
@@ -187,6 +191,35 @@ fun AgencyHostRecognitionEnvelope.toRecognitionDomain(): AgencyHostRecognition? 
         timezone = recognition.timezone ?: "UTC",
         activeHostCount = recognition.activeHostCount ?: hosts.size,
         hostsWithAchievements = recognition.hostsWithAchievements ?: hosts.count { host -> host.milestones.any { it.unlockedAt != null } },
+        hosts = hosts,
+    )
+}
+
+fun AgencyHostLeaderboardEnvelope.toLeaderboardDomain(): AgencyHostLeaderboard? {
+    val leaderboard = leaderboard ?: return null
+    val hosts = leaderboard.hosts.orEmpty().filterNotNull().mapNotNull { row ->
+        val username = row.username?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val badges = row.badges.orEmpty().filterNotNull().mapNotNull { badge ->
+            val code = badge.code?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val title = badge.title?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val unlockedAt = badge.unlockedAt?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            AgencyHostLeaderboardBadge(code, title, unlockedAt)
+        }
+        AgencyHostLeaderboardRow(
+            rank = (row.rank ?: 0).coerceAtLeast(0), username = username, avatarUrl = row.avatarUrl,
+            attendanceDays = (row.attendanceDays ?: 0).coerceAtLeast(0),
+            checkIns = (row.checkIns ?: 0).coerceAtLeast(0), lastCheckInAt = row.lastCheckInAt,
+            badges = badges,
+        )
+    }
+    return AgencyHostLeaderboard(
+        days = if (leaderboard.days == 30) 30 else 7,
+        timezone = leaderboard.timezone ?: "UTC",
+        activeHostCount = leaderboard.activeHostCount ?: hosts.size,
+        hostsWithAttendance = leaderboard.hostsWithAttendance ?: hosts.count { it.checkIns > 0 },
+        totalCheckIns = leaderboard.totalCheckIns ?: hosts.sumOf { it.checkIns },
+        totalAttendanceDays = leaderboard.totalAttendanceDays ?: hosts.sumOf { it.attendanceDays },
+        hostsWithBadges = leaderboard.hostsWithBadges ?: hosts.count { it.badges.isNotEmpty() },
         hosts = hosts,
     )
 }

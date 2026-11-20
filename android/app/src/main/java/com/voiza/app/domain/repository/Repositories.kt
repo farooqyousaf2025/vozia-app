@@ -9,6 +9,7 @@ import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyHostAttendanceReport
 import com.voiza.app.domain.model.AgencyHostGoals
 import com.voiza.app.domain.model.AgencyHostRecognition
+import com.voiza.app.domain.model.AgencyHostLeaderboard
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencySubRow
@@ -527,6 +528,8 @@ interface AgencyBookRepository {
     suspend fun updateHostGoals(targetDays: Int): ApiResult<AgencyHostGoals> = ApiResult.Failure("Not supported")
     /** Verified attendance milestones and derived unlock dates for active assigned hosts. */
     suspend fun hostRecognition(): ApiResult<AgencyHostRecognition> = ApiResult.Failure("Not supported")
+    /** Verified attendance ranking and earned badges for active assigned hosts. */
+    suspend fun hostLeaderboard(days: Int = 7): ApiResult<AgencyHostLeaderboard> = ApiResult.Failure("Not supported")
 
     /** The hosts this agency is responsible for, newest first. */
     suspend fun hosts(limit: Int = 50): ApiResult<List<AgencyHostRow>>

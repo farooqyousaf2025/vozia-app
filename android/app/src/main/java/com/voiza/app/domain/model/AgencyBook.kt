@@ -160,6 +160,20 @@ data class AgencyHostRecognition(
     val hosts: List<AgencyHostRecognitionRow>,
 )
 
+data class AgencyHostLeaderboardBadge(
+    val code: String, val title: String, val unlockedAt: String,
+)
+data class AgencyHostLeaderboardRow(
+    val rank: Int, val username: String, val avatarUrl: String?,
+    val attendanceDays: Int, val checkIns: Int, val lastCheckInAt: String?,
+    val badges: List<AgencyHostLeaderboardBadge>,
+)
+data class AgencyHostLeaderboard(
+    val days: Int, val timezone: String, val activeHostCount: Int,
+    val hostsWithAttendance: Int, val totalCheckIns: Int, val totalAttendanceDays: Int,
+    val hostsWithBadges: Int, val hosts: List<AgencyHostLeaderboardRow>,
+)
+
 /** One host on the roster. No phone number and no account id: those are the operator's columns. */
 data class AgencyHostRow(
     val username: String,

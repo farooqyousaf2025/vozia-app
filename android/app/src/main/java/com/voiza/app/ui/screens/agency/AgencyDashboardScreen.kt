@@ -46,6 +46,7 @@ import com.voiza.app.domain.model.AgencyAccount
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyHostGoals
 import com.voiza.app.domain.model.AgencyHostRecognition
+import com.voiza.app.domain.model.AgencyHostLeaderboard
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencyRoomModerationAudit
@@ -156,6 +157,16 @@ fun AgencyDashboardScreen(
                     error = state.attendanceError,
                     onDaysChange = viewModel::setAttendanceDays,
                     onRefresh = { viewModel.loadHostAttendance() },
+                )
+            }
+            item {
+                AgencyHostLeaderboardCard(
+                    leaderboard = state.hostLeaderboard,
+                    selectedDays = state.leaderboardDays,
+                    loading = state.leaderboardLoading,
+                    error = state.leaderboardError,
+                    onDaysChange = viewModel::setLeaderboardDays,
+                    onRefresh = { viewModel.loadHostLeaderboard() },
                 )
             }
             item {
@@ -562,6 +573,82 @@ private fun AgencyHostAttendanceCard(
             "A check-in is recorded only when LiveKit confirms the host joined their room. This report does not claim working hours or estimate session duration. Only currently assigned active hosts are included; dates use UTC.",
             color = OnDarkMedium.copy(alpha = 0.75f),
             fontSize = 10.sp,
+        )
+    }
+}
+
+@Composable
+private fun AgencyHostLeaderboardCard(
+    leaderboard: AgencyHostLeaderboard?,
+    selectedDays: Int,
+    loading: Boolean,
+    error: String?,
+    onDaysChange: (Int) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionLabel("Agency host leaderboard")
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onRefresh, enabled = !loading) { Text("Refresh") }
+        }
+        Text(
+            "Ranked by verified attendance days, then confirmed LiveKit check-ins. Earned badges use lifetime attendance.",
+            color = OnDarkMedium, fontSize = 11.sp,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
+            listOf(7, 30).forEach { days ->
+                TextButton(onClick = { onDaysChange(days) }, enabled = selectedDays != days || !loading) {
+                    Text(if (selectedDays == days) "✓ $days days" else "$days days", color = if (selectedDays == days) Mint else OnDarkMedium)
+                }
+            }
+        }
+        when {
+            loading && leaderboard == null -> Text("Loading agency leaderboard…", color = OnDarkMedium, fontSize = 12.sp)
+            error != null && leaderboard == null -> Text(error, color = DangerRed, fontSize = 11.sp)
+            leaderboard == null -> Text("The host leaderboard is not available.", color = OnDarkMedium, fontSize = 12.sp)
+            leaderboard.hosts.isEmpty() -> Text("No active hosts are currently assigned to this agency.", color = OnDarkMedium, fontSize = 11.sp)
+            else -> {
+                FigureRow("Active assigned hosts", leaderboard.activeHostCount.toString(), OnDarkHigh)
+                FigureRow("Hosts with attendance", leaderboard.hostsWithAttendance.toString(), Mint)
+                FigureRow("Verified check-ins · ${leaderboard.days} days", leaderboard.totalCheckIns.toString(), Cyan)
+                FigureRow("Attendance days · ${leaderboard.days} days", leaderboard.totalAttendanceDays.toString(), OnDarkHigh)
+                FigureRow("Hosts with earned badges", leaderboard.hostsWithBadges.toString(), WarningAmber)
+                Spacer(Modifier.height(10.dp))
+                leaderboard.hosts.take(20).forEach { host ->
+                    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                if (host.rank == 1) "🏆 #1" else "#${host.rank}",
+                                color = if (host.rank == 1) WarningAmber else Mint,
+                                fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            )
+                            Spacer(Modifier.width(9.dp))
+                            Text("@${host.username}", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                            Text("${host.attendanceDays} days · ${host.checkIns} joins", color = OnDarkHigh, fontSize = 10.sp)
+                        }
+                        val last = host.lastCheckInAt?.replace("T", " ")?.take(16) ?: "No check-in in this period"
+                        Text("Last verified check-in: $last ${if (host.lastCheckInAt != null) "UTC" else ""}", color = OnDarkMedium, fontSize = 9.sp, modifier = Modifier.padding(start = 36.dp, top = 2.dp))
+                        if (host.badges.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.padding(start = 36.dp, top = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                host.badges.forEach { badge ->
+                                    Text("🏅 ${badge.title}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        } else {
+                            Text("No lifetime attendance badges earned yet", color = OnDarkMedium, fontSize = 9.sp, modifier = Modifier.padding(start = 36.dp, top = 3.dp))
+                        }
+                    }
+                }
+            }
+        }
+        if (error != null && leaderboard != null) Text(error, color = DangerRed, fontSize = 10.sp)
+        Text(
+            "This leaderboard is visible only to your agency owner account and includes only your currently assigned active hosts. Attendance is based on confirmed LiveKit joins; dates use UTC. Ties share the same rank.",
+            color = OnDarkMedium.copy(alpha = 0.75f), fontSize = 10.sp,
         )
     }
 }

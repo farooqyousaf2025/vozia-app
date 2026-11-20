@@ -182,6 +182,34 @@ data class AgencyHostRecognitionEnvelope(
     @SerializedName("recognition") val recognition: AgencyHostRecognitionDto? = null,
 )
 
+data class AgencyHostLeaderboardBadgeDto(
+    @SerializedName("code") val code: String? = null,
+    @SerializedName("title") val title: String? = null,
+    @SerializedName("unlockedAt") val unlockedAt: String? = null,
+)
+data class AgencyHostLeaderboardRowDto(
+    @SerializedName("rank") val rank: Int? = null,
+    @SerializedName("username") val username: String? = null,
+    @SerializedName("avatarUrl") val avatarUrl: String? = null,
+    @SerializedName("attendanceDays") val attendanceDays: Int? = null,
+    @SerializedName("checkIns") val checkIns: Int? = null,
+    @SerializedName("lastCheckInAt") val lastCheckInAt: String? = null,
+    @SerializedName("badges") val badges: List<AgencyHostLeaderboardBadgeDto>? = null,
+)
+data class AgencyHostLeaderboardDto(
+    @SerializedName("days") val days: Int? = null,
+    @SerializedName("timezone") val timezone: String? = null,
+    @SerializedName("activeHostCount") val activeHostCount: Int? = null,
+    @SerializedName("hostsWithAttendance") val hostsWithAttendance: Int? = null,
+    @SerializedName("totalCheckIns") val totalCheckIns: Int? = null,
+    @SerializedName("totalAttendanceDays") val totalAttendanceDays: Int? = null,
+    @SerializedName("hostsWithBadges") val hostsWithBadges: Int? = null,
+    @SerializedName("hosts") val hosts: List<AgencyHostLeaderboardRowDto>? = null,
+)
+data class AgencyHostLeaderboardEnvelope(
+    @SerializedName("leaderboard") val leaderboard: AgencyHostLeaderboardDto? = null,
+)
+
 data class AgencyHostDto(
     @SerializedName("username") val username: String? = null,
     @SerializedName("avatarUrl") val avatarUrl: String? = null,
