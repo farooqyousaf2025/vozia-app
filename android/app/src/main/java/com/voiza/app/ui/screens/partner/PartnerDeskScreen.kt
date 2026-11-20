@@ -452,6 +452,38 @@ private fun BdTerritorySnapshotCard(
         FigureRow("Combined orders", count(orders), OnDarkHigh)
         FigureRow("Credited orders", count(credited), RCoinGreen)
         FigureRow("Diamonds processed", count(diamonds), OnDarkHigh)
+        Spacer(Modifier.height(10.dp))
+        DeskSectionLabel("Top sellers by processed diamonds")
+        val topPerformers = sellers
+            .sortedWith(
+                compareByDescending<PartnerSellerRow> { it.recharge.processedDiamonds }
+                    .thenByDescending { it.recharge.credited }
+                    .thenBy { it.code },
+            )
+            .take(3)
+        topPerformers.forEachIndexed { index, seller ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "#${index + 1}  ${seller.displayName.ifBlank { seller.code }}",
+                    color = OnDarkHigh,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                Pill(seller.statusLabel, accountColor(seller.status))
+            }
+            Text(
+                text = "${count(seller.recharge.processedDiamonds)} diamonds · " +
+                    "${count(seller.recharge.credited)} credited / ${count(seller.recharge.orders)} orders",
+                color = OnDarkMedium,
+                fontSize = 10.sp,
+            )
+        }
+        Text(
+            "Ranking reflects processed diamond totals in the seller rows returned for this BD account; it is not a time-based trend or a ranking across other territories.",
+            color = OnDarkMedium.copy(alpha = 0.75f),
+            fontSize = 10.sp,
+        )
         Text(
             "Summary uses only the seller rows returned for your signed-in BD account. It does not include another BD's territory or change seller access.",
             color = OnDarkMedium.copy(alpha = 0.75f),
