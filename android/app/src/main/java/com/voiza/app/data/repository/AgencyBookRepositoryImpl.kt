@@ -8,6 +8,7 @@ import com.voiza.app.data.remote.dto.AgencyHostGoalsUpdateBody
 import com.voiza.app.data.remote.dto.AgencyRoomModerationBody
 import com.voiza.app.data.mapper.toDomain
 import com.voiza.app.data.mapper.toAttendanceDomain
+import com.voiza.app.data.mapper.toGoalsDomain
 import com.voiza.app.data.mapper.toHosts
 import com.voiza.app.data.mapper.toPosition
 import com.voiza.app.data.mapper.toSettlements
