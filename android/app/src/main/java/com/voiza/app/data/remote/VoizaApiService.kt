@@ -1,6 +1,11 @@
 package com.voiza.app.data.remote
 
 import com.voiza.app.data.remote.dto.AuthResponse
+import com.voiza.app.data.remote.dto.AgencyAnnouncementBody
+import com.voiza.app.data.remote.dto.AgencyAnnouncementsEnvelope
+import com.voiza.app.data.remote.dto.AgencyAnnouncementEnvelope
+import com.voiza.app.data.remote.dto.AgencyHostAnnouncementsEnvelope
+import com.voiza.app.data.remote.dto.AgencyAnnouncementReadEnvelope
 import com.voiza.app.data.remote.dto.AgencyLiveRoomsEnvelope
 import com.voiza.app.data.remote.dto.AgencyRoomMembersEnvelope
 import com.voiza.app.data.remote.dto.AgencyRoomModerationAuditEnvelope
