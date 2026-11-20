@@ -366,7 +366,13 @@ export function wornRide(row: {
   profile_ride_key?: string | null;
   profile_ride_expires_at?: Date | null;
 }): RideArt | null {
-  const registry = current();
+  // User DTOs are also serialized by ledger/recharge paths that can run before the room
+  // decoration registry has finished booting. A missing snapshot must not break those flows.
+  const registry = snapshot;
+  if (!registry) return null;
+  if (Date.now() - registry.loadedAt > REFRESH_AFTER_MS) {
+    void loadThemeRegistry().catch((err) => console.warn('[voiza] theme catalogue refresh failed:', err.message));
+  }
   if (row.profile_ride_key && (!row.profile_ride_expires_at || row.profile_ride_expires_at.getTime() > Date.now())) {
     const personal = registry.rides.get(row.profile_ride_key);
     if (personal) return personal;
