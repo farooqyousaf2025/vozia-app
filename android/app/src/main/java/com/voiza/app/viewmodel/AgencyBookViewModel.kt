@@ -10,6 +10,7 @@ import com.voiza.app.domain.model.AgencyRoomModerationAudit
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyHostAttendanceReport
+import com.voiza.app.domain.model.AgencyHostGoals
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencySubRow
@@ -53,6 +54,10 @@ class AgencyBookViewModel(
         val attendanceDays: Int = 7,
         val attendanceLoading: Boolean = false,
         val attendanceError: String? = null,
+        val hostGoals: AgencyHostGoals? = null,
+        val goalsLoading: Boolean = false,
+        val goalsSaving: Boolean = false,
+        val goalsError: String? = null,
         val activeRooms: List<AgencyLiveRoom> = emptyList(),
         val expandedRoomId: String? = null,
         val roomMembers: List<AgencyRoomMember> = emptyList(),
@@ -139,6 +144,31 @@ class AgencyBookViewModel(
         }
     }
 
+    fun loadHostGoals() {
+        viewModelScope.launch {
+            _state.update { it.copy(goalsLoading = true, goalsError = null) }
+            when (val result = agencyBookRepository.hostGoals()) {
+                is ApiResult.Success -> _state.update { it.copy(hostGoals = result.data, goalsLoading = false) }
+                is ApiResult.Failure -> _state.update { it.copy(goalsLoading = false, goalsError = result.message) }
+            }
+        }
+    }
+
+    fun saveHostGoals(targetDays: Int) {
+        val target = targetDays.coerceIn(1, 7)
+        viewModelScope.launch {
+            _state.update { it.copy(goalsSaving = true, goalsError = null) }
+            when (val result = agencyBookRepository.updateHostGoals(target)) {
+                is ApiResult.Success -> _state.update {
+                    it.copy(hostGoals = result.data, goalsSaving = false, goalsError = null)
+                }
+                is ApiResult.Failure -> _state.update {
+                    it.copy(goalsSaving = false, goalsError = result.message)
+                }
+            }
+        }
+    }
+
     fun toggleRoomMembers(roomId: String) {
         if (_state.value.expandedRoomId == roomId) {
             _state.update { it.copy(expandedRoomId = null, roomMembers = emptyList(), roomMembersError = null, moderationHistory = emptyList(), historyError = null) }
@@ -210,6 +240,7 @@ class AgencyBookViewModel(
         val rooms = agencyBookRepository.activeRooms()
         val activity = agencyBookRepository.hostActivity(_state.value.activityDays)
         val attendance = agencyBookRepository.hostAttendance(_state.value.attendanceDays)
+        val goals = agencyBookRepository.hostGoals()
         val roster = agencyBookRepository.hosts()
         // Master-only, and skipped rather than called: the server's own answer for a sub is a refusal.
         val allocations = if (position.isMaster) agencyBookRepository.subAgencies() else null
@@ -222,6 +253,9 @@ class AgencyBookViewModel(
                 hostAttendance = (attendance as? ApiResult.Success)?.data ?: it.hostAttendance,
                 attendanceError = (attendance as? ApiResult.Failure)?.message,
                 attendanceLoading = false,
+                hostGoals = (goals as? ApiResult.Success)?.data ?: it.hostGoals,
+                goalsError = (goals as? ApiResult.Failure)?.message,
+                goalsLoading = false,
                 activeRooms = (rooms as? ApiResult.Success)?.data ?: it.activeRooms,
                 roomsError = (rooms as? ApiResult.Failure)?.message,
                 hosts = (roster as? ApiResult.Success)?.data ?: it.hosts,
