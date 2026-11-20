@@ -40,6 +40,8 @@ data class AgencyRoomModerationAuditDto(
     @SerializedName("id") val id: String? = null,
     @SerializedName("targetUserId") val targetUserId: String? = null,
     @SerializedName("targetUsername") val targetUsername: String? = null,
+    @SerializedName("actorUserId") val actorUserId: String? = null,
+    @SerializedName("actorUsername") val actorUsername: String? = null,
     @SerializedName("action") val action: String? = null,
     @SerializedName("reason") val reason: String? = null,
     @SerializedName("details") val details: Map<String, Any?>? = null,
