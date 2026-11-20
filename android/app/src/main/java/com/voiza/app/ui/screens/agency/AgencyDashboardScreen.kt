@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -31,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.tooling.preview.Preview
@@ -76,6 +78,7 @@ import com.voiza.app.ui.theme.VoizaSurface
 import com.voiza.app.ui.theme.WarningAmber
 import com.voiza.app.viewmodel.AgencyBookViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
+import kotlinx.coroutines.launch
 
 /**
  * The agency desk, from the agency's side of it.
@@ -182,8 +185,12 @@ fun AgencyDashboardScreen(
         var hostGoalFilter by remember(position.id) { mutableStateOf("All hosts") }
         var hostSort by remember(position.id) { mutableStateOf("Username") }
         var selectedHostUsername by remember(position.id) { mutableStateOf<String?>(null) }
+        val dashboardListState = rememberLazyListState()
+        val dashboardScope = rememberCoroutineScope()
+        val rosterItemIndex = if (position.isMaster) 13 else 12
 
         LazyColumn(
+            state = dashboardListState,
             contentPadding = PaddingValues(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxWidth(),
@@ -208,6 +215,10 @@ fun AgencyDashboardScreen(
                     goals = state.hostGoals,
                     onAttendanceDaysChange = viewModel::setAttendanceDays,
                     onRefreshAttendance = { viewModel.loadHostAttendance() },
+                    onHostSelected = { username ->
+                        selectedHostUsername = username
+                        dashboardScope.launch { dashboardListState.animateScrollToItem(rosterItemIndex) }
+                    },
                 )
             }
             item {
@@ -522,6 +533,7 @@ private fun AgencyHostPerformanceInsightsCard(
     goals: AgencyHostGoals?,
     onAttendanceDaysChange: (Int) -> Unit,
     onRefreshAttendance: () -> Unit,
+    onHostSelected: (String) -> Unit,
 ) {
     val activeUsernames = hosts.filter { it.status == AgencyStatus.ACTIVE }.map { it.username.lowercase() }.toSet()
     val missedGoals = goals?.hosts.orEmpty()
@@ -572,12 +584,21 @@ private fun AgencyHostPerformanceInsightsCard(
             goals == null -> Text("Weekly goal data is not available yet. Refresh the goals section to load it.", color = OnDarkMedium, fontSize = 11.sp)
             missedGoals.isEmpty() -> Text("No active assigned hosts are currently below the weekly goal.", color = Mint, fontSize = 11.sp)
             else -> missedGoals.take(6).forEach { goal ->
-                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onHostSelected(goal.username) }
+                        .padding(horizontal = 6.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Column(Modifier.weight(1f)) {
                         Text("@${goal.username}", color = OnDarkHigh, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         Text("${goal.attendanceDays}/${goal.targetDays} days · ${goal.remainingDays} remaining", color = OnDarkMedium, fontSize = 10.sp)
                     }
-                    Text("${goal.progressPercent}%", color = WarningAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("${goal.progressPercent}%", color = WarningAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("View profile", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }
