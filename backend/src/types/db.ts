@@ -49,7 +49,9 @@ export type RoomRow = {
   description: string | null;
   cover_url: string | null;
   theme: string;
-  host_id: string;
+  host_id: string | null;
+  owner_type?: 'MEMBER' | 'SYSTEM';
+  owner_admin_id?: string | null;
   type: 'PUBLIC' | 'PRIVATE';
   password_hash: string | null;
   seat_capacity: number;
