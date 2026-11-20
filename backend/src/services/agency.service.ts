@@ -1733,8 +1733,8 @@ export async function agencySelfHostRecognition(agencyId: string): Promise<Agenc
      ), milestones AS (
        SELECT * FROM (VALUES
          ('FIRST_CHECK_IN', 'First Spark', 'Completed a first verified attendance day', 1),
-         ('SEVEN_DAYS', 'Weekly Regular', 'Reached seven verified attendance days', 7),
-         ('THIRTY_DAYS', 'Monthly Star', 'Reached thirty verified attendance days', 30),
+         ('SEVEN_DAYS', 'Seven-Day Milestone', 'Reached seven distinct verified attendance days', 7),
+         ('THIRTY_DAYS', 'Thirty-Day Milestone', 'Reached thirty distinct verified attendance days', 30),
          ('HUNDRED_DAYS', 'Century Club', 'Reached one hundred verified attendance days', 100)
        ) AS m(code, title, description, threshold)
      ), totals AS (
