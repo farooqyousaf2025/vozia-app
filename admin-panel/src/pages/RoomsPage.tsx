@@ -227,8 +227,8 @@ export default function RoomsPage() {
           </div>
         ) : rooms !== null && rooms.length === 0 ? (
           <EmptyState
-            title="No active rooms"
-            message="Every party has to start somewhere. Live rooms appear here automatically."
+            title={statusFilter === 'CLOSED' ? 'No closed rooms found' : 'No rooms match these filters'}
+            message={statusFilter === 'ACTIVE' ? 'Live rooms appear here automatically. Try changing the search or filters if you expected a room.' : 'Try clearing one or more filters to widen the room directory.'}
             icon={<IconMic className="h-6 w-6" />}
           />
         ) : (
@@ -266,7 +266,7 @@ export default function RoomsPage() {
                     </span>
                   </Td>
                   <Td>{categoryBadge(room.category)}</Td>
-                  <Td><Badge tone={room.status === 'ACTIVE' ? 'success' : 'slate'}>{room.status}</Badge></Td>
+                  <Td><Badge tone={room.status === 'ACTIVE' ? 'green' : 'slate'}>{room.status}</Badge></Td>
                   <Td><span className="text-xs text-muted">{room.agencyName ?? (room.ownerType === 'SYSTEM' ? 'Vozia' : '—')}</span></Td>
                   <Td align="center">
                     <span className="tabular-nums">
