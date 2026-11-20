@@ -206,10 +206,10 @@ export async function listRoomsForAdmin(opts: {
 > {
   const where: string[] = [];
   const params: unknown[] = [];
-  if (opts.status && opts.status !== 'ALL') where.push(`r.status = ${params.push(opts.status)}`);
-  if (opts.ownerType) where.push(`r.owner_type = ${params.push(opts.ownerType)}`);
-  if (opts.type) where.push(`r.type = ${params.push(opts.type)}`);
-  if (opts.agencyId) where.push(`agency.id = ${params.push(opts.agencyId)}`);
+  if (opts.status && opts.status !== 'ALL') where.push(`r.status = $${params.push(opts.status)}`);
+  if (opts.ownerType) where.push(`r.owner_type = $${params.push(opts.ownerType)}`);
+  if (opts.type) where.push(`r.type = $${params.push(opts.type)}`);
+  if (opts.agencyId) where.push(`agency.id = $${params.push(opts.agencyId)}`);
   if (opts.search) {
     params.push(`%${opts.search}%`);
     const p = params.length;
