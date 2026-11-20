@@ -159,6 +159,29 @@ data class AgencyHostGoalsUpdateBody(
     @SerializedName("weeklyAttendanceTargetDays") val weeklyAttendanceTargetDays: Int,
 )
 
+data class AgencyHostMilestoneDto(
+    @SerializedName("code") val code: String? = null,
+    @SerializedName("title") val title: String? = null,
+    @SerializedName("description") val description: String? = null,
+    @SerializedName("attendanceDaysRequired") val attendanceDaysRequired: Int? = null,
+    @SerializedName("unlockedAt") val unlockedAt: String? = null,
+)
+data class AgencyHostRecognitionRowDto(
+    @SerializedName("username") val username: String? = null,
+    @SerializedName("avatarUrl") val avatarUrl: String? = null,
+    @SerializedName("attendanceDays") val attendanceDays: Int? = null,
+    @SerializedName("milestones") val milestones: List<AgencyHostMilestoneDto>? = null,
+)
+data class AgencyHostRecognitionDto(
+    @SerializedName("timezone") val timezone: String? = null,
+    @SerializedName("activeHostCount") val activeHostCount: Int? = null,
+    @SerializedName("hostsWithAchievements") val hostsWithAchievements: Int? = null,
+    @SerializedName("hosts") val hosts: List<AgencyHostRecognitionRowDto>? = null,
+)
+data class AgencyHostRecognitionEnvelope(
+    @SerializedName("recognition") val recognition: AgencyHostRecognitionDto? = null,
+)
+
 data class AgencyHostDto(
     @SerializedName("username") val username: String? = null,
     @SerializedName("avatarUrl") val avatarUrl: String? = null,
