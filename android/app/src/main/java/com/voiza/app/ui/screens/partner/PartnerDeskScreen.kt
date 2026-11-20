@@ -68,6 +68,7 @@ import com.voiza.app.domain.model.PartnerAccountStatus
 import com.voiza.app.domain.model.PartnerDashboard
 import com.voiza.app.domain.model.PartnerSellerRow
 import com.voiza.app.data.export.toPartnerSellerCsv
+import com.voiza.app.data.export.toRechargeOrderCsv
 import com.voiza.app.domain.model.PartnerStatement
 import com.voiza.app.domain.model.RechargeOrder
 import com.voiza.app.domain.model.RechargeOrderStatus
@@ -129,6 +130,7 @@ fun PartnerDeskScreen(
     var banner by remember { mutableStateOf<String?>(null) }
     var fileError by remember { mutableStateOf<String?>(null) }
     var pendingSellerExport by remember { mutableStateOf<List<PartnerSellerRow>?>(null) }
+    var pendingOrderExport by remember { mutableStateOf<List<RechargeOrder>?>(null) }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -157,6 +159,21 @@ fun PartnerDeskScreen(
             banner = if (saved) "Seller network CSV saved." else "Could not save seller network CSV."
         }
         pendingSellerExport = null
+    }
+
+    val orderExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri ->
+        val orders = pendingOrderExport
+        if (uri != null && orders != null) {
+            val saved = runCatching {
+                context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use {
+                    it.write(orders.toRechargeOrderCsv())
+                } ?: error("Could not open the selected file.")
+            }.isSuccess
+            banner = if (saved) "Recharge orders CSV saved." else "Could not save recharge orders CSV."
+        }
+        pendingOrderExport = null
     }
 
     // A write's outcome lands once: success closes the dialog and leaves a banner; a failure stays
@@ -308,6 +325,10 @@ fun PartnerDeskScreen(
                             onCancel = { cancelFor = it },
                             onAttachProof = { order ->
                                 attach(PartnerDeskViewModel.ReceiptTarget(order.id, null, order.reference))
+                            },
+                            onExport = { filtered ->
+                                pendingOrderExport = filtered
+                                orderExportLauncher.launch("vozia-recharge-orders.csv")
                             },
                         )
                     }
@@ -502,6 +523,7 @@ private fun OrdersCard(
     onMarkPaid: (RechargeOrder) -> Unit,
     onCancel: (RechargeOrder) -> Unit,
     onAttachProof: (RechargeOrder) -> Unit,
+    onExport: (List<RechargeOrder>) -> Unit,
 ) {
     val filteredOrders = orders.filter { order ->
         val needle = query.trim()
@@ -560,7 +582,14 @@ private fun OrdersCard(
             }
         }
         Spacer(Modifier.height(7.dp))
-        Text("Showing ${filteredOrders.size} loaded orders · ${total} total", color = OnDarkMedium, fontSize = 10.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Showing ${filteredOrders.size} loaded orders · ${total} total", color = OnDarkMedium, fontSize = 10.sp, modifier = Modifier.weight(1f))
+            if (isSeller) {
+                TextButton(onClick = { onExport(filteredOrders) }, enabled = filteredOrders.isNotEmpty()) {
+                    Text("Export CSV")
+                }
+            }
+        }
         if (filteredOrders.isEmpty()) {
             Text("No loaded orders match this search or status filter.", color = OnDarkMedium, fontSize = 12.sp)
         } else {
@@ -837,6 +866,7 @@ private fun SellerReportView(
                         onMarkPaid = {},
                         onCancel = {},
                         onAttachProof = {},
+                        onExport = {},
                     )
                 }
             }
