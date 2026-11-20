@@ -7,6 +7,7 @@ router.use(requireAuth);
 
 router.get('/', friends.list);
 router.get('/locations', friends.locations);
+router.get('/location-sharing', friends.locationSharingStatus);
 router.post('/location-sharing', friends.locationSharing);
 router.post('/location', friends.updateLocation);
 router.get('/requests', friends.requests);
