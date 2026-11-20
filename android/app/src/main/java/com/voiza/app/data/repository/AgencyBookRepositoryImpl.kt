@@ -26,9 +26,9 @@ import com.voiza.app.domain.model.AgencySubRow
 import com.voiza.app.domain.repository.AgencyBookRepository
 
 /**
- * The agency's own book over HTTP (migrations 0033 and 0040).
+ * The agency's own book over HTTP (migrations 0033, 0040 and 0058).
  *
- * Four GETs and no session write-back: reading a roster changes nothing, and the figures here are
+ * Read-only reports and an owner-configurable informational goal, with no financial write-back: reading a roster changes nothing, and the figures here are
  * the journal's, not a balance the app has to refresh elsewhere. A refusal is returned as the
  * server's own sentence — including the 403 a member without an agency gets from every route and the
  * one a sub-agency gets from [subAgencies] — so the screen reports what the backend said rather than
