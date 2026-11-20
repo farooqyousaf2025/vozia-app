@@ -9,6 +9,7 @@ import com.voiza.app.domain.model.AgencyRoomMember
 import com.voiza.app.domain.model.AgencyRoomModerationAudit
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyHostActivityReport
+import com.voiza.app.domain.model.AgencyHostAttendanceReport
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencySubRow
@@ -48,6 +49,10 @@ class AgencyBookViewModel(
         val activityDays: Int = 7,
         val activityLoading: Boolean = false,
         val activityError: String? = null,
+        val hostAttendance: AgencyHostAttendanceReport? = null,
+        val attendanceDays: Int = 7,
+        val attendanceLoading: Boolean = false,
+        val attendanceError: String? = null,
         val activeRooms: List<AgencyLiveRoom> = emptyList(),
         val expandedRoomId: String? = null,
         val roomMembers: List<AgencyRoomMember> = emptyList(),
@@ -108,6 +113,27 @@ class AgencyBookViewModel(
                 }
                 is ApiResult.Failure -> _state.update {
                     it.copy(activityLoading = false, activityError = result.message)
+                }
+            }
+        }
+    }
+
+    fun setAttendanceDays(days: Int) {
+        val selected = if (days == 30) 30 else 7
+        if (_state.value.attendanceDays == selected && _state.value.hostAttendance != null) return
+        _state.update { it.copy(attendanceDays = selected) }
+        loadHostAttendance(selected)
+    }
+
+    fun loadHostAttendance(days: Int = _state.value.attendanceDays) {
+        viewModelScope.launch {
+            _state.update { it.copy(attendanceLoading = true, attendanceError = null) }
+            when (val result = agencyBookRepository.hostAttendance(days)) {
+                is ApiResult.Success -> _state.update {
+                    it.copy(hostAttendance = result.data, attendanceDays = days, attendanceLoading = false)
+                }
+                is ApiResult.Failure -> _state.update {
+                    it.copy(attendanceLoading = false, attendanceError = result.message)
                 }
             }
         }
@@ -183,6 +209,7 @@ class AgencyBookViewModel(
     private suspend fun loadSections(position: AgencyPosition) {
         val rooms = agencyBookRepository.activeRooms()
         val activity = agencyBookRepository.hostActivity(_state.value.activityDays)
+        val attendance = agencyBookRepository.hostAttendance(_state.value.attendanceDays)
         val roster = agencyBookRepository.hosts()
         // Master-only, and skipped rather than called: the server's own answer for a sub is a refusal.
         val allocations = if (position.isMaster) agencyBookRepository.subAgencies() else null
@@ -192,6 +219,9 @@ class AgencyBookViewModel(
                 hostActivity = (activity as? ApiResult.Success)?.data ?: it.hostActivity,
                 activityError = (activity as? ApiResult.Failure)?.message,
                 activityLoading = false,
+                hostAttendance = (attendance as? ApiResult.Success)?.data ?: it.hostAttendance,
+                attendanceError = (attendance as? ApiResult.Failure)?.message,
+                attendanceLoading = false,
                 activeRooms = (rooms as? ApiResult.Success)?.data ?: it.activeRooms,
                 roomsError = (rooms as? ApiResult.Failure)?.message,
                 hosts = (roster as? ApiResult.Success)?.data ?: it.hosts,

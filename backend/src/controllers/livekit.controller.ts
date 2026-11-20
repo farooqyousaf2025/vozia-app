@@ -47,6 +47,10 @@ async function reconcile(event: LivekitWebhookEvent): Promise<void> {
           [room.id],
         );
         await client.query(
+          'UPDATE room_host_checkins SET checked_out_at = now() WHERE room_id = $1 AND checked_out_at IS NULL',
+          [room.id],
+        );
+        await client.query(
           `UPDATE room_seats SET user_id = NULL, status = 'EMPTY', is_speaker = FALSE, is_muted = FALSE
             WHERE room_id = $1`,
           [room.id],
@@ -58,6 +62,25 @@ async function reconcile(event: LivekitWebhookEvent): Promise<void> {
         return true;
       });
       if (reconciled) emitToRoom(room.id, 'room:session_ended', { roomId: room.id });
+      break;
+    }
+
+    case 'participant_joined': {
+      const identity = event.participant?.identity;
+      if (!identity || !room.host_id || room.owner_type === 'SYSTEM' || identity !== room.host_id) break;
+      const eventSid = event.room?.sid;
+      if (eventSid && room.livekit_session_sid && eventSid !== room.livekit_session_sid) break;
+      const host = await one<{ username: string }>('SELECT username FROM users WHERE id = $1', [identity]);
+      if (!host) break;
+      await query(
+        `INSERT INTO room_host_checkins (room_id, room_number, room_title, host_user_id, host_username)
+         SELECT id, room_number, title, host_id, $2 FROM rooms
+         WHERE id = $1 AND host_id = $3 AND owner_type <> 'SYSTEM' AND status = 'ACTIVE'
+           AND (livekit_session_sid IS NULL OR livekit_session_sid = $4)
+         ON CONFLICT (room_id, host_user_id)
+         WHERE room_id IS NOT NULL AND host_user_id IS NOT NULL AND checked_out_at IS NULL DO NOTHING`,
+        [room.id, host.username, identity, eventSid ?? room.livekit_session_sid],
+      );
       break;
     }
 
@@ -73,6 +96,14 @@ async function reconcile(event: LivekitWebhookEvent): Promise<void> {
         'UPDATE room_participants SET left_at = now() WHERE room_id = $1 AND user_id = $2 AND left_at IS NULL',
         [room.id, identity],
       );
+      const eventSid = event.room?.sid;
+      if (identity === room.host_id && room.owner_type !== 'SYSTEM'
+          && (!eventSid || !room.livekit_session_sid || eventSid === room.livekit_session_sid)) {
+        await query(
+          'UPDATE room_host_checkins SET checked_out_at = now() WHERE room_id = $1 AND host_user_id = $2 AND checked_out_at IS NULL',
+          [room.id, identity],
+        );
+      }
       await recomputeListenerCount(room.id);
       emitToRoom(room.id, 'room:user_left', { roomId: room.id, userId: identity });
       break;

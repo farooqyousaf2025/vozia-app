@@ -145,6 +145,16 @@ fun AgencyDashboardScreen(
                     onRefresh = { viewModel.loadHostActivity() },
                 )
             }
+            item {
+                AgencyHostAttendanceCard(
+                    report = state.hostAttendance,
+                    selectedDays = state.attendanceDays,
+                    loading = state.attendanceLoading,
+                    error = state.attendanceError,
+                    onDaysChange = viewModel::setAttendanceDays,
+                    onRefresh = { viewModel.loadHostAttendance() },
+                )
+            }
             item { OwedCard(position.account) }
             item {
                 AgencyActiveRoomsCard(
@@ -462,6 +472,76 @@ private fun AgencyHostActivityCard(
                 fontSize = 10.sp,
             )
         }
+    }
+}
+
+@Composable
+private fun AgencyHostAttendanceCard(
+    report: com.voiza.app.domain.model.AgencyHostAttendanceReport?,
+    selectedDays: Int,
+    loading: Boolean,
+    error: String?,
+    onDaysChange: (Int) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionLabel("Host attendance & check-ins")
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onRefresh, enabled = !loading) { Text("Refresh") }
+        }
+        Text("Verified host joins confirmed by LiveKit, for your currently assigned active hosts.", color = OnDarkMedium, fontSize = 11.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
+            listOf(7, 30).forEach { days ->
+                TextButton(onClick = { onDaysChange(days) }, enabled = selectedDays != days || !loading) {
+                    Text(if (selectedDays == days) "✓ $days days" else "$days days", color = if (selectedDays == days) Mint else OnDarkMedium)
+                }
+            }
+        }
+        when {
+            loading && report == null -> Text("Loading verified attendance…", color = OnDarkMedium, fontSize = 12.sp)
+            error != null && report == null -> Text(error, color = DangerRed, fontSize = 11.sp)
+            report == null -> Text("No attendance report is available.", color = OnDarkMedium, fontSize = 12.sp)
+            else -> {
+                val totals = report.totals
+                FigureRow("Verified check-ins", totals.checkIns.toString(), Mint)
+                FigureRow("Hosts checked in", totals.hostsCheckedIn.toString(), OnDarkHigh)
+                FigureRow("Host attendance days", totals.hostAttendanceDays.toString(), Cyan)
+                Spacer(Modifier.height(10.dp))
+                Text("Daily check-ins · UTC", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                report.daily.asReversed().forEach { day ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(day.date, color = OnDarkMedium, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                        Text("${day.hostsCheckedIn} hosts · ${day.checkIns} check-ins", color = OnDarkHigh, fontSize = 10.sp)
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text("Host attendance", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                val checkedInHosts = report.hosts.filter { it.checkIns > 0 }
+                if (checkedInHosts.isEmpty()) {
+                    Text("No verified host check-ins in this period.", color = OnDarkMedium, fontSize = 11.sp)
+                } else {
+                    checkedInHosts.take(15).forEach { host ->
+                        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("@${host.username}", color = OnDarkHigh, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                Text("${host.checkIns} check-ins", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            val last = host.lastCheckInAt?.replace("T", " ")?.take(16) ?: "No check-in"
+                            Text("${host.attendanceDays} attendance days · Last: $last UTC", color = OnDarkMedium, fontSize = 10.sp)
+                        }
+                    }
+                }
+            }
+        }
+        Text(
+            "A check-in is recorded only when LiveKit confirms the host joined their room. This report does not claim working hours or estimate session duration. Only currently assigned active hosts are included; dates use UTC.",
+            color = OnDarkMedium.copy(alpha = 0.75f),
+            fontSize = 10.sp,
+        )
     }
 }
 
