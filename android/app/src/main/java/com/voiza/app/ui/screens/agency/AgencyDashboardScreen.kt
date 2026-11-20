@@ -134,6 +134,7 @@ fun AgencyDashboardScreen(
             modifier = Modifier.fillMaxWidth(),
         ) {
             item { PositionCard(position) }
+            item { AgencyPerformanceCard(position, state.hosts, state.activeRooms) }
             item { OwedCard(position.account) }
             item {
                 AgencyActiveRoomsCard(
@@ -315,6 +316,59 @@ private fun AgencyActiveRoomsCard(
 // ---------------------------------------------------------------------------
 // The position: who this agency is, and where its share of the money went.
 // ---------------------------------------------------------------------------
+
+/**
+ * Read-only metrics from the agency owner's existing scoped endpoints.
+ * The server exposes a rolling 30-day commission contribution and a live room snapshot,
+ * but no daily room-engagement history; the UI therefore does not invent a trend line.
+ */
+@Composable
+private fun AgencyPerformanceCard(
+    position: AgencyPosition,
+    hosts: List<AgencyHostRow>,
+    rooms: List<com.voiza.app.domain.model.AgencyLiveRoom>,
+) {
+    val liveAudience = rooms.sumOf { it.memberCount.coerceAtLeast(0) }
+    val topHosts = hosts.filter { it.last30dCoins > 0 }.sortedByDescending { it.last30dCoins }.take(5)
+
+    VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
+        SectionLabel("Agency performance · 30 days")
+        Text("A read-only view of your currently assigned host roster.", color = OnDarkMedium, fontSize = 11.sp)
+        Spacer(Modifier.height(8.dp))
+        FigureRow("Active hosts", "${position.activeHostCount} / ${position.hostCount}", Mint)
+        FigureRow("Live rooms now", rooms.size.toString(), OnDarkHigh)
+        FigureRow("Members in live rooms", liveAudience.toString(), Cyan)
+        Spacer(Modifier.height(8.dp))
+        Text("Top host contributions", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        if (topHosts.isEmpty()) {
+            Text("No host commission contribution recorded in the last 30 days.", color = OnDarkMedium, fontSize = 11.sp)
+        } else {
+            topHosts.forEachIndexed { index, host ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("${index + 1}.", color = OnDarkMedium, fontSize = 11.sp, modifier = Modifier.width(24.dp))
+                    Text(
+                        "@${host.username}",
+                        color = OnDarkHigh,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(coins(host.last30dCoins), color = RCoinGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Host contribution is the existing 30-day agency commission accrual, shown for reference only. " +
+                "Live audience is a current snapshot. Daily room-engagement history is not available in the existing API.",
+            color = OnDarkMedium.copy(alpha = 0.75f),
+            fontSize = 10.sp,
+        )
+    }
+}
 
 @Composable
 private fun PositionCard(position: AgencyPosition) {
