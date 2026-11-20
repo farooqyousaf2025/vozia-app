@@ -616,18 +616,45 @@ private fun AgencyHostAttendanceCard(
                 }
                 Spacer(Modifier.height(10.dp))
                 Text("Host attendance", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                val checkedInHosts = report.hosts.filter { it.checkIns > 0 }
+                val checkedInHosts = report.hosts
+                    .filter { it.checkIns > 0 }
+                    .sortedWith(
+                        compareByDescending<com.voiza.app.domain.model.AgencyHostAttendanceRow> { it.checkIns }
+                            .thenByDescending { it.attendanceDays }
+                            .thenBy { it.username.lowercase() },
+                    )
+                var attendanceHostQuery by remember(report.days) { mutableStateOf("") }
                 if (checkedInHosts.isEmpty()) {
                     Text("No verified host check-ins in this period.", color = OnDarkMedium, fontSize = 11.sp)
                 } else {
-                    checkedInHosts.take(15).forEach { host ->
-                        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("@${host.username}", color = OnDarkHigh, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                Text("${host.checkIns} check-ins", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(
+                        value = attendanceHostQuery,
+                        onValueChange = { attendanceHostQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("Search checked-in hosts", fontSize = 12.sp) },
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = OnDarkHigh),
+                    )
+                    val matchingHosts = checkedInHosts.filter {
+                        attendanceHostQuery.isBlank() || it.username.contains(attendanceHostQuery.trim(), ignoreCase = true)
+                    }
+                    Text(
+                        "Showing ${matchingHosts.size} of ${checkedInHosts.size} hosts · sorted by check-ins",
+                        color = OnDarkMedium,
+                        fontSize = 10.sp,
+                    )
+                    if (matchingHosts.isEmpty()) {
+                        Text("No checked-in hosts match this search.", color = OnDarkMedium, fontSize = 11.sp)
+                    } else {
+                        matchingHosts.forEach { host ->
+                            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("@${host.username}", color = OnDarkHigh, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                    Text("${host.checkIns} check-ins", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                                val last = host.lastCheckInAt?.replace("T", " ")?.take(16) ?: "No check-in"
+                                Text("${host.attendanceDays} attendance days · Last: $last UTC", color = OnDarkMedium, fontSize = 10.sp)
                             }
-                            val last = host.lastCheckInAt?.replace("T", " ")?.take(16) ?: "No check-in"
-                            Text("${host.attendanceDays} attendance days · Last: $last UTC", color = OnDarkMedium, fontSize = 10.sp)
                         }
                     }
                 }
