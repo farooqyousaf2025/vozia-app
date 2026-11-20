@@ -16,6 +16,7 @@ router.get('/activity', requireAgencyOwner, agency.hostActivity);
 router.get('/attendance', requireAgencyOwner, agency.hostAttendance);
 router.get('/goals', requireAgencyOwner, agency.hostGoals);
 router.get('/recognition', requireAgencyOwner, agency.hostRecognition);
+router.get('/leaderboard', requireAgencyOwner, agency.hostLeaderboard);
 router.put('/goals', requireAgencyOwner, agency.updateHostGoals);
 router.get('/rooms', requireAgencyOwner, agency.rooms);
 router.get('/settlements', requireAgencyOwner, agency.settlements);
