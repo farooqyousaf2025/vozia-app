@@ -1141,9 +1141,8 @@ function loadLivekitService() {
     { status: unpaidTheme.status, error: unpaidTheme.json && unpaidTheme.json.error });
 
   const broke = await api('POST', '/api/store/purchase', { token: shopUser.token, body: { kind: 'FRAME', key: 'ring-bronze' } });
-  check('store: an empty wallet is refused before anything is written',
-    broke.status === 402 && broke.json.error.code === 'insufficient_balance' &&
-    broke.json.error.details.needed === 300 && broke.json.error.details.available === 0 &&
+  check('store: the first-recharge gate refuses an empty-wallet purchase before any write',
+    broke.status === 403 && broke.json.error.code === 'first_recharge_required' &&
     await sql(`select count(*) from transactions where sender_id='${SHOP}'`) === '0' &&
     await sql(`select count(*) from user_items where user_id='${SHOP}'`) === '0',
     { status: broke.status, error: broke.json && broke.json.error });
