@@ -53,6 +53,7 @@ import com.voiza.app.domain.model.AgencyRoomModerationAudit
 import com.voiza.app.domain.model.AgencySettlementStatus
 import com.voiza.app.domain.model.AgencyStatus
 import com.voiza.app.domain.model.AgencySubRow
+import com.voiza.app.ui.screens.agency.AgencyOwnerAnnouncementsCard
 import com.voiza.app.ui.components.Avatar
 import com.voiza.app.ui.components.LoadingProgress
 import com.voiza.app.ui.components.VoizaButton
@@ -138,6 +139,7 @@ fun AgencyDashboardScreen(
             modifier = Modifier.fillMaxWidth(),
         ) {
             item { PositionCard(position) }
+            item { AgencyOwnerAnnouncementsCard() }
             item { AgencyPerformanceCard(position, state.hosts, state.activeRooms) }
             item {
                 AgencyHostActivityCard(
