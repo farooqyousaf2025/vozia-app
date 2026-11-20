@@ -7,6 +7,7 @@ import {
   agencySelfHostAttendance,
   agencySelfHostGoals,
   agencySelfHostRecognition,
+  agencySelfHostLeaderboard,
   agencySelfUpdateHostGoals,
   agencySelfSettlements,
   agencySelfSubs,
@@ -45,6 +46,14 @@ export const hostAttendance = asyncHandler(async (req: Request, res: Response) =
 
 export const hostGoals = asyncHandler(async (req: Request, res: Response) => {
   res.json({ goals: await agencySelfHostGoals(agencyId(req)) });
+});
+
+export const hostLeaderboard = asyncHandler(async (req: Request, res: Response) => {
+  const days = optionalInt(req.query?.days, 'days', { min: 7, max: 30 }) ?? 7;
+  if (days !== 7 && days !== 30) {
+    throw ApiError.badRequest('days must be 7 or 30', 'invalid_leaderboard_window');
+  }
+  res.json({ leaderboard: await agencySelfHostLeaderboard(agencyId(req), days) });
 });
 
 export const hostRecognition = asyncHandler(async (req: Request, res: Response) => {
