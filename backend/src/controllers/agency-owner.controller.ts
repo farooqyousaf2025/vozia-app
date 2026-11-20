@@ -5,6 +5,8 @@ import {
   agencySelfRoster,
   agencySelfHostActivity,
   agencySelfHostAttendance,
+  agencySelfHostGoals,
+  agencySelfUpdateHostGoals,
   agencySelfSettlements,
   agencySelfSubs,
 } from '../services/agency.service';
@@ -38,6 +40,18 @@ export const hostAttendance = asyncHandler(async (req: Request, res: Response) =
     throw ApiError.badRequest('days must be 7 or 30', 'invalid_attendance_window');
   }
   res.json({ report: await agencySelfHostAttendance(agencyId(req), days) });
+});
+
+export const hostGoals = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ goals: await agencySelfHostGoals(agencyId(req)) });
+});
+
+export const updateHostGoals = asyncHandler(async (req: Request, res: Response) => {
+  const target = req.body?.weeklyAttendanceTargetDays;
+  if (!Number.isInteger(target) || target < 1 || target > 7) {
+    throw ApiError.badRequest('weeklyAttendanceTargetDays must be an integer from 1 to 7', 'invalid_attendance_target');
+  }
+  res.json({ goals: await agencySelfUpdateHostGoals(agencyId(req), target) });
 });
 
 export const hosts = asyncHandler(async (req: Request, res: Response) => {
