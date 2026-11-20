@@ -362,8 +362,11 @@ export const createSystemRoomEndpoint = asyncHandler(async (req: Request, res: R
 export const rooms = asyncHandler(async (req: Request, res: Response) => {
   res.json({
     rooms: await listRoomsForAdmin({
-      status: (optionalString(req.query.status, 'status', 10)?.toUpperCase() as 'ACTIVE' | 'CLOSED') ?? 'ACTIVE',
+      status: optionalEnum(req.query.status, 'status', ['ACTIVE', 'CLOSED', 'ALL'] as const) ?? 'ACTIVE',
       search: optionalString(req.query.search, 'search', 60),
+      ownerType: optionalEnum(req.query.ownerType, 'ownerType', ['MEMBER', 'SYSTEM'] as const),
+      type: optionalEnum(req.query.type, 'type', ['PUBLIC', 'PRIVATE'] as const),
+      agencyId: optionalUuid(req.query.agencyId, 'agencyId'),
     }),
   });
 });
