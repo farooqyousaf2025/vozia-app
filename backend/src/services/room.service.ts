@@ -183,6 +183,8 @@ export async function fetchAudience(roomId: string, limit = 120): Promise<MiniUs
       avatar_url: r.avatar_url ?? null,
       profile_frame_key: r.profile_frame_key,
       profile_frame_expires_at: r.profile_frame_expires_at,
+      profile_ride_key: r.profile_ride_key,
+      profile_ride_expires_at: r.profile_ride_expires_at,
     }),
   );
 }
