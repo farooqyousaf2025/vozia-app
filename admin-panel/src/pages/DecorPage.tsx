@@ -348,6 +348,33 @@ export default function DecorPage() {
           )
         }
       >
+        <div className="mb-4 rounded-xl border border-violet-400/20 bg-violet-500/[0.06] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-ink">Platform default entrance</p>
+              <p className="mt-1 text-xs text-muted">Used when a member has no valid personal ride. A member's own equipped ride always takes priority.</p>
+            </div>
+            <div className="w-full sm:w-72">
+              <Select
+                value={catalogue?.defaultRideKey ?? ''}
+                disabled={!canManage || rides.length === 0}
+                onChange={async (event) => {
+                  try {
+                    await api.setDefaultRide(event.target.value || null);
+                    toast.success(event.target.value ? 'Platform default entrance updated.' : 'Platform default entrance cleared.');
+                    refresh();
+                  } catch (err) {
+                    toast.error(err instanceof ApiError ? err.message : 'Could not update the platform default entrance.');
+                  }
+                }}
+              >
+                <option value="">No platform default</option>
+                {rides.map((ride) => <option key={ride.key} value={ride.key}>{ride.name} · {ride.format}</option>)}
+              </Select>
+            </div>
+          </div>
+          {!canManage && <p className="mt-2 text-[11px] text-faint">Your role can view this setting but cannot change it.</p>}
+        </div>
         {rides.length === 0 ? (
           <EmptyState
             title="No rides"
