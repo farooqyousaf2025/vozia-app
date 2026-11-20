@@ -3,7 +3,10 @@ package com.voiza.app.ui.screens.friends
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
+import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -44,6 +47,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -108,19 +112,30 @@ fun FriendsScreen(
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { result ->
-        if (result.values.any { it }) {
-            viewModel.setLocationSharing(true)
-            val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-            val providers = manager.getProviders(true)
+        if (result.values.any { it }) viewModel.setLocationSharing(true)
+        else viewModel.setLocationSharing(false)
+    }
+
+    // GPS is observed only while this screen is visible and sharing is enabled.
+    DisposableEffect(state.locationSharingEnabled, context) {
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        var listener: LocationListener? = null
+        if (state.locationSharingEnabled) {
             val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
             val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
             if (fine || coarse) {
-                val location = providers.mapNotNull { provider ->
-                    try { manager.getLastKnownLocation(provider) } catch (_: SecurityException) { null }
-                }.filter { System.currentTimeMillis() - it.time < 120_000L }.maxByOrNull { it.time }
-                location?.let { viewModel.updateLocation(it.latitude, it.longitude) }
+                val provider = if (fine && manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) LocationManager.GPS_PROVIDER else LocationManager.NETWORK_PROVIDER
+                val callback = object : LocationListener {
+                    override fun onLocationChanged(location: Location) {
+                        viewModel.updateLocation(location.latitude, location.longitude)
+                    }
+                }
+                listener = callback
+                try { manager.requestLocationUpdates(provider, 60_000L, 100f, callback, Looper.getMainLooper()) }
+                catch (_: SecurityException) { listener = null }
             }
-        } else viewModel.setLocationSharing(false)
+        }
+        onDispose { listener?.let { try { manager.removeUpdates(it) } catch (_: SecurityException) { } } }
     }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.load() }
