@@ -468,7 +468,8 @@ export async function listFriendDistances(userId: string): Promise<FriendLocatio
      JOIN friend_location_sharing mine_share ON mine_share.user_id = $1 AND mine_share.enabled = TRUE
      JOIN friend_location_sharing their_share ON their_share.user_id = f.friend_id AND their_share.enabled = TRUE
      LEFT JOIN friend_live_locations mine ON mine.user_id = $1 AND mine.updated_at > now() - INTERVAL '5 minutes'
-     LEFT JOIN friend_live_locations theirs ON theirs.user_id = f.friend_id AND theirs.updated_at > now() - INTERVAL '5 minutes'`,
+     LEFT JOIN friend_live_locations theirs ON theirs.user_id = f.friend_id AND theirs.updated_at > now() - INTERVAL '5 minutes'
+     WHERE NOT EXISTS (SELECT 1 FROM user_blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = f.friend_id) OR (b.blocker_id = f.friend_id AND b.blocked_id = $1))`,
     [userId],
   );
   return rows.map(row => ({ friendId: row.friend_id, distanceMeters: row.distance_meters == null ? null : Number(row.distance_meters) }));
