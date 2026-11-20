@@ -202,7 +202,7 @@ export async function listRoomsForAdmin(opts: { status?: string; search?: string
 
   const rows = await many<RoomRow>(
     `SELECT r.*, u.username AS host_username, u.avatar_url AS host_avatar_url
-       FROM rooms r JOIN users u ON u.id = r.host_id
+       FROM rooms r LEFT JOIN users u ON u.id = r.host_id
       WHERE ${where.join(' AND ')}
       ORDER BY r.total_gift_value DESC, r.created_at DESC LIMIT 200`,
     params,
