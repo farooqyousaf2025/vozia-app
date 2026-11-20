@@ -126,6 +126,7 @@ router.put('/bubbles/:key', requirePermission('config:manage'), admin.updateBubb
 router.delete('/bubbles/:key', requirePermission('config:manage'), admin.deleteBubbleEndpoint);
 router.get('/bubbles/:key/holders', requirePermission('user:read'), admin.bubbleHoldersEndpoint);
 
+router.put('/rides/default', requirePermission('config:manage'), admin.setDefaultRideEndpoint);
 router.post('/rides', requirePermission('config:manage'), admin.createRideEndpoint);
 router.put('/rides/:key', requirePermission('config:manage'), admin.updateRideEndpoint);
 router.delete('/rides/:key', requirePermission('config:manage'), admin.deleteRideEndpoint);

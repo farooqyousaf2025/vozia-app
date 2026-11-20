@@ -488,6 +488,8 @@ export interface DecorCatalogue {
   bubbles: ChatBubble[];
   /** Entrance rides (migration 0026), sorted the way the server publishes them. */
   rides: ProfileRide[];
+  /** Platform fallback for members without a valid personal ride. */
+  defaultRideKey: string | null;
 }
 
 /** Body of POST/PUT /api/admin/themes — `wallpaperUrl`, not `wallpaper`: the row's column name. */

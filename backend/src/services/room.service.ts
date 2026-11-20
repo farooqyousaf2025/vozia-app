@@ -109,7 +109,8 @@ export async function resolveSeatCapacity(requested: number | undefined): Promis
 
 const SEAT_SELECT = `
   SELECT rs.id, rs.room_id, rs.seat_index, rs.user_id, rs.status, rs.is_muted, rs.is_speaker,
-         u.username, u.avatar_url, u.profile_frame_key, u.profile_frame_expires_at
+         u.username, u.avatar_url, u.profile_frame_key, u.profile_frame_expires_at,
+         u.profile_ride_key, u.profile_ride_expires_at
     FROM room_seats rs
     LEFT JOIN users u ON u.id = rs.user_id
    WHERE rs.room_id = $1
@@ -117,7 +118,8 @@ const SEAT_SELECT = `
 
 const PARTICIPANT_SELECT = `
   SELECT p.id, p.room_id, p.user_id, p.role, p.seat_index, p.hand_raised, p.joined_at,
-         u.username, u.avatar_url, u.profile_frame_key, u.profile_frame_expires_at
+         u.username, u.avatar_url, u.profile_frame_key, u.profile_frame_expires_at,
+         u.profile_ride_key, u.profile_ride_expires_at
     FROM room_participants p
     JOIN users u ON u.id = p.user_id
    WHERE p.room_id = $1 AND p.left_at IS NULL`;
@@ -181,6 +183,8 @@ export async function fetchAudience(roomId: string, limit = 120): Promise<MiniUs
       avatar_url: r.avatar_url ?? null,
       profile_frame_key: r.profile_frame_key,
       profile_frame_expires_at: r.profile_frame_expires_at,
+      profile_ride_key: r.profile_ride_key,
+      profile_ride_expires_at: r.profile_ride_expires_at,
     }),
   );
 }

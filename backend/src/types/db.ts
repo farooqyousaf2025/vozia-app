@@ -93,6 +93,8 @@ export type SeatRow = {
   avatar_url: string | null;
   profile_frame_key?: string | null;
   profile_frame_expires_at?: Date | null;
+  profile_ride_key?: string | null;
+  profile_ride_expires_at?: Date | null;
 };
 
 export type GiftRow = {
@@ -167,6 +169,8 @@ export type ParticipantRow = {
   avatar_url?: string | null;
   profile_frame_key?: string | null;
   profile_frame_expires_at?: Date | null;
+  profile_ride_key?: string | null;
+  profile_ride_expires_at?: Date | null;
 };
 
 export type BubbleStyle = {

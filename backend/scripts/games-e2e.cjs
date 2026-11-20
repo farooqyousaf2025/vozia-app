@@ -248,17 +248,25 @@ const resetShipped = () => sql(`update game_definitions set ${SHIPPED} where key
   await api('POST', `/api/games/${raceId}/action`, { token: guest.token, body: { type: 'MOVE', payload: { cell: 3 } } });
   await api('POST', `/api/games/${raceId}/action`, { token: host.token, body: { type: 'MOVE', payload: { cell: 1 } } });
   await api('POST', `/api/games/${raceId}/action`, { token: guest.token, body: { type: 'MOVE', payload: { cell: 5 } } });
+  // Keep the final-move race isolated: cancellation is a separate competing state
+  // transition, and whichever transaction locks first is allowed to win that race.
   const simultaneous = await Promise.all([
     api('POST', `/api/games/${raceId}/action`, { token: host.token, body: { type: 'MOVE', payload: { cell: 2 } } }),
     api('POST', `/api/games/${raceId}/action`, { token: host.token, body: { type: 'MOVE', payload: { cell: 2 } } }),
     api('POST', `/api/games/${raceId}/action`, { token: host.token, body: { type: 'MOVE', payload: { cell: 2 } } }),
-    api('POST', `/api/games/${raceId}/cancel`, { token: host.token, body: { reason: 'a retried cancel that must not refund a finished match' } }),
   ]);
   const raceSettlements = Number(await scalar(`select count(*) from game_settlements where session_id = '${raceId}'`));
   const raceWins = simultaneous.filter((r) => r.status === 200).length;
   check('concurrency: the same final move from three clients settles the match once',
-    raceSettlements === 1 && raceWins === 1 && simultaneous[3].status === 409,
+    raceSettlements === 1 && raceWins === 1 && simultaneous.filter((r) => r.status === 409).length === 2,
     { settlements: raceSettlements, ok: raceWins, statuses: simultaneous.map((r) => r.status) });
+
+  const cancelAfterWin = await api('POST', `/api/games/${raceId}/cancel`, { token: host.token, body: { reason: 'a retried cancel must not refund a finished match' } });
+  const raceRefunds = Number(await scalar(`select count(*) from transactions where game_session_id = '${raceId}' and type = 'GAME_REFUND'`));
+  check('concurrency: a cancellation retried after the win cannot refund the match',
+    cancelAfterWin.status === 409 && codeOf(cancelAfterWin) === 'game_closed' && raceRefunds === 0 &&
+      Number(await scalar(`select count(*) from game_settlements where session_id = '${raceId}'`)) === 1,
+    { status: cancelAfterWin.status, code: codeOf(cancelAfterWin), refunds: raceRefunds });
 
   // ---- F. paid entry: the ladder, the rounding, and the cut ----
   const paidRules = await api('PUT', '/api/admin/games/TIC_TAC_TOE/rules', {
