@@ -30,6 +30,7 @@ import {
   IconUsers,
 } from '../components/ui/Icons';
 import { ApiError, api, assetUrl } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { openRoomConsole, type ConsoleLinkState } from '../lib/roomSocket';
 import { formatCompact, formatDiamonds, formatRCoin, relativeTime } from '../lib/format';
 import { LottiePreview } from '../components/ui/LottiePreview';
@@ -49,6 +50,7 @@ export default function RoomConsolePage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
+  const { can } = useAuth();
 
   const [view, setView] = useState<RoomConsoleResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -200,7 +202,7 @@ export default function RoomConsolePage() {
           <Button icon={<IconRefresh className="h-4 w-4" />} onClick={() => void load()}>
             Reload
           </Button>
-          {!closed && (
+          {can('room:moderate') && !closed && (
             <Button
               variant="danger"
               icon={<IconBan className="h-4 w-4" />}
@@ -270,7 +272,7 @@ export default function RoomConsolePage() {
           <Card
             title="Seats"
             subtitle="Mute stops the audio at the SFU, so it works even on a client that ignores the flag."
-            actions={
+            actions={can('room:moderate') && !closed ? (
               <>
                 <Button
                   size="sm"
@@ -299,7 +301,7 @@ export default function RoomConsolePage() {
                   Unmute all
                 </Button>
               </>
-            }
+            ) : undefined}
           >
             <ul className="grid gap-2 sm:grid-cols-2">
               {seats.map((seat) => (
@@ -308,6 +310,7 @@ export default function RoomConsolePage() {
                   seat={seat}
                   handRaised={seat.user !== null && handRaiseIds.has(seat.user.id)}
                   busy={busy !== null}
+                  canModerate={can('room:moderate') && !closed}
                   onMute={(muted) =>
                     void run(
                       `seat-${seat.seatIndex}`,
@@ -368,7 +371,7 @@ export default function RoomConsolePage() {
                       </p>
                       <p className="text-[11px] text-faint">{occupant.role}</p>
                     </div>
-                    <IconButton
+                    {can('room:moderate') && !closed && <IconButton
                       label={`Disconnect ${occupant.username}`}
                       tone="danger"
                       onClick={() =>
@@ -380,10 +383,10 @@ export default function RoomConsolePage() {
                       }
                     >
                       <IconPlugUnplug className="h-4 w-4" />
-                    </IconButton>
-                    <Button size="sm" variant="ghost" onClick={() => setBanTarget(occupant)}>
+                    </IconButton>}
+                    {can('room:moderate') && !closed && <Button size="sm" variant="ghost" onClick={() => setBanTarget(occupant)}>
                       Ban
-                    </Button>
+                    </Button>}
                   </li>
                 ))}
               </ul>
@@ -394,7 +397,7 @@ export default function RoomConsolePage() {
         </div>
 
         <div className="space-y-5">
-          <AnnouncementEditor
+          {can('room:moderate') && !closed && <AnnouncementEditor
             roomId={view.room.id}
             announcement={view.room.announcement ?? null}
             onApplied={(announcement) =>
@@ -411,18 +414,18 @@ export default function RoomConsolePage() {
                     },
               )
             }
-          />
-          <ThemePicker
+          />}
+          {can('room:moderate') && !closed && <ThemePicker
             roomId={view.room.id}
             current={view.room.theme}
             busy={busy !== null}
             onApplied={(theme) =>
               setView((state) => (state === null ? state : { ...state, room: { ...state.room, theme } }))
             }
-          />
-          <ModeratorMessage roomId={view.room.id} closed={closed} />
-          <WarnHost roomId={view.room.id} host={view.room.host.username} />
-          <BannedList roomId={view.room.id} bans={view.bans} />
+          />}
+          {can('room:moderate') && !closed && <ModeratorMessage roomId={view.room.id} closed={closed} />}
+          {can('room:moderate') && !closed && view.room.ownerType !== 'SYSTEM' && <WarnHost roomId={view.room.id} host={view.room.host.username} />}
+          <BannedList roomId={view.room.id} bans={view.bans} canModerate={can('room:moderate') && !closed} />
         </div>
       </div>
 
@@ -447,6 +450,7 @@ export default function RoomConsolePage() {
 interface SeatRowProps {
   seat: RoomSeatDetail;
   handRaised: boolean;
+  canModerate: boolean;
   busy: boolean;
   onMute: (muted: boolean) => void;
   onLock: (locked: boolean) => void;
@@ -454,7 +458,7 @@ interface SeatRowProps {
   onBan: () => void;
 }
 
-function SeatRow({ seat, handRaised, busy, onMute, onLock, onDisconnect, onBan }: SeatRowProps) {
+function SeatRow({ seat, handRaised, busy, canModerate, onMute, onLock, onDisconnect, onBan }: SeatRowProps) {
   const locked = seat.status === 'LOCKED';
   return (
     <li className="flex items-center gap-2.5 rounded-lg border border-edge/50 bg-elevated/40 px-3 py-2">
@@ -479,6 +483,7 @@ function SeatRow({ seat, handRaised, busy, onMute, onLock, onDisconnect, onBan }
               {seat.isSpeaker ? 'Speaker' : 'Seated'} · {seat.isMuted ? 'muted' : 'live mic'}
             </p>
           </div>
+          {canModerate && <>
           <Button
             size="sm"
             variant={seat.isMuted ? 'success' : 'ghost'}
@@ -494,11 +499,12 @@ function SeatRow({ seat, handRaised, busy, onMute, onLock, onDisconnect, onBan }
           <Button size="sm" variant="ghost" onClick={onBan}>
             Ban
           </Button>
+          </>}
         </>
       )}
-      <Button size="sm" variant="ghost" disabled={busy} onClick={() => onLock(!locked)}>
+      {canModerate && <Button size="sm" variant="ghost" disabled={busy} onClick={() => onLock(!locked)}>
         {locked ? 'Unlock' : 'Lock'}
-      </Button>
+      </Button>}
     </li>
   );
 }
@@ -854,7 +860,7 @@ function WarnHost({ roomId, host }: { roomId: string; host: string }) {
   );
 }
 
-function BannedList({ roomId, bans }: { roomId: string; bans: RoomBan[] }) {
+function BannedList({ roomId, bans, canModerate }: { roomId: string; bans: RoomBan[]; canModerate: boolean }) {
   const toast = useToast();
   const [pending, setPending] = useState<string | null>(null);
 
@@ -889,9 +895,9 @@ function BannedList({ roomId, bans }: { roomId: string; bans: RoomBan[] }) {
                   {ban.reason ? ` · ${ban.reason}` : ''}
                 </p>
               </div>
-              <Button size="sm" variant="ghost" loading={pending === ban.userId} onClick={() => void lift(ban.userId)}>
+              {canModerate && <Button size="sm" variant="ghost" loading={pending === ban.userId} onClick={() => void lift(ban.userId)}>
                 Lift
-              </Button>
+              </Button>}
             </li>
           ))}
         </ul>
