@@ -213,7 +213,7 @@ export async function listRoomsForAdmin(opts: {
   if (opts.search) {
     params.push(`%${opts.search}%`);
     const p = params.length;
-    where.push(`(r.title ILIKE ${p} OR r.room_number::text LIKE ${p} OR COALESCE(u.username, '') ILIKE ${p} OR COALESCE(agency.name, '') ILIKE ${p})`);
+    where.push(`(r.title ILIKE $${p} OR r.room_number::text LIKE $${p} OR COALESCE(u.username, '') ILIKE $${p} OR COALESCE(agency.name, '') ILIKE $${p})`);
   }
 
   const rows = await many<RoomRow & { agency_id: string | null; agency_name: string | null }>(
