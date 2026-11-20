@@ -45,6 +45,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.voiza.app.domain.model.AgencyAccount
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyHostGoals
+import com.voiza.app.domain.model.AgencyHostRecognition
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencyRoomModerationAudit
@@ -155,6 +156,14 @@ fun AgencyDashboardScreen(
                     error = state.attendanceError,
                     onDaysChange = viewModel::setAttendanceDays,
                     onRefresh = { viewModel.loadHostAttendance() },
+                )
+            }
+            item {
+                AgencyHostRecognitionCard(
+                    recognition = state.hostRecognition,
+                    loading = state.recognitionLoading,
+                    error = state.recognitionError,
+                    onRefresh = viewModel::loadHostRecognition,
                 )
             }
             item {
@@ -553,6 +562,67 @@ private fun AgencyHostAttendanceCard(
             "A check-in is recorded only when LiveKit confirms the host joined their room. This report does not claim working hours or estimate session duration. Only currently assigned active hosts are included; dates use UTC.",
             color = OnDarkMedium.copy(alpha = 0.75f),
             fontSize = 10.sp,
+        )
+    }
+}
+
+@Composable
+private fun AgencyHostRecognitionCard(
+    recognition: AgencyHostRecognition?,
+    loading: Boolean,
+    error: String?,
+    onRefresh: () -> Unit,
+) {
+    VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionLabel("Host recognition & achievements")
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onRefresh, enabled = !loading) { Text("Refresh") }
+        }
+        Text(
+            "Milestones are earned from distinct days with verified LiveKit host check-ins. Dates are shown in UTC.",
+            color = OnDarkMedium, fontSize = 11.sp,
+        )
+        when {
+            loading && recognition == null -> Text("Loading host achievements…", color = OnDarkMedium, fontSize = 12.sp)
+            error != null && recognition == null -> Text(error, color = DangerRed, fontSize = 11.sp)
+            recognition == null -> Text("Host recognition is not available.", color = OnDarkMedium, fontSize = 12.sp)
+            recognition.hosts.isEmpty() -> Text("No active hosts are currently assigned to this agency.", color = OnDarkMedium, fontSize = 11.sp)
+            else -> {
+                FigureRow("Hosts with achievements", "${recognition.hostsWithAchievements} / ${recognition.activeHostCount}", Mint)
+                Spacer(Modifier.height(8.dp))
+                recognition.hosts.forEach { host ->
+                    Column(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
+                        Text(host.username, color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("${host.attendanceDays} verified attendance days", color = OnDarkMedium, fontSize = 10.sp)
+                        host.milestones.forEach { milestone ->
+                            val earned = milestone.unlockedAt != null
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(start = 8.dp, top = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(if (earned) "🏅" else "○", fontSize = 13.sp)
+                                Spacer(Modifier.width(7.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(milestone.title, color = if (earned) Mint else OnDarkMedium, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        if (earned) "${milestone.description} · ${milestone.unlockedAt} UTC"
+                                        else "${milestone.attendanceDaysRequired} verified attendance days required",
+                                        color = OnDarkMedium, fontSize = 9.sp,
+                                    )
+                                }
+                                if (earned) Text("EARNED", color = Mint, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(5.dp))
+                }
+            }
+        }
+        if (error != null && recognition != null) Text(error, color = DangerRed, fontSize = 10.sp)
+        Text(
+            "Recognition is informational only. No coins, bonuses, payouts, host-status changes or permissions are granted.",
+            color = OnDarkMedium.copy(alpha = 0.75f), fontSize = 10.sp,
         )
     }
 }
