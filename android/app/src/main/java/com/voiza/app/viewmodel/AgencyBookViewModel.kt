@@ -11,6 +11,7 @@ import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyHostAttendanceReport
 import com.voiza.app.domain.model.AgencyHostGoals
+import com.voiza.app.domain.model.AgencyHostRecognition
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencySubRow
@@ -58,6 +59,9 @@ class AgencyBookViewModel(
         val goalsLoading: Boolean = false,
         val goalsSaving: Boolean = false,
         val goalsError: String? = null,
+        val hostRecognition: AgencyHostRecognition? = null,
+        val recognitionLoading: Boolean = false,
+        val recognitionError: String? = null,
         val activeRooms: List<AgencyLiveRoom> = emptyList(),
         val expandedRoomId: String? = null,
         val roomMembers: List<AgencyRoomMember> = emptyList(),
@@ -154,6 +158,16 @@ class AgencyBookViewModel(
         }
     }
 
+    fun loadHostRecognition() {
+        viewModelScope.launch {
+            _state.update { it.copy(recognitionLoading = true, recognitionError = null) }
+            when (val result = agencyBookRepository.hostRecognition()) {
+                is ApiResult.Success -> _state.update { it.copy(hostRecognition = result.data, recognitionLoading = false) }
+                is ApiResult.Failure -> _state.update { it.copy(recognitionLoading = false, recognitionError = result.message) }
+            }
+        }
+    }
+
     fun saveHostGoals(targetDays: Int) {
         val target = targetDays.coerceIn(1, 7)
         viewModelScope.launch {
@@ -241,6 +255,7 @@ class AgencyBookViewModel(
         val activity = agencyBookRepository.hostActivity(_state.value.activityDays)
         val attendance = agencyBookRepository.hostAttendance(_state.value.attendanceDays)
         val goals = agencyBookRepository.hostGoals()
+        val recognition = agencyBookRepository.hostRecognition()
         val roster = agencyBookRepository.hosts()
         // Master-only, and skipped rather than called: the server's own answer for a sub is a refusal.
         val allocations = if (position.isMaster) agencyBookRepository.subAgencies() else null
@@ -256,6 +271,9 @@ class AgencyBookViewModel(
                 hostGoals = (goals as? ApiResult.Success)?.data ?: it.hostGoals,
                 goalsError = (goals as? ApiResult.Failure)?.message,
                 goalsLoading = false,
+                hostRecognition = (recognition as? ApiResult.Success)?.data ?: it.hostRecognition,
+                recognitionError = (recognition as? ApiResult.Failure)?.message,
+                recognitionLoading = false,
                 activeRooms = (rooms as? ApiResult.Success)?.data ?: it.activeRooms,
                 roomsError = (rooms as? ApiResult.Failure)?.message,
                 hosts = (roster as? ApiResult.Success)?.data ?: it.hosts,
