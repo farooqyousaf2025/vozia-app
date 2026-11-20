@@ -55,6 +55,7 @@ import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.DangerRed
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
+import com.voiza.app.ui.theme.Mint
 import com.voiza.app.ui.theme.RCoinGreen
 import com.voiza.app.ui.theme.VoizaSurface
 import com.voiza.app.ui.theme.WarningAmber
