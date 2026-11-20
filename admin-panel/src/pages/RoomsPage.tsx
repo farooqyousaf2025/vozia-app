@@ -29,7 +29,7 @@ import { Table, TBody, Td, Th, THead, Tr } from '../components/ui/Table';
 import { ApiError, api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { formatCompact, formatRCoin, parseUnsignedInt, relativeTime } from '../lib/format';
-import type { AdminRoom, RoomOccupant, SeatPolicyResult } from '../types';
+import type { AdminRoom, RoomOccupant, SeatPolicyResult, SystemRoomInput } from '../types';
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -44,6 +44,8 @@ export default function RoomsPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const [closeTarget, setCloseTarget] = useState<AdminRoom | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const { can } = useAuth();
   const [drawerRoomId, setDrawerRoomId] = useState<string | null>(null);
 
   // Keep the freshest list readable from stable callbacks.
@@ -118,6 +120,9 @@ export default function RoomsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {can('room:create') && (
+            <Button onClick={() => setCreateOpen(true)}>Create system room</Button>
+          )}
           <Button icon={<IconRefresh className="h-4 w-4" />} onClick={() => void load()}>
             Refresh
           </Button>
@@ -209,6 +214,17 @@ export default function RoomsPage() {
         )}
       </Card>
 
+      {createOpen && (
+        <CreateSystemRoomModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={(room) => {
+            toast.success(`System room “${room.title}” created.`);
+            setCreateOpen(false);
+            void load();
+          }}
+        />
+      )}
+
       {closeTarget !== null && (
         <CloseRoomModal room={closeTarget} onClose={() => setCloseTarget(null)} onClosed={onRoomClosed} />
       )}
@@ -221,6 +237,93 @@ export default function RoomsPage() {
         />
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Operator-owned room creation. No member account is created or impersonated.
+// ---------------------------------------------------------------------------
+function CreateSystemRoomModal({ onClose, onCreated }: { onClose: () => void; onCreated: (room: AdminRoom) => void }) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState<SystemRoomInput['category']>('PARTY');
+  const [type, setType] = useState<SystemRoomInput['type']>('PUBLIC');
+  const [password, setPassword] = useState('');
+  const [seatCapacity, setSeatCapacity] = useState('');
+  const [pending, setPending] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (pending) return;
+    setPending(true);
+    setServerError(null);
+    try {
+      const input: SystemRoomInput = {
+        title: title.trim(),
+        ...(description.trim() ? { description: description.trim() } : {}),
+        category,
+        type,
+        ...(type === 'PRIVATE' ? { password } : {}),
+        ...(seatCapacity.trim() ? { seatCapacity: Number(seatCapacity) } : {}),
+      };
+      const result = await api.createSystemRoom(input);
+      onCreated(result.room);
+    } catch (err) {
+      setServerError(err instanceof ApiError ? err.message : 'Could not create the system room.');
+      setPending(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="md"
+      title="Create system-owned room"
+      subtitle="Owned by Vozia operations, not by a member account."
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={() => void submit()} loading={pending} disabled={!title.trim() || (type === 'PRIVATE' && !password.trim())}>
+            Create room
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Input label="Room title" value={title} maxLength={60} onChange={(event) => setTitle(event.target.value)} placeholder="Vozia Official Party" />
+        <Input label="Description (optional)" value={description} maxLength={200} onChange={(event) => setDescription(event.target.value)} placeholder="Community events and announcements" />
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block text-xs font-medium text-muted">
+            Category
+            <select value={category} onChange={(event) => setCategory(event.target.value as SystemRoomInput['category'])} className="focus-ring mt-1.5 h-9 w-full rounded-lg border border-edge bg-elevated px-3 text-sm text-ink">
+              <option value="PARTY">Party</option>
+              <option value="MUSIC">Music</option>
+              <option value="GAME">Game</option>
+              <option value="CHAT">Chat</option>
+              <option value="POPULAR">Popular</option>
+            </select>
+          </label>
+          <label className="block text-xs font-medium text-muted">
+            Visibility
+            <select value={type} onChange={(event) => setType(event.target.value as SystemRoomInput['type'])} className="focus-ring mt-1.5 h-9 w-full rounded-lg border border-edge bg-elevated px-3 text-sm text-ink">
+              <option value="PUBLIC">Public</option>
+              <option value="PRIVATE">Private</option>
+            </select>
+          </label>
+        </div>
+        {type === 'PRIVATE' && (
+          <Input label="Room password" value={password} maxLength={128} onChange={(event) => setPassword(event.target.value)} type="password" />
+        )}
+        <Input label="Seat capacity (optional)" value={seatCapacity} onChange={(event) => setSeatCapacity(event.target.value)} inputMode="numeric" placeholder="Use current platform default" hint="Includes all seats. Must be within the current platform seat policy." />
+        <p className="rounded-lg border border-edge/60 bg-elevated/40 p-3 text-xs text-muted">
+          All seats start empty. Members join as participants; no member becomes the room host. Operations admins can moderate or close this room from the Room Console.
+        </p>
+        {serverError !== null && (
+          <div className="rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 py-2 text-xs text-rose-200">{serverError}</div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
