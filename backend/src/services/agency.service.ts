@@ -1492,7 +1492,7 @@ export type AgencyHostActivityReport = {
 
 export async function agencySelfHostActivity(agencyId: string, days: number): Promise<AgencyHostActivityReport> {
   const windowDays = days === 30 ? 30 : 7;
-  const [dailyRows, hostRows, uniqueRow, weeklyRows] = await Promise.all([
+  const [dailyRows, hostRows, weeklyRows, uniqueRow] = await Promise.all([
     many<{ date: string; rooms_created: string | number; rooms_with_visitors: string | number; member_visits: string | number; unique_visitors: string | number }>(
       `WITH bounds AS (
          SELECT ((now() AT TIME ZONE 'UTC')::date - ($2::int - 1))::timestamp AT TIME ZONE 'UTC' AS start_at,
