@@ -115,7 +115,10 @@ export default function RoomsPage() {
             </span>
           </h1>
           <p className="mt-0.5 text-sm text-muted">
-            {lastUpdated === null ? 'Connecting…' : `Refreshed ${relativeTime(lastUpdated.toISOString())}`}
+            Live room activity, audience health and operator controls.
+          </p>
+          <p className="mt-1 text-xs text-faint">
+            {lastUpdated === null ? 'Connecting…' : `Updated ${relativeTime(lastUpdated.toISOString())}`}
             {error !== null && <span className="ml-2 text-rose-300">· {error}</span>}
           </p>
         </div>
