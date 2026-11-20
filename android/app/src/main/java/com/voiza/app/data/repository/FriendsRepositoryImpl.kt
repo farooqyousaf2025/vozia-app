@@ -6,6 +6,9 @@ import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.data.remote.VoizaApiService
 import com.voiza.app.data.remote.apiCall
 import com.voiza.app.data.remote.dto.DoNotContactBody
+import com.voiza.app.data.remote.dto.FriendLocationSharingBody
+import com.voiza.app.data.remote.dto.FriendLocationBody
+import com.voiza.app.domain.model.FriendDistance
 import com.voiza.app.data.remote.dto.SendMessageBody
 import com.voiza.app.domain.model.Conversation
 import com.voiza.app.domain.model.DirectMessage
@@ -26,6 +29,11 @@ import com.voiza.app.domain.repository.FriendsRepository
 class FriendsRepositoryImpl(
     private val api: VoizaApiService,
 ) : FriendsRepository {
+
+    override suspend fun locationSharingEnabled(): ApiResult<Boolean> = apiCall { api.friendLocationSharingStatus() }.mapSuccess { it.enabled == true }
+    override suspend fun setLocationSharing(enabled: Boolean): ApiResult<Boolean> = apiCall { api.setFriendLocationSharing(FriendLocationSharingBody(enabled)) }.mapSuccess { it.enabled == enabled }
+    override suspend fun updateLocation(latitude: Double, longitude: Double): ApiResult<Boolean> = apiCall { api.updateFriendLocation(FriendLocationBody(latitude, longitude)) }.mapSuccess { it.updated == true }
+    override suspend fun friendDistances(): ApiResult<List<FriendDistance>> = apiCall { api.friendDistances() }.mapSuccess { e -> e.locations.orEmpty().mapNotNull { d -> d.friendId?.takeIf { it.isNotBlank() }?.let { FriendDistance(it, d.distanceMeters) } } }
 
     override suspend fun sendFriendRequest(targetUserId: String): ApiResult<FriendRequest> =
         apiCall { api.sendFriendRequest(targetUserId) }.mapSingle { it.request?.toDomainOrNull() }
