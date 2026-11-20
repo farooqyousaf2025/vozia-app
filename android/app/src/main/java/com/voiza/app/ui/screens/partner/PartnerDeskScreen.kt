@@ -172,10 +172,6 @@ fun PartnerDeskScreen(
             subtitle = account?.let { "${it.kindLabel} · ${it.code}" }
                 ?: "Your orders, your commission, and the cash you hold for the platform.",
             onBack = onBack,
-                        query = "",
-                        onQueryChange = {},
-                        statusFilter = "All",
-                        onStatusFilterChange = {},
         )
         Spacer(Modifier.height(10.dp))
 
@@ -768,6 +764,10 @@ private fun SellerReportView(
                         total = report.orders.size,
                         error = null,
                         isSeller = false,
+                        query = "",
+                        onQueryChange = {},
+                        statusFilter = "All",
+                        onStatusFilterChange = {},
                         onMarkPaid = {},
                         onCancel = {},
                         onAttachProof = {},
