@@ -138,6 +138,15 @@ data class AgencyHostAttendanceReport(
     val daily: List<AgencyHostAttendanceDay>, val hosts: List<AgencyHostAttendanceRow>,
 )
 
+data class AgencyHostGoalRow(
+    val username: String, val avatarUrl: String?, val attendanceDays: Int, val targetDays: Int,
+    val progressPercent: Int, val remainingDays: Int, val metTarget: Boolean,
+)
+data class AgencyHostGoals(
+    val weeklyAttendanceTargetDays: Int, val windowDays: Int, val timezone: String,
+    val activeHostCount: Int, val hostsMeetingGoal: Int, val hosts: List<AgencyHostGoalRow>, val updatedAt: String,
+)
+
 /** One host on the roster. No phone number and no account id: those are the operator's columns. */
 data class AgencyHostRow(
     val username: String,
