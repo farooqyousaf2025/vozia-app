@@ -1491,7 +1491,7 @@ export async function agencySelfHostActivity(agencyId: string, days: number): Pr
   const windowDays = days === 30 ? 30 : 7;
   const [dailyRows, hostRows, uniqueRow] = await Promise.all([
     many<{ date: string; rooms_created: string | number; rooms_with_visitors: string | number; member_visits: string | number; unique_visitors: string | number }>(
-      \`WITH bounds AS (
+      `WITH bounds AS (
          SELECT ((now() AT TIME ZONE 'UTC')::date - ($2::int - 1))::timestamp AT TIME ZONE 'UTC' AS start_at,
                 now() AS end_at
        ), roster AS (
@@ -1521,11 +1521,11 @@ export async function agencySelfHostActivity(agencyId: string, days: number): Pr
               ) AS calendar(activity_date)
          LEFT JOIN created c ON c.activity_date = calendar.activity_date::date
          LEFT JOIN visits v ON v.activity_date = calendar.activity_date::date
-        ORDER BY calendar.activity_date\`,
+        ORDER BY calendar.activity_date`,
       [agencyId, windowDays],
     ),
     many<{ username: string; avatar_url: string | null; rooms_created: string | number; rooms_with_visitors: string | number; member_visits: string | number; unique_visitors: string | number }>(
-      \`WITH bounds AS (
+      `WITH bounds AS (
          SELECT ((now() AT TIME ZONE 'UTC')::date - ($2::int - 1))::timestamp AT TIME ZONE 'UTC' AS start_at,
                 now() AS end_at
        ), roster AS (
@@ -1550,11 +1550,11 @@ export async function agencySelfHostActivity(agencyId: string, days: number): Pr
               COALESCE(v.unique_visitors, 0)::int AS unique_visitors
        FROM roster LEFT JOIN created c ON c.host_id = roster.host_user_id
        LEFT JOIN visits v ON v.host_id = roster.host_user_id
-       ORDER BY COALESCE(v.member_visits, 0) DESC, COALESCE(c.rooms_created, 0) DESC, roster.username\`,
+       ORDER BY COALESCE(v.member_visits, 0) DESC, COALESCE(c.rooms_created, 0) DESC, roster.username`,
       [agencyId, windowDays],
     ),
     one<{ unique_visitors: string | number }>(
-      \`WITH bounds AS (
+      `WITH bounds AS (
          SELECT ((now() AT TIME ZONE 'UTC')::date - ($2::int - 1))::timestamp AT TIME ZONE 'UTC' AS start_at,
                 now() AS end_at
        )
@@ -1563,7 +1563,7 @@ export async function agencySelfHostActivity(agencyId: string, days: number): Pr
        JOIN agency_hosts ah ON ah.host_user_id = r.host_id JOIN agencies a ON a.id = ah.agency_id
        CROSS JOIN bounds b
        WHERE ah.agency_id = $1 AND ah.status = 'ACTIVE' AND a.status = 'ACTIVE'
-         AND p.user_id <> r.host_id AND p.joined_at >= b.start_at AND p.joined_at < b.end_at\`,
+         AND p.user_id <> r.host_id AND p.joined_at >= b.start_at AND p.joined_at < b.end_at`,
       [agencyId, windowDays],
     ),
   ]);

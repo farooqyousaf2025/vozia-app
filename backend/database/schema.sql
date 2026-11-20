@@ -190,6 +190,7 @@ ALTER TABLE rooms ADD COLUMN IF NOT EXISTS like_count BIGINT NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS rooms_active_idx   ON rooms (status, category, created_at DESC);
 CREATE INDEX IF NOT EXISTS rooms_host_idx     ON rooms (host_id);
+CREATE INDEX IF NOT EXISTS rooms_host_created_idx ON rooms (host_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS rooms_popular_idx  ON rooms (status, total_gift_value DESC);
 
 -- ---------------------------------------------------------------------------
@@ -234,6 +235,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS room_participants_active_uq
   ON room_participants (room_id, user_id) WHERE left_at IS NULL;
 CREATE INDEX IF NOT EXISTS room_participants_room_idx
   ON room_participants (room_id, left_at);
+CREATE INDEX IF NOT EXISTS room_participants_joined_idx
+  ON room_participants (joined_at DESC, room_id, user_id);
 CREATE INDEX IF NOT EXISTS room_participants_queue_idx
   ON room_participants (room_id) WHERE left_at IS NULL AND hand_raised;
 
