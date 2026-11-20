@@ -1,6 +1,7 @@
 package com.voiza.app.data.remote
 
 import com.voiza.app.data.remote.dto.AuthResponse
+import com.voiza.app.data.remote.dto.AgencyLiveRoomsEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostsEnvelope
 import com.voiza.app.data.remote.dto.AgencyPositionEnvelope
 import com.voiza.app.data.remote.dto.AgencySettlementsEnvelope
@@ -655,6 +656,9 @@ interface VoizaApiService {
      */
     @GET("api/agency/position")
     suspend fun agencyPosition(): AgencyPositionEnvelope
+
+    @GET("api/agency/rooms")
+    suspend fun agencyActiveRooms(): AgencyLiveRoomsEnvelope
 
     @GET("api/agency/hosts")
     suspend fun agencyHosts(@Query("limit") limit: Int? = null): AgencyHostsEnvelope

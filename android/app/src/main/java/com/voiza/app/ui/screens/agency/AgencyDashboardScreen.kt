@@ -131,6 +131,7 @@ fun AgencyDashboardScreen(
         ) {
             item { PositionCard(position) }
             item { OwedCard(position.account) }
+            item { AgencyActiveRoomsCard(state.activeRooms, state.roomsError) }
             if (position.isMaster) {
                 item { AllocationCard(state.subAgencies, state.allocationError, position.subAgencyCount) }
             }

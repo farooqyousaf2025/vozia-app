@@ -1,6 +1,7 @@
 package com.voiza.app.domain.repository
 
 import com.voiza.app.data.remote.ApiResult
+import com.voiza.app.domain.model.AgencyLiveRoom
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
@@ -494,6 +495,8 @@ interface RoleApplicationRepository {
  * app chooses to hide.
  */
 interface AgencyBookRepository {
+    /** Active rooms belonging only to currently assigned active hosts. */
+    suspend fun activeRooms(): ApiResult<List<AgencyLiveRoom>>
     /** Name, position in the hierarchy, the split, and what is owed in the account's own currency. */
     suspend fun position(): ApiResult<AgencyPosition>
 

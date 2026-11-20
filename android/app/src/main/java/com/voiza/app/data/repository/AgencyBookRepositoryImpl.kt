@@ -1,5 +1,6 @@
 package com.voiza.app.data.repository
 
+import com.voiza.app.domain.model.AgencyLiveRoom
 import com.voiza.app.data.mapper.toHosts
 import com.voiza.app.data.mapper.toPosition
 import com.voiza.app.data.mapper.toSettlements
@@ -25,6 +26,14 @@ import com.voiza.app.domain.repository.AgencyBookRepository
 class AgencyBookRepositoryImpl(
     private val api: VoizaApiService,
 ) : AgencyBookRepository {
+
+    override suspend fun activeRooms(): ApiResult<List<AgencyLiveRoom>> =
+        apiCall { api.agencyActiveRooms() }.mapSuccess { envelope ->
+            envelope.rooms.orEmpty().mapNotNull { row ->
+                val id = row.id?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                AgencyLiveRoom(id, row.title.orEmpty(), row.roomNumber.orEmpty(), row.hostUsername.orEmpty(), (row.memberCount ?: 0).coerceAtLeast(0))
+            }
+        }
 
     override suspend fun position(): ApiResult<AgencyPosition> =
         apiCall { api.agencyPosition() }.flatMapSuccess { envelope ->
