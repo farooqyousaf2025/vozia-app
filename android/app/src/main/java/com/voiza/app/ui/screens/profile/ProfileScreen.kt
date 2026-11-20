@@ -73,6 +73,7 @@ import com.voiza.app.ui.theme.VoizaHeroGradient
 import com.voiza.app.ui.theme.VoizaOutline
 import com.voiza.app.ui.theme.VoizaSurfaceVariant
 import com.voiza.app.ui.theme.WarningAmber
+import com.voiza.app.ui.screens.agency.HostAgencyAnnouncementsCard
 import com.voiza.app.viewmodel.AgencyAccessViewModel
 import com.voiza.app.viewmodel.AuthViewModel
 import com.voiza.app.viewmodel.PartnerAccessViewModel
@@ -209,7 +210,7 @@ fun ProfileScreen(
             }
         }
 
-        // ---- Actions ----
+        // Host inbox is recipient-scoped by the API; members without an active agency assignment see an empty state.\n        HostAgencyAnnouncementsCard()\n        Spacer(Modifier.height(8.dp))\n\n        // ---- Actions ----
         VoizaButton(
             text = "Daily quests",
             onClick = onOpenQuests,
