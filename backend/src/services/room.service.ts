@@ -6,7 +6,6 @@ import { ChatRow, ParticipantRow, RoomRow, SeatRow, UserRow } from '../types/db'
 import { hashSecret, randomRoomNumber, verifySecret } from '../utils/crypto';
 import { ApiError } from '../utils/http';
 import { readConfig } from './business.service';
-import { activeRolesFor, hostApplicationRequired } from './partner-application.service';
 import { assertMayWearTheme } from './store.service';
 import {
   ChatMessageDto,
@@ -128,7 +127,7 @@ export const ROOM_SELECT = `
          u.profile_frame_key AS host_profile_frame_key,
          u.profile_frame_expires_at AS host_profile_frame_expires_at
     FROM rooms r
-    JOIN users u ON u.id = r.host_id`;
+    LEFT JOIN users u ON u.id = r.host_id`;
 
 async function run(client: PoolClient | undefined, text: string, params: readonly unknown[] = []) {
   // pg's signatures want a mutable any[]; copying keeps the readonly contract local.
@@ -252,7 +251,7 @@ export type RoomWithState = {
   audience: MiniUser[];
   handRaises: ParticipantDto[];
   livekitRoomName: string;
-  hostId: string;
+  hostId: string | null;
 };
 
 async function snapshot(room: RoomRow, client?: PoolClient): Promise<RoomWithState> {
@@ -383,7 +382,7 @@ export async function listRooms(opts: {
 export async function quickJoinRoom(userId: string): Promise<RoomDto> {
   const row = await one<RoomRow>(
     `${ROOM_SELECT}
-      WHERE r.status = 'ACTIVE' AND r.type = 'PUBLIC' AND r.host_id <> $1
+      WHERE r.status = 'ACTIVE' AND r.type = 'PUBLIC' AND r.host_id IS DISTINCT FROM $1
         AND NOT EXISTS (SELECT 1 FROM room_bans b WHERE b.room_id = r.id AND b.user_id = $1)
         AND NOT EXISTS (SELECT 1 FROM room_participants p
                          WHERE p.room_id = r.id AND p.user_id = $1 AND p.left_at IS NULL)
@@ -442,35 +441,70 @@ export type CreateRoomInput = {
   region?: string | null;
   rules?: string | null;
 };
-
 /**
- * May this account open a room? Only while the platform asks for nothing (`system_config`
- * `roles.hostApplicationRequired`, default off) or it holds an approved partner role.
- *
- * The switch exists because the answer used to be unconditional. Migration 0035 made an approved
- * `HOST` application the grant, and turning the switch on is what makes that mean anything — but
- * flipping it on a live platform would close every existing host's door at once, so the flag ships
- * off and the operator turns it when the queue has caught up.
- *
- * Any grant passes, not only `HOST`. An agency owner and a BD manager are both trusted with a room
- * already, and refusing them would be a new rule rather than the one being enforced. `user_type` is
- * deliberately not consulted: this file has been writing 'HOST' into it for anyone who opened a
- * room, so it records who has hosted, not who is allowed to.
+ * Operator-owned room. It has no member host and does not create a shadow/fake user.
+ * Its seat grid starts empty; operator moderation is performed through the admin room console.
  */
-async function assertMayHost(hostUserId: string): Promise<void> {
-  if (!(await hostApplicationRequired())) return;
-  const roles = await activeRolesFor(hostUserId);
-  if (roles.length === 0) {
-    throw ApiError.forbidden(
-      'Hosting a room now requires an approved Host application. Apply from Become a Partner.',
-      'role_approval_required',
-    );
+export async function createSystemRoom(
+  adminId: string,
+  input: CreateRoomInput,
+): Promise<RoomDto & { seats: SeatDto[] }> {
+  const seatCapacity = await resolveSeatCapacity(input.seatCapacity);
+  if (input.type === 'PRIVATE' && !input.password) {
+    throw ApiError.badRequest('Private rooms need a password', 'password_required');
   }
+  if (input.theme && !isTheme(input.theme)) {
+    throw ApiError.badRequest('Unknown room theme', 'theme_unknown');
+  }
+  const passwordHash = input.type === 'PRIVATE' ? hashSecret(input.password!) : null;
+
+  const roomId = await withTransaction(async (client) => {
+    let inserted: RoomRow | undefined;
+    for (let attempt = 0; attempt < 8 && !inserted; attempt += 1) {
+      const roomNumber = randomRoomNumber();
+      try {
+        const result = await client.query<RoomRow>(
+          `INSERT INTO rooms
+             (room_number, title, description, cover_url, host_id, owner_type, owner_admin_id,
+              type, password_hash, seat_capacity, status, category, livekit_room_name, theme,
+              language, region, rules, speaker_approval_required)
+           VALUES ($1,$2,$3,$4,NULL,'SYSTEM',$5,$6,$7,$8,'ACTIVE',$9,$10,$11,$12,$13,$14,FALSE)
+           RETURNING *`,
+          [
+            roomNumber, input.title, input.description ?? null, input.coverUrl ?? null, adminId,
+            input.type, passwordHash, seatCapacity, input.category, `voiza-room-${roomNumber}`,
+            input.theme ?? defaultThemeSlug(), normalizeLanguage(input.language),
+            normalizeRegion(input.region), normalizeRules(input.rules),
+          ],
+        );
+        inserted = result.rows[0];
+      } catch (err) {
+        if ((err as { code?: string }).code !== '23505') throw err;
+      }
+    }
+    if (!inserted) throw ApiError.conflict('Could not allocate a room number, try again');
+
+    // All seats, including index 0, are empty: a system room has no human host seat.
+    for (let index = 0; index < seatCapacity; index += 1) {
+      await client.query(
+        `INSERT INTO room_seats (room_id, seat_index, user_id, status, is_speaker, is_muted)
+         VALUES ($1,$2,NULL,'EMPTY',FALSE,FALSE)`,
+        [inserted.id, index],
+      );
+    }
+    return inserted.id;
+  });
+
+  const room = await loadRoom(roomId);
+  const sessionSid = await ensureLivekitRoom(room.livekit_room_name, { maxParticipants: 1000 });
+  if (sessionSid) await query('UPDATE rooms SET livekit_session_sid = $2 WHERE id = $1', [roomId, sessionSid]);
+  return { ...toRoom(room), seats: await fetchSeats(roomId) };
 }
 
+
+/** Every active member may create a room; partner approval is not a room-creation gate. */
 export async function createRoom(hostUserId: string, input: CreateRoomInput): Promise<RoomDto & { seats: SeatDto[] }> {
   const user = await loadUser(hostUserId);
-  await assertMayHost(hostUserId);
   const seatCapacity = await resolveSeatCapacity(input.seatCapacity);
   // Asked for a paid look with no receipt behind it? Refuse before a room exists to hang it on.
   if (input.theme && isTheme(input.theme)) await assertMayWearTheme(hostUserId, input.theme);
@@ -546,7 +580,8 @@ export async function createRoom(hostUserId: string, input: CreateRoomInput): Pr
   });
 
   const room = await loadRoom(roomId);
-  await ensureLivekitRoom(room.livekit_room_name, { maxParticipants: 1000 });
+  const sessionSid = await ensureLivekitRoom(room.livekit_room_name, { maxParticipants: 1000 });
+  if (sessionSid) await query('UPDATE rooms SET livekit_session_sid = $2 WHERE id = $1', [roomId, sessionSid]);
   return { ...toRoom(room), seats: await fetchSeats(roomId) };
 }
 
@@ -579,6 +614,11 @@ export async function joinRoom(
     'SELECT seat_index FROM room_seats WHERE room_id = $1 AND user_id = $2',
     [roomId, userId],
   );
+
+  // Ensure the media session and persist its generation before writing presence. A delayed
+  // room_finished webhook for the previous SID can then never clear this new join.
+  const sessionSid = await ensureLivekitRoom(room.livekit_room_name, { maxParticipants: 1000 });
+  if (sessionSid) await query('UPDATE rooms SET livekit_session_sid = $2 WHERE id = $1', [roomId, sessionSid]);
 
   const role = room.host_id === userId ? 'HOST' : alreadySeated ? 'SPEAKER' : 'AUDIENCE';
   await one(
@@ -618,6 +658,8 @@ export async function getLivekitAccess(userId: string, roomId: string): Promise<
     'SELECT seat_index, is_muted FROM room_seats WHERE room_id = $1 AND user_id = $2',
     [roomId, userId],
   );
+  const sessionSid = await ensureLivekitRoom(room.livekit_room_name, { maxParticipants: 1000 });
+  if (sessionSid) await query('UPDATE rooms SET livekit_session_sid = $2 WHERE id = $1', [roomId, sessionSid]);
   const level: AccessLevel = room.host_id === userId ? 'host' : seat ? 'speaker' : 'audience';
   return issueRoomToken({
     roomName: room.livekit_room_name,
@@ -665,7 +707,7 @@ export async function takeSeat(userId: string, roomId: string, seatIndex: number
         seat.status === 'LOCKED' ? 'seat_locked' : 'seat_taken',
       );
     }
-    if (seatIndex === 0 && room.host_id !== userId) {
+    if (seatIndex === 0 && room.host_id !== userId && room.owner_type !== 'SYSTEM') {
       throw ApiError.forbidden('Only the host can sit in the host seat', 'seat_reserved');
     }
 
@@ -763,7 +805,7 @@ export async function setSeatMute(
   const isSelf = seat.user_id === actorId;
   if (!opts.asAdmin) {
     if (!isHost && !isSelf) throw ApiError.forbidden('You do not control this seat');
-    if (isSelf && !isHost && !muted) throw ApiError.forbidden('Only the host can unmute you');
+    if (isSelf && !isHost && !muted && room.owner_type !== 'SYSTEM') throw ApiError.forbidden('Only the host can unmute you');
   }
 
   await query('UPDATE room_seats SET is_muted = $3 WHERE room_id = $1 AND seat_index = $2', [

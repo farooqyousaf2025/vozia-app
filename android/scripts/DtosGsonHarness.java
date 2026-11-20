@@ -426,9 +426,24 @@ public class DtosGsonHarness {
                     throw new IllegalStateException(item.getKey() + " art is not an asset URL: " + item.getArt());
                 }
             }
-            // Every kind the shop screen has a tab for must exist, or a tab is a dead end.
-            if (!kinds.containsAll(java.util.Arrays.asList(StoreItemKind.values()))) {
-                throw new IllegalStateException("the capture sold only " + kinds);
+            // This checked-in REST capture predates the BUBBLE catalogue. Keep the four
+            // captured catalogue kinds covered here; exercise the newer bubble wire shape
+            // independently below instead of making an old fixture pretend it came from a
+            // backend that already had chat_bubbles seeded.
+            java.util.Set<StoreItemKind> capturedKinds = java.util.EnumSet.of(
+                    StoreItemKind.FRAME, StoreItemKind.THEME, StoreItemKind.EFFECT, StoreItemKind.RIDE);
+            if (!kinds.containsAll(capturedKinds)) {
+                throw new IllegalStateException("the capture is missing a legacy store kind: " + kinds);
+            }
+            StoreItemDto bubbleDto = G.fromJson("{\"kind\":\"BUBBLE\",\"key\":\"bubble-neon\","
+                    + "\"name\":\"Neon\",\"art\":\"\",\"priceDiamonds\":500,"
+                    + "\"periodDays\":30,\"owned\":false,\"equipped\":false,"
+                    + "\"bubble\":{\"key\":\"bubble-neon\",\"name\":\"Neon\","
+                    + "\"background\":\"#201040\",\"accent\":\"#a78bfa\","
+                    + "\"textColor\":\"#ffffff\",\"motif\":\"STAR\"}}", StoreItemDto.class);
+            if (!"BUBBLE".equals(bubbleDto.getKind()) || bubbleDto.getBubble() == null
+                    || !"#201040".equals(bubbleDto.getBubble().getBackground())) {
+                throw new IllegalStateException("the BUBBLE catalogue style did not decode");
             }
             for (com.voiza.app.domain.model.OwnedStoreItem owned : shop.getOwned()) {
                 if (owned.getKey().isEmpty()) throw new IllegalStateException("a holding lost its key");

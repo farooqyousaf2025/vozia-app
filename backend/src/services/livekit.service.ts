@@ -73,16 +73,24 @@ export function livekitRooms(): RoomServiceClient {
   return roomService;
 }
 
-export async function ensureLivekitRoom(roomName: string, opts?: { maxParticipants?: number; emptyTimeout?: number }) {
+export async function ensureLivekitRoom(roomName: string, opts?: { maxParticipants?: number; emptyTimeout?: number }): Promise<string | null> {
   try {
-    await livekitRooms().createRoom({
+    const created = await livekitRooms().createRoom({
       name: roomName,
       maxParticipants: opts?.maxParticipants ?? 1000,
       emptyTimeout: opts?.emptyTimeout ?? 300,
     });
+    return created.sid || null;
   } catch (err) {
-    // createRoom is idempotent-ish; a race with a live room is not an error.
-    console.warn('[livekit] ensureRoom', roomName, (err as Error).message);
+    // A room that already exists is normal. Read its SID so the DB can distinguish this
+    // session from a delayed room_finished webhook belonging to an older session.
+    try {
+      const existing = await livekitRooms().listRooms([roomName]);
+      return existing.find((room) => room.name === roomName)?.sid ?? null;
+    } catch (lookupError) {
+      console.warn('[livekit] ensureRoom', roomName, (err as Error).message, (lookupError as Error).message);
+      return null;
+    }
   }
 }
 

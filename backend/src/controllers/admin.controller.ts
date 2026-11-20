@@ -109,6 +109,7 @@ import {
   appendModeratorChat,
   banFromRoom,
   closeRoom,
+  createSystemRoom,
   disconnectFromRoom,
   fetchMiniUser,
   loadRoom,
@@ -329,6 +330,34 @@ export const setRoomAnnouncement = asyncHandler(async (req: Request, res: Respon
   res.json({ room });
 });
 
+export const createSystemRoomEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const type = optionalEnum(body.type, 'type', ['PUBLIC', 'PRIVATE'] as const) ?? 'PUBLIC';
+  const password = optionalString(body.password, 'password', 128);
+  if (type === 'PRIVATE' && !password) throw ApiError.badRequest('Private rooms need a password', 'password_required');
+  const room = await createSystemRoom(req.admin!.sub, {
+    title: requireString(body.title, 'title', { max: 60 }),
+    description: optionalString(body.description, 'description', 200),
+    coverUrl: optionalString(body.coverUrl, 'coverUrl', 1000),
+    category: optionalEnum(body.category, 'category', ['POPULAR', 'PARTY', 'MUSIC', 'GAME', 'CHAT'] as const) ?? 'PARTY',
+    type,
+    password,
+    seatCapacity: optionalInt(body.seatCapacity, 'seatCapacity', { min: 2, max: 64 }),
+    theme: optionalString(body.theme, 'theme', 32),
+    language: optionalString(body.language, 'language', 16),
+    region: optionalString(body.region, 'region', 2),
+    rules: optionalString(body.rules, 'rules', 500),
+  });
+  await logAction(req, {
+    action: 'ROOM_CREATE_SYSTEM',
+    targetType: 'room',
+    targetId: room.id,
+    summary: `Created system-owned room ${room.roomNumber}`,
+    details: { roomNumber: room.roomNumber, type: room.type, category: room.category },
+  });
+  res.status(201).json({ room });
+});
+
 export const rooms = asyncHandler(async (req: Request, res: Response) => {
   res.json({
     rooms: await listRoomsForAdmin({
@@ -388,6 +417,7 @@ export const warnHost = asyncHandler(async (req: Request, res: Response) => {
   const id = requireString(req.params.id, 'roomId', { min: 36, max: 36 });
   const message = requireString(req.body?.message, 'message', { min: 1, max: 300 });
   const room = await loadRoom(id);
+  if (!room.host_id) throw ApiError.conflict('System-owned rooms do not have a member host to warn', 'system_room_no_host');
   const host = await fetchMiniUser(room.host_id);
   // Private to the host: a warning is a nudge, not a public shaming.
   emitToUser(room.host_id, 'room:warning', {

@@ -396,12 +396,9 @@ function loadLivekitService() {
     return { status: res.status, body: (await res.text()).slice(0, 140) };
   };
 
-  const finished = JSON.stringify({ event: 'room_finished', room: { name: lk.roomName, sid: 'RM_probe' }, id: `EV_${stamp}` });
-  const real = await postHook(finished);
-  check('webhook: a correctly signed LiveKit event is accepted', real.status === 200, real);
-  // The handler acks with 200 *before* it reconciles (livekit.controller.ts does
-  // that on purpose so LiveKit never retries a slow webhook), so these two
-  // assertions must poll for the write instead of reading it once.
+  // The current LiveKit SID is persisted when the permanent DB room creates its media session.
+  // A delayed finish from an older SID must not clear current presence.
+  const sessionSid = await sql(`select livekit_session_sid from rooms where id='${roomId}'`);
   const settled = async (predicate, limitMs = 5000) => {
     const until = Date.now() + limitMs;
     for (;;) {
@@ -412,18 +409,42 @@ function loadLivekitService() {
   };
   const roomStatus = () => sql(`select status from rooms where id='${roomId}'`);
   const roomState = () => sql(`select status||'/'||coalesce(closed_at::text,'-') from rooms where id='${roomId}'`);
-  check('webhook: room_finished reconciles the room row in PostgreSQL', await settled(async () => (await roomStatus()) === 'CLOSED'), await roomState());
   const seatState = async () => ({
     open: await sql(`select count(*) from room_participants where room_id='${roomId}' and left_at is null`),
     seated: await sql(`select count(*) from room_seats where room_id='${roomId}' and user_id is not null`),
   });
+  check('webhook: the permanent room has a current LiveKit session SID', Boolean(sessionSid), { sessionSid: sessionSid || null });
+
+  const stale = JSON.stringify({ event: 'room_finished', room: { name: lk.roomName, sid: 'RM_old_session' }, id: `EV_old_${stamp}` });
+  const staleAck = await postHook(stale);
+  check('webhook: stale room_finished events are acknowledged', staleAck.status === 200, staleAck);
+  const beforeCurrentFinish = await seatState();
   check(
-    'webhook: participants and seats are cleared by reconciliation',
+    'webhook: a stale session finish cannot clear current room presence',
+    (await roomStatus()) === 'ACTIVE' && (beforeCurrentFinish.open !== '0' || beforeCurrentFinish.seated !== '0'),
+    { room: await roomState(), presence: beforeCurrentFinish },
+  );
+
+  const finished = JSON.stringify({ event: 'room_finished', room: { name: lk.roomName, sid: sessionSid }, id: `EV_${stamp}` });
+  const real = await postHook(finished);
+  check('webhook: a correctly signed current-session event is accepted', real.status === 200, real);
+  check(
+    'webhook: room_finished keeps the persistent Vozia room active',
+    await settled(async () => (await roomStatus()) === 'ACTIVE'),
+    await roomState(),
+  );
+  check(
+    'webhook: current-session participants and seats are cleared',
     await settled(async () => {
       const s = await seatState();
       return s.open === '0' && s.seated === '0';
     }),
     await seatState(),
+  );
+  check(
+    'webhook: finishing the media session clears only its SID',
+    await settled(async () => (await sql(`select livekit_session_sid from rooms where id='${roomId}'`)) === ''),
+    await sql(`select coalesce(livekit_session_sid,'-') from rooms where id='${roomId}'`),
   );
 
   const tampered = JSON.stringify({ event: 'room_finished', room: { name: 'someone-elses-room' }, id: 'EV_x' });
@@ -452,6 +473,44 @@ function loadLivekitService() {
   });
   const adminToken = adminLogin.json && adminLogin.json.token;
   check('admin: the operator bootstrap OTP mints an admin token', adminLogin.status === 200 && !!adminToken, { status: adminLogin.status, code: adminLogin.json && adminLogin.json.error && adminLogin.json.error.code });
+
+  const systemRoomResponse = await api('POST', '/api/admin/rooms', {
+    token: adminToken,
+    body: { title: `E2E System Room ${stamp}`, category: 'PARTY', type: 'PUBLIC', seatCapacity: 3 },
+  });
+  const systemRoom = systemRoomResponse.json && systemRoomResponse.json.room;
+  const systemRoomId = systemRoom && systemRoom.id;
+  check(
+    'admin: an operator creates a system-owned room without a member host',
+    systemRoomResponse.status === 201 && !!systemRoomId &&
+      systemRoom.ownerType === 'SYSTEM' && systemRoom.host.username === 'Vozia Official',
+    { status: systemRoomResponse.status, room: systemRoom && { ownerType: systemRoom.ownerType, host: systemRoom.host } },
+  );
+  if (systemRoomId) {
+    check(
+      'admin: system room ownership is explicit in PostgreSQL and not assigned to a user',
+      await sql(`select owner_type||'/'||coalesce(host_id::text,'-')||'/'||case when owner_admin_id is null then 'missing' else 'present' end from rooms where id='${systemRoomId}'`) === 'SYSTEM/-/present',
+      await sql(`select owner_type||'/'||coalesce(host_id::text,'-')||'/'||case when owner_admin_id is null then 'missing' else 'present' end from rooms where id='${systemRoomId}'`),
+    );
+    check(
+      'admin: system room seats start empty and no fake host participant is inserted',
+      await sql(`select count(*) from room_seats where room_id='${systemRoomId}' and status='EMPTY' and user_id is null`) === '3' &&
+        await sql(`select count(*) from room_participants where room_id='${systemRoomId}'`) === '0',
+      { seats: await sql(`select count(*) from room_seats where room_id='${systemRoomId}' and status='EMPTY' and user_id is null`), participants: await sql(`select count(*) from room_participants where room_id='${systemRoomId}'`) },
+    );
+    const systemJoin = await api('POST', `/api/rooms/${systemRoomId}/join`, { token: a.token });
+    const systemSeat = await api('POST', `/api/rooms/${systemRoomId}/seat`, { token: a.token, body: { seatIndex: 0 } });
+    check(
+      'admin: a member can join and use seat zero in a hostless system room',
+      systemJoin.status === 200 && systemSeat.status === 200,
+      { join: systemJoin.status, seat: systemSeat.status, error: systemSeat.json && systemSeat.json.error },
+    );
+  }
+  const memberAdminAttempt = await api('POST', '/api/admin/rooms', {
+    token: a.token,
+    body: { title: `E2E Unauthorized ${stamp}`, category: 'PARTY', type: 'PUBLIC' },
+  });
+  check('admin: a member credential cannot create an operator-owned room', memberAdminAttempt.status === 403, { status: memberAdminAttempt.status });
 
   const vipGift = await api('POST', '/api/admin/gifts', {
     token: adminToken,
@@ -1120,9 +1179,8 @@ function loadLivekitService() {
     { status: unpaidTheme.status, error: unpaidTheme.json && unpaidTheme.json.error });
 
   const broke = await api('POST', '/api/store/purchase', { token: shopUser.token, body: { kind: 'FRAME', key: 'ring-bronze' } });
-  check('store: an empty wallet is refused before anything is written',
-    broke.status === 402 && broke.json.error.code === 'insufficient_balance' &&
-    broke.json.error.details.needed === 300 && broke.json.error.details.available === 0 &&
+  check('store: the first-recharge gate refuses an empty-wallet purchase before any write',
+    broke.status === 403 && broke.json.error.code === 'first_recharge_required' &&
     await sql(`select count(*) from transactions where sender_id='${SHOP}'`) === '0' &&
     await sql(`select count(*) from user_items where user_id='${SHOP}'`) === '0',
     { status: broke.status, error: broke.json && broke.json.error });

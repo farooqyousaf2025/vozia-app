@@ -190,6 +190,7 @@ export interface AdminRoom {
   createdAt: string;
   closedAt?: string | null;
   host: RoomHostSummary;
+  ownerType?: 'MEMBER' | 'SYSTEM';
   onlineSeatCount: number;
   seats?: RoomOccupant[];
   audience?: RoomOccupant[];
@@ -201,6 +202,15 @@ export interface RoomListResult {
 
 export interface RoomMutationResult {
   room: AdminRoom;
+}
+
+export interface SystemRoomInput {
+  title: string;
+  description?: string;
+  category: RoomCategory;
+  type: RoomType;
+  password?: string;
+  seatCapacity?: number;
 }
 
 /**
@@ -281,6 +291,7 @@ export interface ConsoleRoom {
   announcementUpdatedAt?: string | null;
   speakerApprovalRequired?: boolean;
   host: { id: string; username: string; avatarUrl?: string | null };
+  ownerType?: 'MEMBER' | 'SYSTEM';
 }
 
 export interface RoomConsoleResult {

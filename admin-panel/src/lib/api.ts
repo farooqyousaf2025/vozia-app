@@ -544,6 +544,10 @@ export const api = {  // ---- auth ---------------------------------------------
     );
   },
 
+  createSystemRoom(input: import('../types').SystemRoomInput): Promise<RoomMutationResult> {
+    return request<RoomMutationResult>('/api/admin/rooms', { method: 'POST', body: input });
+  },
+
   // ---- seat policy -------------------------------------------------------------
   /** How many seats a new room gets, and the most a host may ask for. */
   seatPolicy(): Promise<SeatPolicyResult> {

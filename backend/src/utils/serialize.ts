@@ -95,6 +95,7 @@ export type RoomDto = {
   likeCount: number;
   totalGiftValue: number;
   host: MiniUser;
+  ownerType: 'MEMBER' | 'SYSTEM';
   livekitRoomName: string;
   createdAt: string;
   closedAt: string | null;
@@ -411,14 +412,17 @@ export function toRoom(row: RoomRow): RoomDto {
     livekitRoomName: row.livekit_room_name,
     createdAt: iso(row.created_at),
     closedAt: row.closed_at ? iso(row.closed_at) : null,
-    host: toMiniUser({
-      // list queries alias the host columns; detail queries carry host_id only
-      id: row.host_id,
-      username: row.host_username ?? 'unknown',
-      avatar_url: row.host_avatar_url ?? null,
-      profile_frame_key: row.host_profile_frame_key ?? null,
-      profile_frame_expires_at: row.host_profile_frame_expires_at ?? null,
-    }),
+    ownerType: row.owner_type ?? 'MEMBER',
+    host: row.host_id
+      ? toMiniUser({
+          // list queries alias the host columns; detail queries carry host_id only
+          id: row.host_id,
+          username: row.host_username ?? 'unknown',
+          avatar_url: row.host_avatar_url ?? null,
+          profile_frame_key: row.host_profile_frame_key ?? null,
+          profile_frame_expires_at: row.host_profile_frame_expires_at ?? null,
+        })
+      : { id: 'vozia-system', username: 'Vozia Official', avatarUrl: null },
   };
 }
 

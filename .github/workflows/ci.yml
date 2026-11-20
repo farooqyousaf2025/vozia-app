@@ -183,6 +183,8 @@ jobs:
 
   android:
     runs-on: ubuntu-latest
+    env:
+      VOIZA_API_BASE_URL: ${{ secrets.VOIZA_API_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -210,11 +212,14 @@ jobs:
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug
 
-      # The release build is where signing and shrinking actually happen, so it is
-      # built on every run. Without a keystore in CI it is assembled unsigned.
-      - name: Release APK (unsigned in CI)
+      # Release configuration requires the real production API origin. Do not invent
+      # a domain or bake a development URL into a release artifact: when the repository
+      # secret is configured, build the unsigned release variant; otherwise report the
+      # release-only check as skipped while debug/unit/wire-fixture checks still run.
+      - name: Release APK (unsigned in CI; production URL required)
+        if: ${{ env.VOIZA_API_BASE_URL != '' }}
         working-directory: android
-        run: ./gradlew --no-daemon assembleRelease
+        run: ./gradlew --no-daemon assembleRelease -PVOIZA_API_BASE_URL="$VOIZA_API_BASE_URL"
 
       - name: Wire-fixture harness
         working-directory: android
