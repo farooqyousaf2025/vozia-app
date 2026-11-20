@@ -46,4 +46,23 @@ class AgencyAttendanceCsvTest {
 
         assertTrue(csv.contains("\"ali,\"\"live\"\"\nteam\",1,,1,,30,UTC"))
     }
+
+    @Test
+    fun `export neutralizes spreadsheet formulas in host names`() {
+        val report = AgencyHostAttendanceReport(
+            days = 7,
+            timezone = "UTC",
+            totals = AgencyHostAttendanceTotals(1, 1, 1),
+            daily = emptyList(),
+            hosts = listOf(
+                AgencyHostAttendanceRow("=HYPERLINK(\"https://example.com\")", null, 1, 1, null),
+                AgencyHostAttendanceRow("  @SUM(1,1)", null, 1, 1, null),
+            ),
+        )
+
+        val csv = report.toAttendanceCsv()
+
+        assertTrue(csv.contains("'=HYPERLINK(\"\"https://example.com\"\")"))
+        assertTrue(csv.contains("'  @SUM(1,1)"))
+    }
 }
