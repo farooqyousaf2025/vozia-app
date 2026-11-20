@@ -3,7 +3,7 @@ import { one, query } from '../config/db';
 import { RoomRow } from '../types/db';
 import { asyncHandler } from '../utils/http';
 import { LivekitWebhookEvent, verifyWebhook } from '../services/livekit.service';
-import { broadcastRoomClosed, emitToRoom } from '../services/socket.service';
+import { emitToRoom } from '../services/socket.service';
 import { recomputeListenerCount } from '../services/room.service';
 
 /**
@@ -26,14 +26,16 @@ async function reconcile(event: LivekitWebhookEvent): Promise<void> {
 
   switch (event.event) {
     case 'room_finished': {
-      await query("UPDATE rooms SET status = 'CLOSED', closed_at = COALESCE(closed_at, now()) WHERE id = $1", [room.id]);
+      // LiveKit ending an empty media session is not the owner closing the persistent Vozia room.
+      // Reconcile transient presence only; keep the PostgreSQL room ACTIVE and discoverable.
       await query('UPDATE room_participants SET left_at = now() WHERE room_id = $1 AND left_at IS NULL', [room.id]);
       await query(
         `UPDATE room_seats SET user_id = NULL, status = 'EMPTY', is_speaker = FALSE, is_muted = FALSE
           WHERE room_id = $1`,
         [room.id],
       );
-      broadcastRoomClosed(room.id);
+      await query('UPDATE rooms SET listener_count = 0 WHERE id = $1', [room.id]);
+      emitToRoom(room.id, 'room:session_ended', { roomId: room.id });
       break;
     }
 
