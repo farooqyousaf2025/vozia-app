@@ -147,6 +147,19 @@ data class AgencyHostGoals(
     val activeHostCount: Int, val hostsMeetingGoal: Int, val hosts: List<AgencyHostGoalRow>, val updatedAt: String,
 )
 
+data class AgencyHostMilestone(
+    val code: String, val title: String, val description: String,
+    val attendanceDaysRequired: Int, val unlockedAt: String?,
+)
+data class AgencyHostRecognitionRow(
+    val username: String, val avatarUrl: String?, val attendanceDays: Int,
+    val milestones: List<AgencyHostMilestone>,
+)
+data class AgencyHostRecognition(
+    val timezone: String, val activeHostCount: Int, val hostsWithAchievements: Int,
+    val hosts: List<AgencyHostRecognitionRow>,
+)
+
 /** One host on the roster. No phone number and no account id: those are the operator's columns. */
 data class AgencyHostRow(
     val username: String,
