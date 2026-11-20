@@ -707,7 +707,7 @@ export async function takeSeat(userId: string, roomId: string, seatIndex: number
         seat.status === 'LOCKED' ? 'seat_locked' : 'seat_taken',
       );
     }
-    if (seatIndex === 0 && room.host_id !== userId) {
+    if (seatIndex === 0 && room.host_id !== userId && room.owner_type !== 'SYSTEM') {
       throw ApiError.forbidden('Only the host can sit in the host seat', 'seat_reserved');
     }
 
@@ -805,7 +805,7 @@ export async function setSeatMute(
   const isSelf = seat.user_id === actorId;
   if (!opts.asAdmin) {
     if (!isHost && !isSelf) throw ApiError.forbidden('You do not control this seat');
-    if (isSelf && !isHost && !muted) throw ApiError.forbidden('Only the host can unmute you');
+    if (isSelf && !isHost && !muted && room.owner_type !== 'SYSTEM') throw ApiError.forbidden('Only the host can unmute you');
   }
 
   await query('UPDATE room_seats SET is_muted = $3 WHERE room_id = $1 AND seat_index = $2', [
