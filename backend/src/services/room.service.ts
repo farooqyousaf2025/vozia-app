@@ -467,8 +467,8 @@ export async function createSystemRoom(
           `INSERT INTO rooms
              (room_number, title, description, cover_url, host_id, owner_type, owner_admin_id,
               type, password_hash, seat_capacity, status, category, livekit_room_name, theme,
-              language, region, rules)
-           VALUES ($1,$2,$3,$4,NULL,'SYSTEM',$5,$6,$7,$8,'ACTIVE',$9,$10,$11,$12,$13,$14)
+              language, region, rules, speaker_approval_required)
+           VALUES ($1,$2,$3,$4,NULL,'SYSTEM',$5,$6,$7,$8,'ACTIVE',$9,$10,$11,$12,$13,$14,FALSE)
            RETURNING *`,
           [
             roomNumber, input.title, input.description ?? null, input.coverUrl ?? null, adminId,
