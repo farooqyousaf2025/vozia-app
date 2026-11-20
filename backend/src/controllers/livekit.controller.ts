@@ -32,7 +32,7 @@ async function reconcile(event: LivekitWebhookEvent): Promise<void> {
       // The room's media session is disposable; the PostgreSQL room remains ACTIVE.
       // A delayed finish event from an older SID must not clear presence in a replacement session.
       const finishedSid = event.room?.sid;
-      if (!finishedSid || !room.livekit_session_sid || finishedSid !== room.livekit_session_sid) {
+      if (!finishedSid || (room.livekit_session_sid && finishedSid !== room.livekit_session_sid)) {
         console.info('[livekit:webhook] ignored stale/unidentified room_finished', room.id, finishedSid ?? 'no-sid');
         break;
       }
@@ -41,7 +41,7 @@ async function reconcile(event: LivekitWebhookEvent): Promise<void> {
           'SELECT livekit_session_sid FROM rooms WHERE id = $1 FOR UPDATE',
           [room.id],
         );
-        if (current.rows[0]?.livekit_session_sid !== finishedSid) return false;
+        if (current.rows[0]?.livekit_session_sid && current.rows[0].livekit_session_sid !== finishedSid) return false;
         await client.query(
           'UPDATE room_participants SET left_at = now() WHERE room_id = $1 AND left_at IS NULL',
           [room.id],
@@ -52,7 +52,7 @@ async function reconcile(event: LivekitWebhookEvent): Promise<void> {
           [room.id],
         );
         await client.query(
-          'UPDATE rooms SET listener_count = 0, livekit_session_sid = NULL WHERE id = $1 AND livekit_session_sid = $2',
+          'UPDATE rooms SET listener_count = 0, livekit_session_sid = NULL WHERE id = $1 AND (livekit_session_sid = $2 OR livekit_session_sid IS NULL)',
           [room.id, finishedSid],
         );
         return true;
