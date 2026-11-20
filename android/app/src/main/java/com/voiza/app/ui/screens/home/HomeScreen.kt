@@ -1,5 +1,9 @@
 package com.voiza.app.ui.screens.home
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -602,8 +606,15 @@ fun RoomCard(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(16.dp)
+    AnimatedVisibility(
+        visible = true,
+        enter = fadeIn(animationSpec = tween(360)) +
+            slideInVertically(animationSpec = tween(360)) { it / 12 },
+        modifier = modifier.fillMaxWidth(),
+    ) {
     Column(
-        modifier = modifier
+        modifier = Modifier
+            .fillMaxWidth()
             .clip(shape)
             .background(VoizaSurfaceHigh)
             .border(1.dp, VoizaCardBorder, shape)
@@ -661,7 +672,15 @@ fun RoomCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(6.dp))
+            Text(
+                text = room.category.label(),
+                color = VioletLight,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                modifier = Modifier.padding(top = 3.dp),
+            )
+            Spacer(Modifier.height(7.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Avatar(url = room.host.avatarUrl, name = room.host.username, size = 20.dp)
                 Spacer(Modifier.width(6.dp))
@@ -673,6 +692,7 @@ fun RoomCard(
                 )
             }
         }
+    }
     }
 }
 
