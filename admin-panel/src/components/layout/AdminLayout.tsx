@@ -45,30 +45,55 @@ interface NavItem {
   permission?: string;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { to: '/', label: 'Overview', icon: <IconDashboard className="h-5 w-5" />, end: true, permission: 'dashboard:read' },
-  { to: '/users', label: 'Users', icon: <IconUsers className="h-5 w-5" />, permission: 'user:read' },
-  { to: '/moderation', label: 'Moderation', icon: <IconShieldCheck className="h-5 w-5" />, permission: 'user:read' },
-  { to: '/rooms', label: 'Rooms', icon: <IconMic className="h-5 w-5" />, permission: 'room:read' },
-  { to: '/gifts', label: 'Gifts', icon: <IconGift className="h-5 w-5" />, permission: 'dashboard:read' },
-  { to: '/media', label: 'Media', icon: <IconImage className="h-5 w-5" />, permission: 'media:manage' },
-  { to: '/banners', label: 'Banners', icon: <IconImage className="h-5 w-5" />, permission: 'dashboard:read' },
-  { to: '/decor', label: 'Decoration', icon: <IconSpark className="h-5 w-5" />, permission: 'room:read' },
-  { to: '/emoji', label: 'Chat emoji', icon: <IconSmile className="h-5 w-5" />, permission: 'room:read' },
-  { to: '/ranks', label: 'Level ladder', icon: <IconTrendUp className="h-5 w-5" />, permission: 'user:read' },
-  { to: '/quests', label: 'Daily quests', icon: <IconSpark className="h-5 w-5" />, permission: 'user:read' },
-  { to: '/withdrawals', label: 'Withdrawals', icon: <IconWallet className="h-5 w-5" />, permission: 'withdrawal:review' },
-  { to: '/games', label: 'Games', icon: <IconGame className="h-5 w-5" />, permission: 'game:read' },
-  { to: '/partners', label: 'Partners', icon: <IconPartners className="h-5 w-5" />, permission: 'business:manage' },
-  { to: '/applications', label: 'Applications', icon: <IconShieldCheck className="h-5 w-5" />, permission: 'application:read' },
-  { to: '/recharges', label: 'Recharges', icon: <IconRecharge className="h-5 w-5" />, permission: 'finance:read' },
-  { to: '/commissions', label: 'Commission', icon: <IconCommission className="h-5 w-5" />, permission: 'finance:read' },
-  { to: '/agencies', label: 'Agencies', icon: <IconPartners className="h-5 w-5" />, permission: 'finance:read' },
-  { to: '/finance', label: 'Finance book', icon: <IconBook className="h-5 w-5" />, permission: 'finance:read' },
-  { to: '/accounts', label: 'Purpose accounts', icon: <IconScales className="h-5 w-5" />, permission: 'account:read' },
-  { to: '/operators', label: 'Operators', icon: <IconKey className="h-5 w-5" />, permission: 'operator:manage' },
-  { to: '/qa', label: 'QA programme', icon: <IconShieldCheck className="h-5 w-5" />, permission: 'qa:read' },
-  { to: '/audit', label: 'Audit', icon: <IconAudit className="h-5 w-5" />, permission: 'audit:read' },
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: 'Workspace',
+    items: [
+      { to: '/', label: 'Overview', icon: <IconDashboard className="h-5 w-5" />, end: true, permission: 'dashboard:read' },
+      { to: '/users', label: 'Users', icon: <IconUsers className="h-5 w-5" />, permission: 'user:read' },
+      { to: '/moderation', label: 'Moderation', icon: <IconShieldCheck className="h-5 w-5" />, permission: 'user:read' },
+      { to: '/rooms', label: 'Rooms', icon: <IconMic className="h-5 w-5" />, permission: 'room:read' },
+    ],
+  },
+  {
+    label: 'Experience',
+    items: [
+      { to: '/gifts', label: 'Gifts', icon: <IconGift className="h-5 w-5" />, permission: 'dashboard:read' },
+      { to: '/media', label: 'Media', icon: <IconImage className="h-5 w-5" />, permission: 'media:manage' },
+      { to: '/banners', label: 'Banners', icon: <IconImage className="h-5 w-5" />, permission: 'dashboard:read' },
+      { to: '/decor', label: 'Decoration', icon: <IconSpark className="h-5 w-5" />, permission: 'room:read' },
+      { to: '/emoji', label: 'Chat emoji', icon: <IconSmile className="h-5 w-5" />, permission: 'room:read' },
+      { to: '/ranks', label: 'Level ladder', icon: <IconTrendUp className="h-5 w-5" />, permission: 'user:read' },
+      { to: '/quests', label: 'Daily quests', icon: <IconSpark className="h-5 w-5" />, permission: 'user:read' },
+      { to: '/games', label: 'Games', icon: <IconGame className="h-5 w-5" />, permission: 'game:read' },
+    ],
+  },
+  {
+    label: 'Business & Finance',
+    items: [
+      { to: '/withdrawals', label: 'Withdrawals', icon: <IconWallet className="h-5 w-5" />, permission: 'withdrawal:review' },
+      { to: '/partners', label: 'Partners', icon: <IconPartners className="h-5 w-5" />, permission: 'business:manage' },
+      { to: '/applications', label: 'Applications', icon: <IconShieldCheck className="h-5 w-5" />, permission: 'application:read' },
+      { to: '/recharges', label: 'Recharges', icon: <IconRecharge className="h-5 w-5" />, permission: 'finance:read' },
+      { to: '/commissions', label: 'Commission', icon: <IconCommission className="h-5 w-5" />, permission: 'finance:read' },
+      { to: '/agencies', label: 'Agencies', icon: <IconPartners className="h-5 w-5" />, permission: 'finance:read' },
+      { to: '/finance', label: 'Finance book', icon: <IconBook className="h-5 w-5" />, permission: 'finance:read' },
+      { to: '/accounts', label: 'Purpose accounts', icon: <IconScales className="h-5 w-5" />, permission: 'account:read' },
+    ],
+  },
+  {
+    label: 'Governance',
+    items: [
+      { to: '/operators', label: 'Operators', icon: <IconKey className="h-5 w-5" />, permission: 'operator:manage' },
+      { to: '/qa', label: 'QA programme', icon: <IconShieldCheck className="h-5 w-5" />, permission: 'qa:read' },
+      { to: '/audit', label: 'Audit', icon: <IconAudit className="h-5 w-5" />, permission: 'audit:read' },
+    ],
+  },
 ];
 
 export function AdminLayout() {
@@ -136,26 +161,37 @@ export function AdminLayout() {
       </div>
 
       {/* nav */}
-      <nav className="flex-1 space-y-1 overflow-y-auto px-2.5 py-3">
-        {NAV_ITEMS.filter((item) => item.permission === undefined || can(item.permission)).map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            onClick={() => setMobileOpen(false)}
-            title={item.label}
-            className={({ isActive }) =>
-              `focus-ring flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                isActive
-                  ? 'bg-brand-gradient-soft text-violet-200 shadow-glow-sm'
-                  : 'text-muted hover:bg-elevated/70 hover:text-ink'
-              } ${collapsed ? 'lg:justify-center lg:px-0' : ''}`
-            }
-          >
-            {item.icon}
-            <span className={collapsed ? 'lg:hidden' : ''}>{item.label}</span>
-          </NavLink>
-        ))}
+      <nav aria-label="Admin navigation" className="flex-1 space-y-4 overflow-y-auto px-2.5 py-4">
+        {NAV_GROUPS.map((group) => {
+          const visibleItems = group.items.filter((item) => item.permission === undefined || can(item.permission));
+          if (visibleItems.length === 0) return null;
+          return (
+            <section key={group.label} className="space-y-1">
+              <h2 className={`px-3 pb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-faint ${collapsed ? 'lg:hidden' : ''}`}>
+                {group.label}
+              </h2>
+              {visibleItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  onClick={() => setMobileOpen(false)}
+                  title={item.label}
+                  className={({ isActive }) =>
+                    `focus-ring relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition duration-150 ${
+                      isActive
+                        ? 'bg-brand-gradient-soft text-violet-100 shadow-glow-sm before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-violet-300'
+                        : 'text-muted hover:bg-elevated/70 hover:text-ink'
+                    } ${collapsed ? 'lg:justify-center lg:px-0' : ''}`
+                  }
+                >
+                  {item.icon}
+                  <span className={collapsed ? 'lg:hidden' : ''}>{item.label}</span>
+                </NavLink>
+              ))}
+            </section>
+          );
+        })}
       </nav>
 
       {/* collapse toggle */}
@@ -202,12 +238,12 @@ export function AdminLayout() {
             <IconSidebarToggle className="h-5 w-5" />
           </button>
 
-          <form onSubmit={submitSearch} className="relative hidden max-w-md flex-1 sm:block">
+          <form onSubmit={submitSearch} className="relative min-w-0 max-w-md flex-1">
             <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search users by phone or username…"
+              placeholder="Search users…"
               className="focus-ring h-9 w-full rounded-lg border border-edge bg-elevated pl-9 pr-3 text-sm text-ink placeholder:text-faint"
               aria-label="Global user search"
             />
