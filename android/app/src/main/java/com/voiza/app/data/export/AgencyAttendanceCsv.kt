@@ -44,8 +44,8 @@ private fun String.toCsvField(): String {
     // Also guard leading control characters commonly used to bypass CSV formula checks.
     val firstMeaningful = dropWhile { it == ' ' || it == '\t' || it == '\r' || it == '\n' }
         .firstOrNull()
-    val formulaLike = firstMeaningful in setOf('=', '+', '-', '@')
-    val controlPrefixed = firstOrNull() in setOf('\t', '\r', '\n')
+    val formulaLike = firstMeaningful?.let { it in setOf('=', '+', '-', '@') } == true
+    val controlPrefixed = firstOrNull()?.let { it in setOf('\t', '\r', '\n') } == true
     val safe = if (formulaLike || controlPrefixed) "'$this" else this
     return if (safe.any { it == ',' || it == '"' || it == '\r' || it == '\n' }) {
         "\"" + safe.replace("\"", "\"\"") + "\""
