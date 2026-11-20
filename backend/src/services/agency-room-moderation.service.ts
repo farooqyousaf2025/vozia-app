@@ -139,6 +139,26 @@ export async function listAgencyRoomModerationAudit(actorUserId: string, agencyI
 }
 
 
+/** Current non-owner members in one room, after re-checking the agency's live assignment scope. */
+export async function listAgencyRoomMembers(actorUserId: string, agencyId: string, roomId: string) {
+  const scope = await assignedRoom(actorUserId, agencyId, roomId);
+  return many<{
+    user_id: string; username: string; role: string; is_muted: boolean;
+  }>(
+    `SELECT p.user_id, u.username, p.role,
+            COALESCE(rs.is_muted, false) AS is_muted
+       FROM room_participants p
+       JOIN users u ON u.id = p.user_id
+       LEFT JOIN room_seats rs ON rs.room_id = p.room_id AND rs.user_id = p.user_id
+      WHERE p.room_id = $1 AND p.left_at IS NULL AND p.user_id <> $2
+      ORDER BY CASE WHEN p.role = 'SPEAKER' THEN 0 ELSE 1 END, u.username
+      LIMIT 150`,
+    [scope.room_id, scope.host_user_id],
+  ).then(rows => rows.map(row => ({
+    userId: row.user_id, username: row.username, role: row.role, isMuted: row.is_muted,
+  })));
+}
+
 /** Active rooms owned by hosts currently assigned to this authenticated agency. */
 export async function listAgencyActiveRooms(actorUserId: string, agencyId: string) {
   return many<{
