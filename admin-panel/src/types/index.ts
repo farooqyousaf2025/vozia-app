@@ -291,6 +291,7 @@ export interface ConsoleRoom {
   announcementUpdatedAt?: string | null;
   speakerApprovalRequired?: boolean;
   host: { id: string; username: string; avatarUrl?: string | null };
+  ownerType?: 'MEMBER' | 'SYSTEM';
 }
 
 export interface RoomConsoleResult {
