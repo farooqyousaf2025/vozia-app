@@ -189,34 +189,61 @@ const toOccupant = (row: ParticipantRow): RoomOccupant => ({
   handRaised: row.hand_raised,
 });
 
-export async function listRoomsForAdmin(opts: { status?: string; search?: string }): Promise<
-  Array<RoomDto & { onlineSeatCount: number; seats: RoomOccupant[]; audience: RoomOccupant[] }>
+export async function listRoomsForAdmin(opts: {
+  status?: 'ACTIVE' | 'CLOSED' | 'ALL';
+  search?: string;
+  ownerType?: 'MEMBER' | 'SYSTEM';
+  type?: 'PUBLIC' | 'PRIVATE';
+  agencyId?: string;
+}): Promise<
+  Array<RoomDto & {
+    onlineSeatCount: number;
+    seats: RoomOccupant[];
+    audience: RoomOccupant[];
+    agencyId: string | null;
+    agencyName: string | null;
+  }>
 > {
   const where: string[] = [];
   const params: unknown[] = [];
-  where.push(`r.status = $${params.push(opts.status ?? 'ACTIVE')}`);
+  if (opts.status && opts.status !== 'ALL') where.push(`r.status = ${params.push(opts.status)}`);
+  if (opts.ownerType) where.push(`r.owner_type = ${params.push(opts.ownerType)}`);
+  if (opts.type) where.push(`r.type = ${params.push(opts.type)}`);
+  if (opts.agencyId) where.push(`agency.id = ${params.push(opts.agencyId)}`);
   if (opts.search) {
     params.push(`%${opts.search}%`);
-    where.push(`(r.title ILIKE $${params.length} OR r.room_number::text LIKE $${params.length})`);
+    const p = params.length;
+    where.push(`(r.title ILIKE ${p} OR r.room_number::text LIKE ${p} OR COALESCE(u.username, '') ILIKE ${p} OR COALESCE(agency.name, '') ILIKE ${p})`);
   }
 
-  const rows = await many<RoomRow>(
-    `SELECT r.*, u.username AS host_username, u.avatar_url AS host_avatar_url
-       FROM rooms r LEFT JOIN users u ON u.id = r.host_id
-      WHERE ${where.join(' AND ')}
-      ORDER BY r.total_gift_value DESC, r.created_at DESC LIMIT 200`,
+  const rows = await many<RoomRow & { agency_id: string | null; agency_name: string | null }>(
+    `SELECT r.*, u.username AS host_username, u.avatar_url AS host_avatar_url,
+            agency.id AS agency_id, agency.name AS agency_name
+       FROM rooms r
+       LEFT JOIN users u ON u.id = r.host_id
+       LEFT JOIN LATERAL (
+         SELECT a.id, a.name
+           FROM agency_hosts ah
+           JOIN agencies a ON a.id = ah.agency_id
+          WHERE ah.host_user_id = r.host_id AND ah.status = 'ACTIVE' AND a.status = 'ACTIVE'
+          LIMIT 1
+       ) agency ON TRUE
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY r.created_at DESC LIMIT 200`,
     params,
   );
 
   return Promise.all(
     rows.map(async (row) => {
-      const occupants = (await fetchParticipants(row.id)).map(toOccupant);
+      const occupants = row.status === 'ACTIVE' ? (await fetchParticipants(row.id)).map(toOccupant) : [];
       const seats = occupants.filter((o) => o.role !== 'AUDIENCE');
       return {
         ...toRoom(row),
         onlineSeatCount: seats.length,
         seats,
         audience: occupants.filter((o) => o.role === 'AUDIENCE'),
+        agencyId: row.agency_id,
+        agencyName: row.agency_name,
       };
     }),
   );
