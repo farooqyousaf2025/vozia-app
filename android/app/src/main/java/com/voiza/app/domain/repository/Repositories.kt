@@ -520,6 +520,10 @@ interface AgencyBookRepository {
     /** Verified LiveKit host check-ins for currently assigned active hosts; days is 7 or 30. */
     suspend fun hostAttendance(days: Int = 7): ApiResult<AgencyHostAttendanceReport> = ApiResult.Failure("Not supported")
 
+    /** Agency-owned weekly target and read-only progress for currently assigned active hosts. */
+    suspend fun hostGoals(): ApiResult<AgencyHostGoals> = ApiResult.Failure("Not supported")
+    suspend fun updateHostGoals(targetDays: Int): ApiResult<AgencyHostGoals> = ApiResult.Failure("Not supported")
+
     /** The hosts this agency is responsible for, newest first. */
     suspend fun hosts(limit: Int = 50): ApiResult<List<AgencyHostRow>>
 
