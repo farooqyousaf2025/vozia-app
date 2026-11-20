@@ -5,6 +5,7 @@ import com.voiza.app.data.remote.dto.AgencyHostsEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostAttendanceEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostGoalsEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostRecognitionEnvelope
+import com.voiza.app.data.remote.dto.AgencyHostLeaderboardEnvelope
 import com.voiza.app.data.remote.dto.AgencyPositionEnvelope
 import com.voiza.app.data.remote.dto.AgencySettlementsEnvelope
 import com.voiza.app.data.remote.dto.AgencySubsEnvelope
@@ -269,4 +270,42 @@ class AgencyBookMappersTest {
         assertEquals("HELD_FOR_REVIEW", rows[1].statusLabel)
         assertNull(rows[1].paidAt)
     }
+    @Test
+    fun `agency leaderboard mapper preserves ranks activity summaries and earned badges`() {
+        val leaderboard = gson.fromJson(
+            """{"leaderboard":{
+                "days":30,"timezone":"UTC","activeHostCount":2,"hostsWithAttendance":2,
+                "totalCheckIns":31,"totalAttendanceDays":31,"hostsWithBadges":2,
+                "hosts":[
+                  {"rank":1,"username":"ali_live","attendanceDays":30,"checkIns":30,
+                   "lastCheckInAt":"2026-11-20T10:00:00.000Z","badges":[
+                     {"code":"FIRST_CHECK_IN","title":"First Spark","unlockedAt":"2026-08-01"},
+                     null,
+                     {"code":"THIRTY_DAYS","title":"Thirty-Day Milestone","unlockedAt":"2026-08-30"}
+                   ]},
+                  null,
+                  {"rank":2,"username":"sara","attendanceDays":1,"checkIns":1,
+                   "lastCheckInAt":null,"badges":[]}
+                ]
+            }}""",
+            AgencyHostLeaderboardEnvelope::class.java,
+        ).toLeaderboardDomain()!!
+
+        assertEquals(30, leaderboard.days)
+        assertEquals("UTC", leaderboard.timezone)
+        assertEquals(2, leaderboard.activeHostCount)
+        assertEquals(2, leaderboard.hostsWithAttendance)
+        assertEquals(31, leaderboard.totalCheckIns)
+        assertEquals(31, leaderboard.totalAttendanceDays)
+        assertEquals(2, leaderboard.hostsWithBadges)
+        assertEquals(listOf("ali_live", "sara"), leaderboard.hosts.map { it.username })
+        assertEquals(1, leaderboard.hosts.first().rank)
+        assertEquals(30, leaderboard.hosts.first().attendanceDays)
+        assertEquals(30, leaderboard.hosts.first().checkIns)
+        assertEquals(listOf("First Spark", "Thirty-Day Milestone"), leaderboard.hosts.first().badges.map { it.title })
+        assertEquals("2026-08-30", leaderboard.hosts.first().badges.last().unlockedAt)
+        assertEquals(2, leaderboard.hosts.last().rank)
+        assertTrue(leaderboard.hosts.last().badges.isEmpty())
+    }
+
 }
