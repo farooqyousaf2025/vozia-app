@@ -396,12 +396,9 @@ function loadLivekitService() {
     return { status: res.status, body: (await res.text()).slice(0, 140) };
   };
 
-  const finished = JSON.stringify({ event: 'room_finished', room: { name: lk.roomName, sid: 'RM_probe' }, id: `EV_${stamp}` });
-  const real = await postHook(finished);
-  check('webhook: a correctly signed LiveKit event is accepted', real.status === 200, real);
-  // The handler acks with 200 *before* it reconciles (livekit.controller.ts does
-  // that on purpose so LiveKit never retries a slow webhook), so these two
-  // assertions must poll for the write instead of reading it once.
+  // The current LiveKit SID is persisted when the permanent DB room creates its media session.
+  // A delayed finish from an older SID must not clear current presence.
+  const sessionSid = await sql(`select livekit_session_sid from rooms where id='${roomId}'`);
   const settled = async (predicate, limitMs = 5000) => {
     const until = Date.now() + limitMs;
     for (;;) {
@@ -412,18 +409,42 @@ function loadLivekitService() {
   };
   const roomStatus = () => sql(`select status from rooms where id='${roomId}'`);
   const roomState = () => sql(`select status||'/'||coalesce(closed_at::text,'-') from rooms where id='${roomId}'`);
-  check('webhook: room_finished reconciles the room row in PostgreSQL', await settled(async () => (await roomStatus()) === 'CLOSED'), await roomState());
   const seatState = async () => ({
     open: await sql(`select count(*) from room_participants where room_id='${roomId}' and left_at is null`),
     seated: await sql(`select count(*) from room_seats where room_id='${roomId}' and user_id is not null`),
   });
+  check('webhook: the permanent room has a current LiveKit session SID', Boolean(sessionSid), { sessionSid: sessionSid || null });
+
+  const stale = JSON.stringify({ event: 'room_finished', room: { name: lk.roomName, sid: 'RM_old_session' }, id: `EV_old_${stamp}` });
+  const staleAck = await postHook(stale);
+  check('webhook: stale room_finished events are acknowledged', staleAck.status === 200, staleAck);
+  const beforeCurrentFinish = await seatState();
   check(
-    'webhook: participants and seats are cleared by reconciliation',
+    'webhook: a stale session finish cannot clear current room presence',
+    (await roomStatus()) === 'ACTIVE' && (beforeCurrentFinish.open !== '0' || beforeCurrentFinish.seated !== '0'),
+    { room: await roomState(), presence: beforeCurrentFinish },
+  );
+
+  const finished = JSON.stringify({ event: 'room_finished', room: { name: lk.roomName, sid: sessionSid }, id: `EV_${stamp}` });
+  const real = await postHook(finished);
+  check('webhook: a correctly signed current-session event is accepted', real.status === 200, real);
+  check(
+    'webhook: room_finished keeps the persistent Vozia room active',
+    await settled(async () => (await roomStatus()) === 'ACTIVE'),
+    await roomState(),
+  );
+  check(
+    'webhook: current-session participants and seats are cleared',
     await settled(async () => {
       const s = await seatState();
       return s.open === '0' && s.seated === '0';
     }),
     await seatState(),
+  );
+  check(
+    'webhook: finishing the media session clears only its SID',
+    await settled(async () => (await sql(`select livekit_session_sid from rooms where id='${roomId}'`)) === ''),
+    await sql(`select coalesce(livekit_session_sid,'-') from rooms where id='${roomId}'`),
   );
 
   const tampered = JSON.stringify({ event: 'room_finished', room: { name: 'someone-elses-room' }, id: 'EV_x' });
