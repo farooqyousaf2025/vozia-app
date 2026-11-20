@@ -3,6 +3,7 @@ package com.voiza.app.domain.repository
 import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.domain.model.AgencyLiveRoom
 import com.voiza.app.domain.model.AgencyRoomMember
+import com.voiza.app.domain.model.AgencyRoomModerationAudit
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
@@ -504,6 +505,7 @@ interface AgencyBookRepository {
     /** Active rooms belonging only to currently assigned active hosts. */
     suspend fun activeRooms(): ApiResult<List<AgencyLiveRoom>> = ApiResult.Success(emptyList())
     suspend fun roomMembers(roomId: String): ApiResult<List<AgencyRoomMember>> = ApiResult.Success(emptyList())
+    suspend fun moderationHistory(roomId: String, limit: Int = 50): ApiResult<List<AgencyRoomModerationAudit>> = ApiResult.Success(emptyList())
     suspend fun muteMember(roomId: String, userId: String, muted: Boolean): ApiResult<Unit> = ApiResult.Failure("Not supported")
     suspend fun kickMember(roomId: String, userId: String): ApiResult<Unit> = ApiResult.Failure("Not supported")
     suspend fun banMember(roomId: String, userId: String, minutes: Int?): ApiResult<Unit> = ApiResult.Failure("Not supported")
