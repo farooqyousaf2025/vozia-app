@@ -4,6 +4,7 @@ import {
   agencySelfPosition,
   agencySelfRoster,
   agencySelfHostActivity,
+  agencySelfHostAttendance,
   agencySelfSettlements,
   agencySelfSubs,
 } from '../services/agency.service';
@@ -29,6 +30,14 @@ export const hostActivity = asyncHandler(async (req: Request, res: Response) => 
     throw ApiError.badRequest('days must be 7 or 30', 'invalid_activity_window');
   }
   res.json({ report: await agencySelfHostActivity(agencyId(req), days) });
+});
+
+export const hostAttendance = asyncHandler(async (req: Request, res: Response) => {
+  const days = optionalInt(req.query?.days, 'days', { min: 7, max: 30 }) ?? 7;
+  if (days !== 7 && days !== 30) {
+    throw ApiError.badRequest('days must be 7 or 30', 'invalid_attendance_window');
+  }
+  res.json({ report: await agencySelfHostAttendance(agencyId(req), days) });
 });
 
 export const hosts = asyncHandler(async (req: Request, res: Response) => {

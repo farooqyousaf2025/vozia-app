@@ -680,6 +680,9 @@ export async function leaveRoom(userId: string, roomId: string): Promise<{ ok: t
     roomId,
     userId,
   ]);
+  if (room.host_id === userId && room.owner_type !== 'SYSTEM') {
+    await query('UPDATE room_host_checkins SET checked_out_at = now() WHERE room_id = $1 AND host_user_id = $2 AND checked_out_at IS NULL', [roomId, userId]);
+  }
   // Stepping out empties the seat so the next guest can take it, but ownership
   // of the room stays with the host — leaving is not the same as closing.
   await query(
@@ -1032,6 +1035,7 @@ export async function closeRoom(
     [roomId],
   );
   await query('UPDATE room_participants SET left_at = now() WHERE room_id = $1 AND left_at IS NULL', [roomId]);
+  await query('UPDATE room_host_checkins SET checked_out_at = now() WHERE room_id = $1 AND checked_out_at IS NULL', [roomId]);
 
   // Drop everyone from the SFU: closing a room must actually stop the audio.
   await Promise.all(

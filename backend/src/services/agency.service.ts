@@ -1631,6 +1631,90 @@ export async function agencySelfHostActivity(agencyId: string, days: number): Pr
   };
 }
 
+
+export type AgencyHostAttendanceDay = { date: string; checkIns: number; hostsCheckedIn: number };
+export type AgencyHostAttendanceRow = {
+  username: string; avatarUrl: string | null; checkIns: number; attendanceDays: number; lastCheckInAt: string | null;
+};
+export type AgencyHostAttendanceReport = {
+  days: number; timezone: 'UTC';
+  totals: { checkIns: number; hostsCheckedIn: number; hostAttendanceDays: number };
+  daily: AgencyHostAttendanceDay[]; hosts: AgencyHostAttendanceRow[];
+};
+
+/** Attendance from verified LiveKit host participant presence, not room creation or self-reported hours. */
+export async function agencySelfHostAttendance(agencyId: string, days: number): Promise<AgencyHostAttendanceReport> {
+  const windowDays = days === 30 ? 30 : 7;
+  const [dailyRows, hostRows] = await Promise.all([
+    many<{ date: string; check_ins: string | number; hosts_checked_in: string | number }>(
+      `WITH bounds AS (
+         SELECT ((now() AT TIME ZONE 'UTC')::date - ($2::int - 1))::timestamp AT TIME ZONE 'UTC' AS start_at,
+                now() AS end_at
+       ), roster AS (
+         SELECT ah.host_user_id FROM agency_hosts ah JOIN agencies a ON a.id = ah.agency_id
+         WHERE ah.agency_id = $1 AND ah.status = 'ACTIVE' AND a.status = 'ACTIVE'
+       ), checkins AS (
+         SELECT (c.checked_in_at AT TIME ZONE 'UTC')::date AS activity_date,
+                COUNT(*)::int AS check_ins, COUNT(DISTINCT c.host_user_id)::int AS hosts_checked_in
+         FROM room_host_checkins c JOIN roster h ON h.host_user_id = c.host_user_id
+         CROSS JOIN bounds b
+         WHERE c.checked_in_at >= b.start_at AND c.checked_in_at < b.end_at
+         GROUP BY 1
+       )
+       SELECT to_char(calendar.activity_date::date, 'YYYY-MM-DD') AS date,
+              COALESCE(c.check_ins, 0)::int AS check_ins,
+              COALESCE(c.hosts_checked_in, 0)::int AS hosts_checked_in
+       FROM generate_series(
+         (SELECT (start_at AT TIME ZONE 'UTC')::date FROM bounds),
+         (now() AT TIME ZONE 'UTC')::date, INTERVAL '1 day'
+       ) AS calendar(activity_date)
+       LEFT JOIN checkins c ON c.activity_date = calendar.activity_date::date
+       ORDER BY calendar.activity_date`,
+      [agencyId, windowDays],
+    ),
+    many<{
+      username: string; avatar_url: string | null; check_ins: string | number;
+      attendance_days: string | number; last_check_in_at: Date | string | null;
+    }>(
+      `WITH bounds AS (
+         SELECT ((now() AT TIME ZONE 'UTC')::date - ($2::int - 1))::timestamp AT TIME ZONE 'UTC' AS start_at,
+                now() AS end_at
+       ), roster AS (
+         SELECT ah.host_user_id, u.username, u.avatar_url FROM agency_hosts ah
+         JOIN agencies a ON a.id = ah.agency_id JOIN users u ON u.id = ah.host_user_id
+         WHERE ah.agency_id = $1 AND ah.status = 'ACTIVE' AND a.status = 'ACTIVE'
+       )
+       SELECT roster.username, roster.avatar_url,
+              COUNT(c.id)::int AS check_ins,
+              COUNT(DISTINCT (c.checked_in_at AT TIME ZONE 'UTC')::date)::int AS attendance_days,
+              MAX(c.checked_in_at) AS last_check_in_at
+       FROM roster CROSS JOIN bounds b
+       LEFT JOIN room_host_checkins c ON c.host_user_id = roster.host_user_id
+         AND c.checked_in_at >= b.start_at AND c.checked_in_at < b.end_at
+       GROUP BY roster.host_user_id, roster.username, roster.avatar_url
+       ORDER BY COUNT(c.id) DESC, COUNT(DISTINCT (c.checked_in_at AT TIME ZONE 'UTC')::date) DESC, roster.username`,
+      [agencyId, windowDays],
+    ),
+  ]);
+  const daily = dailyRows.map(row => ({
+    date: row.date, checkIns: minor(row.check_ins), hostsCheckedIn: minor(row.hosts_checked_in),
+  }));
+  const hosts = hostRows.map(row => ({
+    username: row.username, avatarUrl: row.avatar_url, checkIns: minor(row.check_ins),
+    attendanceDays: minor(row.attendance_days),
+    lastCheckInAt: row.last_check_in_at ? new Date(row.last_check_in_at).toISOString() : null,
+  }));
+  return {
+    days: windowDays, timezone: 'UTC',
+    totals: {
+      checkIns: hosts.reduce((sum, row) => sum + row.checkIns, 0),
+      hostsCheckedIn: hosts.filter(row => row.checkIns > 0).length,
+      hostAttendanceDays: hosts.reduce((sum, row) => sum + row.attendanceDays, 0),
+    },
+    daily, hosts,
+  };
+}
+
 /** A master's allocation table: each sub-agency, and what it keeps after its share comes up. */
 export async function agencySelfSubs(agencyId: string): Promise<AgencySelfSub[]> {
   const rows = await many<AgencyRow>(
