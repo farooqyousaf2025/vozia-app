@@ -78,3 +78,6 @@ data class MessagePage(
     val page: Int,
     val limit: Int,
 )
+
+/** Server-computed distance only; precise coordinates are never returned. */
+data class FriendDistance(val friendId: String, val distanceMeters: Int?)

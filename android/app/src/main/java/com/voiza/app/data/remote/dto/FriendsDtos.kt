@@ -58,3 +58,10 @@ data class DoNotContactBody(
 data class DoNotContactEnvelope(
     @SerializedName("doNotContact") val doNotContact: Boolean? = null,
 )
+
+data class FriendLocationSharingBody(@SerializedName("enabled") val enabled: Boolean)
+data class FriendLocationBody(@SerializedName("latitude") val latitude: Double, @SerializedName("longitude") val longitude: Double)
+data class FriendLocationSharingEnvelope(@SerializedName("enabled") val enabled: Boolean? = null)
+data class FriendLocationUpdateEnvelope(@SerializedName("updated") val updated: Boolean? = null)
+data class FriendDistanceDto(@SerializedName("friendId") val friendId: String? = null, @SerializedName("distanceMeters") val distanceMeters: Int? = null)
+data class FriendDistancesEnvelope(@SerializedName("locations") val locations: List<FriendDistanceDto>? = null)

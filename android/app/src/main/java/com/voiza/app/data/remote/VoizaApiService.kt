@@ -1,6 +1,7 @@
 package com.voiza.app.data.remote
 
 import com.voiza.app.data.remote.dto.AuthResponse
+import com.voiza.app.data.remote.dto.AgencyLiveRoomsEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostsEnvelope
 import com.voiza.app.data.remote.dto.AgencyPositionEnvelope
 import com.voiza.app.data.remote.dto.AgencySettlementsEnvelope
@@ -32,6 +33,11 @@ import com.voiza.app.data.remote.dto.FriendDecisionEnvelope
 import com.voiza.app.data.remote.dto.FriendRequestEnvelope
 import com.voiza.app.data.remote.dto.FriendRequestsEnvelope
 import com.voiza.app.data.remote.dto.FriendsEnvelope
+import com.voiza.app.data.remote.dto.FriendLocationSharingBody
+import com.voiza.app.data.remote.dto.FriendLocationBody
+import com.voiza.app.data.remote.dto.FriendLocationSharingEnvelope
+import com.voiza.app.data.remote.dto.FriendLocationUpdateEnvelope
+import com.voiza.app.data.remote.dto.FriendDistancesEnvelope
 import com.voiza.app.data.remote.dto.GameActionBody
 import com.voiza.app.data.remote.dto.GameCatalogResponse
 import com.voiza.app.data.remote.dto.GameDisputeEnvelope
@@ -435,6 +441,11 @@ interface VoizaApiService {
     ): FriendsEnvelope
 
     /** `incoming` or `outgoing`; the server also filters to pending requests only. */
+    @GET("api/friends/location-sharing") suspend fun friendLocationSharingStatus(): FriendLocationSharingEnvelope
+    @POST("api/friends/location-sharing") suspend fun setFriendLocationSharing(@Body body: FriendLocationSharingBody): FriendLocationSharingEnvelope
+    @POST("api/friends/location") suspend fun updateFriendLocation(@Body body: FriendLocationBody): FriendLocationUpdateEnvelope
+    @GET("api/friends/locations") suspend fun friendDistances(): FriendDistancesEnvelope
+
     @GET("api/friends/requests")
     suspend fun friendRequests(
         @Query("direction") direction: String = "incoming",
@@ -655,6 +666,9 @@ interface VoizaApiService {
      */
     @GET("api/agency/position")
     suspend fun agencyPosition(): AgencyPositionEnvelope
+
+    @GET("api/agency/rooms")
+    suspend fun agencyActiveRooms(): AgencyLiveRoomsEnvelope
 
     @GET("api/agency/hosts")
     suspend fun agencyHosts(@Query("limit") limit: Int? = null): AgencyHostsEnvelope

@@ -6,6 +6,7 @@ import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.di.ServiceLocator
 import com.voiza.app.domain.model.Conversation
 import com.voiza.app.domain.model.DirectMessage
+import com.voiza.app.domain.model.FriendDistance
 import com.voiza.app.domain.model.FriendRequest
 import com.voiza.app.domain.model.MiniUser
 import com.voiza.app.domain.model.User
@@ -40,6 +41,8 @@ class FriendsViewModel(
         val tab: FriendsTab = FriendsTab.FRIENDS,
         val user: User? = null,
         val friends: List<MiniUser> = emptyList(),
+        val locationSharingEnabled: Boolean = false,
+        val friendDistances: Map<String, Int?> = emptyMap(),
         val incoming: List<FriendRequest> = emptyList(),
         val outgoing: List<FriendRequest> = emptyList(),
         val conversations: List<Conversation> = emptyList(),
@@ -105,7 +108,28 @@ class FriendsViewModel(
                 is ApiResult.Success -> _state.update { it.copy(outgoing = result.data.requests) }
                 is ApiResult.Failure -> error = error ?: result.message
             }
+            when (val sharing = friendsRepository.locationSharingEnabled()) { is ApiResult.Success -> _state.update { it.copy(locationSharingEnabled = sharing.data) }; is ApiResult.Failure -> Unit }
+            refreshFriendDistances()
             refreshConversationsIntoError(error)
+        }
+    }
+
+    fun setLocationSharing(enabled: Boolean) {
+        viewModelScope.launch {
+            when (val result = friendsRepository.setLocationSharing(enabled)) {
+                is ApiResult.Success -> { _state.update { it.copy(locationSharingEnabled = result.data, friendDistances = if (enabled) it.friendDistances else emptyMap()) }; if (enabled) refreshFriendDistances() }
+                is ApiResult.Failure -> _state.update { it.copy(error = result.message) }
+            }
+        }
+    }
+    fun updateLocation(latitude: Double, longitude: Double) {
+        if (!_state.value.locationSharingEnabled) return
+        viewModelScope.launch { if (friendsRepository.updateLocation(latitude, longitude) is ApiResult.Success) refreshFriendDistances() }
+    }
+    private suspend fun refreshFriendDistances() {
+        when (val result = friendsRepository.friendDistances()) {
+            is ApiResult.Success -> _state.update { it.copy(friendDistances = result.data.associate { d -> d.friendId to d.distanceMeters }) }
+            is ApiResult.Failure -> Unit
         }
     }
 

@@ -1,6 +1,7 @@
 package com.voiza.app.domain.repository
 
 import com.voiza.app.data.remote.ApiResult
+import com.voiza.app.domain.model.AgencyLiveRoom
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
@@ -27,6 +28,7 @@ import com.voiza.app.domain.model.DirectMessage
 import com.voiza.app.domain.model.FriendPage
 import com.voiza.app.domain.model.FriendRequest
 import com.voiza.app.domain.model.FriendRequestPage
+import com.voiza.app.domain.model.FriendDistance
 import com.voiza.app.domain.model.FirstRechargeStatus
 import com.voiza.app.domain.model.MessagePage
 import com.voiza.app.domain.model.EmojiCatalogue
@@ -399,6 +401,10 @@ data class GameLobbyBundle(
  * the 403 is surfaced as the server's own sentence rather than predicted on this device.
  */
 interface FriendsRepository {
+    suspend fun locationSharingEnabled(): ApiResult<Boolean> = ApiResult.Success(false)
+    suspend fun setLocationSharing(enabled: Boolean): ApiResult<Boolean> = ApiResult.Success(false)
+    suspend fun updateLocation(latitude: Double, longitude: Double): ApiResult<Boolean> = ApiResult.Success(false)
+    suspend fun friendDistances(): ApiResult<List<FriendDistance>> = ApiResult.Success(emptyList())
     /** Ask a member to be a friend. The server answers 409 if one is already pending. */
     suspend fun sendFriendRequest(targetUserId: String): ApiResult<FriendRequest>
 
@@ -494,6 +500,8 @@ interface RoleApplicationRepository {
  * app chooses to hide.
  */
 interface AgencyBookRepository {
+    /** Active rooms belonging only to currently assigned active hosts. */
+    suspend fun activeRooms(): ApiResult<List<AgencyLiveRoom>> = ApiResult.Success(emptyList())
     /** Name, position in the hierarchy, the split, and what is owed in the account's own currency. */
     suspend fun position(): ApiResult<AgencyPosition>
 

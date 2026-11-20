@@ -1,5 +1,18 @@
 package com.voiza.app.ui.screens.friends
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Looper
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.compose.material3.Switch
+import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +47,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +63,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -94,7 +110,49 @@ fun FriendsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var newFriendId by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        if (result.values.any { it }) viewModel.setLocationSharing(true)
+        else viewModel.setLocationSharing(false)
+    }
 
+    // GPS is observed only while this screen is resumed and sharing is enabled.
+    DisposableEffect(state.locationSharingEnabled, context, lifecycleOwner) {
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        var listener: LocationListener? = null
+        fun stopUpdates() {
+            listener?.let { try { manager.removeUpdates(it) } catch (_: SecurityException) { } }
+            listener = null
+        }
+        fun startUpdates() {
+            if (!state.locationSharingEnabled || listener != null) return
+            val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            if (!fine && !coarse) return
+            val provider = if (fine && manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) LocationManager.GPS_PROVIDER else manager.getProviders(true).firstOrNull() ?: return
+            val callback = object : LocationListener {
+                override fun onLocationChanged(location: Location) {
+                    viewModel.updateLocation(location.latitude, location.longitude)
+                }
+            }
+            listener = callback
+            try { manager.requestLocationUpdates(provider, 60_000L, 0f, callback, Looper.getMainLooper()) }
+            catch (_: SecurityException) { listener = null }
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) startUpdates()
+            if (event == Lifecycle.Event.ON_PAUSE) stopUpdates()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) startUpdates()
+        onDispose {
+            stopUpdates()
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.load() }
 
     // The shell's Messages tab lands straight on the conversation list.
@@ -194,6 +252,14 @@ fun FriendsScreen(
                         },
                         onOpen = viewModel::openConversation,
                         onUnfriend = viewModel::unfriend,
+                        onLocationSharingChange = { enabled ->
+                            if (!enabled) viewModel.setLocationSharing(false)
+                            else {
+                                val allowed = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                if (allowed) viewModel.setLocationSharing(true)
+                                else locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
+                            }
+                        },
                     )
 
                     FriendsTab.REQUESTS -> RequestsList(state = state, viewModel = viewModel)
@@ -232,12 +298,24 @@ private fun FriendsList(
     onAdd: () -> Unit,
     onOpen: (MiniUser) -> Unit,
     onUnfriend: (String) -> Unit,
+    onLocationSharingChange: (Boolean) -> Unit,
 ) {
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
+        item {
+            VoizaCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Share live distance", color = OnDarkHigh, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Distance is visible only when both friends opt in. Sharing is optional and revocable.", color = OnDarkMedium, fontSize = 11.sp)
+                    }
+                    Switch(checked = state.locationSharingEnabled, onCheckedChange = onLocationSharingChange)
+                }
+            }
+        }
         item {
             VoizaCard {
                 Text("Add a friend", color = OnDarkHigh, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
@@ -286,6 +364,12 @@ private fun FriendsList(
                         Column(Modifier.weight(1f)) {
                             Text(friend.username, color = OnDarkHigh, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("VIP ${friend.vipLevel}", color = OnDarkMuted, fontSize = 11.sp)
+                            val meters = state.friendDistances[friend.id]
+                            Text(
+                                text = if (meters == null) "Distance unavailable" else if (meters < 1000) "$meters m away" else String.format("%.1f km away", meters / 1000.0),
+                                color = if (meters == null) OnDarkMuted else Cyan,
+                                fontSize = 10.sp,
+                            )
                         }
                         SmallAction(label = "Chat", onClick = { onOpen(friend) })
                         Spacer(Modifier.width(6.dp))

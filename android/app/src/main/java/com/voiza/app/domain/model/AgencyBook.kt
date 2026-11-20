@@ -143,3 +143,13 @@ data class AgencySettlementRow(
     val createdAt: String?,
     val paidAt: String?,
 )
+
+
+/** A live room owned by a host currently assigned to this agency. */
+data class AgencyLiveRoom(
+    val id: String,
+    val title: String,
+    val roomNumber: String,
+    val hostUsername: String,
+    val memberCount: Int,
+)

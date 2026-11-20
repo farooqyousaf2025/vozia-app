@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.di.ServiceLocator
+import com.voiza.app.domain.model.AgencyLiveRoom
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
@@ -40,6 +41,8 @@ class AgencyBookViewModel(
     data class AgencyBookUiState(
         val position: AgencyPosition? = null,
         val hosts: List<AgencyHostRow> = emptyList(),
+        val activeRooms: List<AgencyLiveRoom> = emptyList(),
+        val roomsError: String? = null,
         val subAgencies: List<AgencySubRow> = emptyList(),
         val settlements: List<AgencySettlementRow> = emptyList(),
         val loading: Boolean = false,
@@ -75,12 +78,15 @@ class AgencyBookViewModel(
     }
 
     private suspend fun loadSections(position: AgencyPosition) {
+        val rooms = agencyBookRepository.activeRooms()
         val roster = agencyBookRepository.hosts()
         // Master-only, and skipped rather than called: the server's own answer for a sub is a refusal.
         val allocations = if (position.isMaster) agencyBookRepository.subAgencies() else null
         val batches = agencyBookRepository.settlements()
         _state.update {
             it.copy(
+                activeRooms = (rooms as? ApiResult.Success)?.data ?: it.activeRooms,
+                roomsError = (rooms as? ApiResult.Failure)?.message,
                 hosts = (roster as? ApiResult.Success)?.data ?: it.hosts,
                 rosterError = (roster as? ApiResult.Failure)?.message,
                 subAgencies = (allocations as? ApiResult.Success)?.data ?: it.subAgencies,

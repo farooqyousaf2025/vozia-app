@@ -55,6 +55,7 @@ import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.DangerRed
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
+import com.voiza.app.ui.theme.Mint
 import com.voiza.app.ui.theme.RCoinGreen
 import com.voiza.app.ui.theme.VoizaSurface
 import com.voiza.app.ui.theme.WarningAmber
@@ -131,6 +132,7 @@ fun AgencyDashboardScreen(
         ) {
             item { PositionCard(position) }
             item { OwedCard(position.account) }
+            item { AgencyActiveRoomsCard(state.activeRooms, state.roomsError) }
             if (position.isMaster) {
                 item { AllocationCard(state.subAgencies, state.allocationError, position.subAgencyCount) }
             }
@@ -145,6 +147,32 @@ fun AgencyDashboardScreen(
                 )
             }
             item { BatchesCard(state.settlements, state.batchesError) }
+        }
+    }
+}
+
+@Composable
+private fun AgencyActiveRoomsCard(rooms: List<com.voiza.app.domain.model.AgencyLiveRoom>, error: String?) {
+    VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
+        SectionLabel("Live rooms · ${rooms.size}")
+        Text("Rooms owned by your currently assigned active hosts.", color = OnDarkMedium, fontSize = 11.sp)
+        if (error != null) {
+            Text(error, color = DangerRed, fontSize = 11.sp)
+        } else if (rooms.isEmpty()) {
+            Text("No assigned-host rooms are live right now.", color = OnDarkMedium, fontSize = 12.sp)
+        } else {
+            rooms.forEach { room ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(room.title.ifBlank { "Room ${room.roomNumber}" }, color = OnDarkHigh, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Text("Host @${room.hostUsername} · #${room.roomNumber}", color = OnDarkMedium, fontSize = 11.sp)
+                    }
+                    Pill("LIVE", Mint)
+                    Spacer(Modifier.width(8.dp))
+                    Text("${room.memberCount} members", color = OnDarkHigh, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.height(8.dp))
+            }
         }
     }
 }
