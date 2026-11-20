@@ -416,6 +416,17 @@ private fun AgencyHostActivityCard(
             FigureRow("Member room visits", totals.memberVisits.toString(), Mint)
             FigureRow("Unique visitors", totals.uniqueVisitors.toString(), OnDarkHigh)
             Spacer(Modifier.height(10.dp))
+            Text("Weekly activity · UTC", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            report.weekly.asReversed().forEach { week ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Week of ${week.weekStart}", color = OnDarkMedium, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                    Text("${week.roomsCreated} rooms · ${week.memberVisits} visits", color = OnDarkHigh, fontSize = 10.sp)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
             Text("Daily activity · UTC", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             report.daily.asReversed().forEach { day ->
                 Row(

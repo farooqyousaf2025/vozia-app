@@ -4,6 +4,7 @@ import com.voiza.app.data.remote.dto.AgencyAccountDto
 import com.voiza.app.data.remote.dto.AgencyEarningsDto
 import com.voiza.app.data.remote.dto.AgencyHostDto
 import com.voiza.app.data.remote.dto.AgencyHostActivityEnvelope
+import com.voiza.app.domain.model.AgencyHostActivityWeek
 import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyHostActivityTotals
 import com.voiza.app.domain.model.AgencyHostActivityDay
@@ -101,6 +102,10 @@ fun AgencyHostActivityEnvelope.toDomain(): AgencyHostActivityReport? {
         daily = report.daily.orEmpty().mapNotNull { row ->
             val date = row.date?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
             AgencyHostActivityDay(date, row.roomsCreated ?: 0, row.roomsWithVisitors ?: 0, row.memberVisits ?: 0, row.uniqueVisitors ?: 0)
+        },
+        weekly = report.weekly.orEmpty().mapNotNull { row ->
+            val weekStart = row.weekStart?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            AgencyHostActivityWeek(weekStart, row.roomsCreated ?: 0, row.roomsWithVisitors ?: 0, row.memberVisits ?: 0, row.uniqueVisitors ?: 0)
         },
         hosts = report.hosts.orEmpty().mapNotNull { row ->
             val username = row.username?.takeIf { it.isNotBlank() } ?: return@mapNotNull null

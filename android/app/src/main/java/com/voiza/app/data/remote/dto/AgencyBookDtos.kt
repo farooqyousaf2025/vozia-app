@@ -85,11 +85,20 @@ data class AgencyHostActivityRowDto(
     @SerializedName("uniqueVisitors") val uniqueVisitors: Int? = null,
 )
 
+data class AgencyActivityWeekDto(
+    @SerializedName("weekStart") val weekStart: String? = null,
+    @SerializedName("roomsCreated") val roomsCreated: Int? = null,
+    @SerializedName("roomsWithVisitors") val roomsWithVisitors: Int? = null,
+    @SerializedName("memberVisits") val memberVisits: Int? = null,
+    @SerializedName("uniqueVisitors") val uniqueVisitors: Int? = null,
+)
+
 data class AgencyHostActivityReportDto(
     @SerializedName("days") val days: Int? = null,
     @SerializedName("timezone") val timezone: String? = null,
     @SerializedName("totals") val totals: AgencyActivityTotalsDto? = null,
     @SerializedName("daily") val daily: List<AgencyActivityDayDto>? = null,
+    @SerializedName("weekly") val weekly: List<AgencyActivityWeekDto>? = null,
     @SerializedName("hosts") val hosts: List<AgencyHostActivityRowDto>? = null,
 )
 
