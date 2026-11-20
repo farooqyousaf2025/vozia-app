@@ -63,6 +63,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -109,6 +111,7 @@ fun FriendsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var newFriendId by remember { mutableStateOf("") }
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { result ->
@@ -116,28 +119,40 @@ fun FriendsScreen(
         else viewModel.setLocationSharing(false)
     }
 
-    // GPS is observed only while this screen is visible and sharing is enabled.
-    DisposableEffect(state.locationSharingEnabled, context) {
+    // GPS is observed only while this screen is resumed and sharing is enabled.
+    DisposableEffect(state.locationSharingEnabled, context, lifecycleOwner) {
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         var listener: LocationListener? = null
-        if (state.locationSharingEnabled) {
+        fun stopUpdates() {
+            listener?.let { try { manager.removeUpdates(it) } catch (_: SecurityException) { } }
+            listener = null
+        }
+        fun startUpdates() {
+            if (!state.locationSharingEnabled || listener != null) return
             val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
             val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            if (fine || coarse) {
-                val provider = if (fine && manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) LocationManager.GPS_PROVIDER else LocationManager.NETWORK_PROVIDER
-                val callback = object : LocationListener {
-                    override fun onLocationChanged(location: Location) {
-                        viewModel.updateLocation(location.latitude, location.longitude)
-                    }
+            if (!fine && !coarse) return
+            val provider = if (fine && manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) LocationManager.GPS_PROVIDER else LocationManager.NETWORK_PROVIDER
+            val callback = object : LocationListener {
+                override fun onLocationChanged(location: Location) {
+                    viewModel.updateLocation(location.latitude, location.longitude)
                 }
-                listener = callback
-                try { manager.requestLocationUpdates(provider, 60_000L, 100f, callback, Looper.getMainLooper()) }
-                catch (_: SecurityException) { listener = null }
             }
+            listener = callback
+            try { manager.requestLocationUpdates(provider, 60_000L, 100f, callback, Looper.getMainLooper()) }
+            catch (_: SecurityException) { listener = null }
         }
-        onDispose { listener?.let { try { manager.removeUpdates(it) } catch (_: SecurityException) { } } }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) startUpdates()
+            if (event == Lifecycle.Event.ON_PAUSE) stopUpdates()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) startUpdates()
+        onDispose {
+            stopUpdates()
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
-
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.load() }
 
     // The shell's Messages tab lands straight on the conversation list.
