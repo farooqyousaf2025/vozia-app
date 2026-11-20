@@ -1,6 +1,9 @@
 package com.voiza.app.data.repository
 
 import com.voiza.app.domain.model.AgencyLiveRoom
+import com.voiza.app.domain.model.AgencyRoomMember
+import com.voiza.app.data.remote.dto.AgencyMuteMemberBody
+import com.voiza.app.data.remote.dto.AgencyRoomModerationBody
 import com.voiza.app.data.mapper.toHosts
 import com.voiza.app.data.mapper.toPosition
 import com.voiza.app.data.mapper.toSettlements
@@ -34,6 +37,23 @@ class AgencyBookRepositoryImpl(
                 AgencyLiveRoom(id, row.title.orEmpty(), row.roomNumber.orEmpty(), row.hostUsername.orEmpty(), (row.memberCount ?: 0).coerceAtLeast(0))
             }
         }
+
+    override suspend fun roomMembers(roomId: String): ApiResult<List<AgencyRoomMember>> =
+        apiCall { api.agencyRoomMembers(roomId) }.mapSuccess { envelope ->
+            envelope.members.orEmpty().mapNotNull { row ->
+                val id = row.userId?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                AgencyRoomMember(id, row.username.orEmpty(), row.role.orEmpty(), row.isMuted ?: false)
+            }
+        }
+
+    override suspend fun muteMember(roomId: String, userId: String, muted: Boolean): ApiResult<Unit> =
+        apiCall { api.agencyMuteMember(roomId, AgencyMuteMemberBody(userId, muted)) }.mapSuccess { Unit }
+
+    override suspend fun kickMember(roomId: String, userId: String): ApiResult<Unit> =
+        apiCall { api.agencyKickMember(roomId, userId, AgencyRoomModerationBody()) }.mapSuccess { Unit }
+
+    override suspend fun banMember(roomId: String, userId: String, minutes: Int?): ApiResult<Unit> =
+        apiCall { api.agencyBanMember(roomId, userId, AgencyRoomModerationBody(reason = "Agency moderation", minutes = minutes)) }.mapSuccess { Unit }
 
     override suspend fun position(): ApiResult<AgencyPosition> =
         apiCall { api.agencyPosition() }.flatMapSuccess { envelope ->

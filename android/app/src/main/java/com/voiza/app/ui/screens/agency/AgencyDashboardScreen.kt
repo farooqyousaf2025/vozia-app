@@ -17,6 +17,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -132,7 +134,21 @@ fun AgencyDashboardScreen(
         ) {
             item { PositionCard(position) }
             item { OwedCard(position.account) }
-            item { AgencyActiveRoomsCard(state.activeRooms, state.roomsError) }
+            item {
+                AgencyActiveRoomsCard(
+                    rooms = state.activeRooms,
+                    error = state.roomsError,
+                    expandedRoomId = state.expandedRoomId,
+                    members = state.roomMembers,
+                    membersLoading = state.roomMembersLoading,
+                    membersError = state.roomMembersError,
+                    busyUserId = state.moderationBusyUserId,
+                    onToggle = viewModel::toggleRoomMembers,
+                    onMute = viewModel::muteRoomMember,
+                    onKick = viewModel::kickRoomMember,
+                    onBan = viewModel::banRoomMember,
+                )
+            }
             if (position.isMaster) {
                 item { AllocationCard(state.subAgencies, state.allocationError, position.subAgencyCount) }
             }
@@ -152,7 +168,20 @@ fun AgencyDashboardScreen(
 }
 
 @Composable
-private fun AgencyActiveRoomsCard(rooms: List<com.voiza.app.domain.model.AgencyLiveRoom>, error: String?) {
+private fun AgencyActiveRoomsCard(
+    rooms: List<com.voiza.app.domain.model.AgencyLiveRoom>,
+    error: String?,
+    expandedRoomId: String?,
+    members: List<com.voiza.app.domain.model.AgencyRoomMember>,
+    membersLoading: Boolean,
+    membersError: String?,
+    busyUserId: String?,
+    onToggle: (String) -> Unit,
+    onMute: (String, String, Boolean) -> Unit,
+    onKick: (String, String) -> Unit,
+    onBan: (String, String) -> Unit,
+) {
+    var pendingAction by remember { mutableStateOf<Pair<com.voiza.app.domain.model.AgencyRoomMember, String>?>(null) }
     VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
         SectionLabel("Live rooms · ${rooms.size}")
         Text("Rooms owned by your currently assigned active hosts.", color = OnDarkMedium, fontSize = 11.sp)
@@ -170,10 +199,74 @@ private fun AgencyActiveRoomsCard(rooms: List<com.voiza.app.domain.model.AgencyL
                     Pill("LIVE", Mint)
                     Spacer(Modifier.width(8.dp))
                     Text("${room.memberCount} members", color = OnDarkHigh, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = { onToggle(room.id) }) {
+                        Text(if (expandedRoomId == room.id) "Hide" else "Manage")
+                    }
+                }
+                if (expandedRoomId == room.id) {
+                    when {
+                        membersLoading -> Text("Loading room members…", color = OnDarkMedium, fontSize = 11.sp)
+                        membersError != null -> Text(membersError, color = DangerRed, fontSize = 11.sp)
+                        members.isEmpty() -> Text("No other members are currently in this room.", color = OnDarkMedium, fontSize = 11.sp)
+                        else -> members.forEach { member ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(start = 8.dp, top = 5.dp, bottom = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("@${member.username}", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(member.role.lowercase().replaceFirstChar { it.uppercase() }, color = OnDarkMedium, fontSize = 10.sp)
+                                }
+                                if (member.role.equals("SPEAKER", ignoreCase = true)) {
+                                    TextButton(
+                                        enabled = busyUserId != member.userId,
+                                        onClick = { onMute(room.id, member.userId, !member.isMuted) },
+                                    ) { Text(if (member.isMuted) "Unmute" else "Mute") }
+                                }
+                                TextButton(
+                                    enabled = busyUserId != member.userId,
+                                    onClick = { pendingAction = member to "kick" },
+                                ) { Text("Kick", color = DangerRed) }
+                                TextButton(
+                                    enabled = busyUserId != member.userId,
+                                    onClick = { pendingAction = member to "ban" },
+                                ) { Text("Ban", color = DangerRed) }
+                            }
+                        }
+                    }
                 }
                 Spacer(Modifier.height(8.dp))
             }
         }
+        Text(
+            "Controls apply only to non-owner members in rooms of your currently assigned active hosts. Bans last 24 hours.",
+            color = OnDarkMedium.copy(alpha = 0.75f),
+            fontSize = 10.sp,
+        )
+    }
+    pendingAction?.let { (member, action) ->
+        AlertDialog(
+            onDismissRequest = { pendingAction = null },
+            title = { Text(if (action == "kick") "Remove member?" else "Ban for 24 hours?") },
+            text = {
+                Text(
+                    if (action == "kick") "Remove @${member.username} from this room? They may rejoin unless separately banned."
+                    else "Remove @${member.username} and prevent rejoining this room for 24 hours."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val roomId = expandedRoomId
+                    if (roomId != null) {
+                        if (action == "kick") onKick(roomId, member.userId) else onBan(roomId, member.userId)
+                    }
+                    pendingAction = null
+                }) { Text(if (action == "kick") "Remove" else "Ban", color = DangerRed) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingAction = null }) { Text("Cancel") }
+            },
+        )
     }
 }
 

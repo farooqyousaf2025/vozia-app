@@ -1,10 +1,14 @@
 import { Request, Response } from 'express';
 import { asyncHandler, optionalInt, optionalString, requireBoolean, requireString } from '../utils/http';
-import { agencyBanRoomMember, agencyKickRoomMember, agencyMuteRoomMember, agencyUnbanRoomMember, listAgencyRoomModerationAudit } from '../services/agency-room-moderation.service';
+import { agencyBanRoomMember, agencyKickRoomMember, agencyMuteRoomMember, agencyUnbanRoomMember, listAgencyRoomModerationAudit, listAgencyRoomMembers } from '../services/agency-room-moderation.service';
 import { broadcastSeatUpdate, emitToUser } from '../services/socket.service';
 
 const roomId = (req: Request) => requireString(req.params.id, 'roomId', { min: 36, max: 36 });
 const targetId = (req: Request) => requireString(req.params.userId, 'userId', { min: 36, max: 36 });
+
+export const roomMembers = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ members: await listAgencyRoomMembers(req.user!.sub, req.agencyRow!.id, roomId(req)) });
+});
 
 export const muteMember = asyncHandler(async (req: Request, res: Response) => {
   const id = roomId(req);

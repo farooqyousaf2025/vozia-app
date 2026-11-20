@@ -2,6 +2,10 @@ package com.voiza.app.data.remote
 
 import com.voiza.app.data.remote.dto.AuthResponse
 import com.voiza.app.data.remote.dto.AgencyLiveRoomsEnvelope
+import com.voiza.app.data.remote.dto.AgencyRoomMembersEnvelope
+import com.voiza.app.data.remote.dto.AgencyMuteMemberBody
+import com.voiza.app.data.remote.dto.AgencyRoomModerationBody
+import com.voiza.app.data.remote.dto.AgencyRoomModerationActionEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostsEnvelope
 import com.voiza.app.data.remote.dto.AgencyPositionEnvelope
 import com.voiza.app.data.remote.dto.AgencySettlementsEnvelope
@@ -669,6 +673,21 @@ interface VoizaApiService {
 
     @GET("api/agency/rooms")
     suspend fun agencyActiveRooms(): AgencyLiveRoomsEnvelope
+
+    @GET("api/agency/rooms/{id}/members")
+    suspend fun agencyRoomMembers(@Path("id") roomId: String): AgencyRoomMembersEnvelope
+
+    @POST("api/agency/rooms/{id}/mute")
+    suspend fun agencyMuteMember(@Path("id") roomId: String, @Body body: AgencyMuteMemberBody): AgencyRoomModerationActionEnvelope
+
+    @POST("api/agency/rooms/{id}/kick/{userId}")
+    suspend fun agencyKickMember(@Path("id") roomId: String, @Path("userId") userId: String, @Body body: AgencyRoomModerationBody): AgencyRoomModerationActionEnvelope
+
+    @POST("api/agency/rooms/{id}/ban/{userId}")
+    suspend fun agencyBanMember(@Path("id") roomId: String, @Path("userId") userId: String, @Body body: AgencyRoomModerationBody): AgencyRoomModerationActionEnvelope
+
+    @DELETE("api/agency/rooms/{id}/ban/{userId}")
+    suspend fun agencyUnbanMember(@Path("id") roomId: String, @Path("userId") userId: String): AgencyRoomModerationActionEnvelope
 
     @GET("api/agency/hosts")
     suspend fun agencyHosts(@Query("limit") limit: Int? = null): AgencyHostsEnvelope

@@ -153,3 +153,11 @@ data class AgencyLiveRoom(
     val hostUsername: String,
     val memberCount: Int,
 )
+
+/** A non-owner member currently present in an agency-scoped live room. */
+data class AgencyRoomMember(
+    val userId: String,
+    val username: String,
+    val role: String,
+    val isMuted: Boolean,
+)

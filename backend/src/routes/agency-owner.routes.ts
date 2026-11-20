@@ -18,6 +18,7 @@ router.get('/sub-agencies', requireMasterAgency, agency.subAgencies);
 
 // Scoped room moderation. No close, delete, transfer, theme, capacity, or financial routes.
 router.get('/rooms/:id/moderation-audit', requireAgencyOwner, moderation.moderationAudit);
+router.get('/rooms/:id/members', requireAgencyOwner, moderation.roomMembers);
 router.post('/rooms/:id/mute', requireAgencyOwner, moderation.muteMember);
 router.post('/rooms/:id/kick/:userId', requireAgencyOwner, moderation.kickMember);
 router.post('/rooms/:id/ban/:userId', requireAgencyOwner, moderation.banMember);

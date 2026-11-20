@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.di.ServiceLocator
 import com.voiza.app.domain.model.AgencyLiveRoom
+import com.voiza.app.domain.model.AgencyRoomMember
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
@@ -42,6 +43,11 @@ class AgencyBookViewModel(
         val position: AgencyPosition? = null,
         val hosts: List<AgencyHostRow> = emptyList(),
         val activeRooms: List<AgencyLiveRoom> = emptyList(),
+        val expandedRoomId: String? = null,
+        val roomMembers: List<AgencyRoomMember> = emptyList(),
+        val roomMembersLoading: Boolean = false,
+        val roomMembersError: String? = null,
+        val moderationBusyUserId: String? = null,
         val roomsError: String? = null,
         val subAgencies: List<AgencySubRow> = emptyList(),
         val settlements: List<AgencySettlementRow> = emptyList(),
@@ -72,6 +78,57 @@ class AgencyBookViewModel(
                 is ApiResult.Success -> {
                     _state.update { it.copy(position = result.data, loading = false) }
                     loadSections(result.data)
+                }
+            }
+        }
+    }
+
+    fun toggleRoomMembers(roomId: String) {
+        if (_state.value.expandedRoomId == roomId) {
+            _state.update { it.copy(expandedRoomId = null, roomMembers = emptyList(), roomMembersError = null) }
+        } else {
+            _state.update { it.copy(expandedRoomId = roomId, roomMembers = emptyList(), roomMembersError = null) }
+            loadRoomMembers(roomId)
+        }
+    }
+
+    fun loadRoomMembers(roomId: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(roomMembersLoading = true, roomMembersError = null) }
+            when (val result = agencyBookRepository.roomMembers(roomId)) {
+                is ApiResult.Success -> _state.update {
+                    it.copy(roomMembers = result.data, roomMembersLoading = false)
+                }
+                is ApiResult.Failure -> _state.update {
+                    it.copy(roomMembersLoading = false, roomMembersError = result.message)
+                }
+            }
+        }
+    }
+
+    fun muteRoomMember(roomId: String, userId: String, muted: Boolean) {
+        moderate(roomId, userId) { agencyBookRepository.muteMember(roomId, userId, muted) }
+    }
+
+    fun kickRoomMember(roomId: String, userId: String) {
+        moderate(roomId, userId) { agencyBookRepository.kickMember(roomId, userId) }
+    }
+
+    fun banRoomMember(roomId: String, userId: String) {
+        // The current mobile action is a 24-hour room ban; the backend still owns expiry enforcement.
+        moderate(roomId, userId) { agencyBookRepository.banMember(roomId, userId, 1_440) }
+    }
+
+    private fun moderate(roomId: String, userId: String, action: suspend () -> ApiResult<Unit>) {
+        viewModelScope.launch {
+            _state.update { it.copy(moderationBusyUserId = userId, roomMembersError = null) }
+            when (val result = action()) {
+                is ApiResult.Success -> {
+                    _state.update { it.copy(moderationBusyUserId = null) }
+                    loadRoomMembers(roomId)
+                }
+                is ApiResult.Failure -> _state.update {
+                    it.copy(moderationBusyUserId = null, roomMembersError = result.message)
                 }
             }
         }
