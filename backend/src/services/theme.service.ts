@@ -114,6 +114,7 @@ type Snapshot = {
   bubbles: Map<string, BubbleArt>;
   /** Every ride row by key, including delisted ones — a receipt outlives the shelf it came from. */
   rides: Map<string, RideArt>;
+  defaultRideKey: string | null;
   categoryEffects: Map<string, string>;
   loadedAt: number;
 };
@@ -170,13 +171,14 @@ let snapshot: Snapshot | null = null;
 let loading: Promise<void> | null = null;
 
 async function fetchSnapshot(): Promise<Snapshot> {
-  const [themeRows, effectRows, categoryRows, frameRows, rideRows, bubbleRows] = await Promise.all([
+  const [themeRows, effectRows, categoryRows, frameRows, rideRows, bubbleRows, rideSettings] = await Promise.all([
     many<RoomThemeRow>('SELECT * FROM room_themes ORDER BY sort_order ASC, slug ASC'),
     many<VisualEffectRow>('SELECT * FROM visual_effects ORDER BY sort_order ASC, key ASC'),
     many<RoomCategoryEffectRow>('SELECT * FROM room_category_effects'),
     many<ProfileFrameRow>('SELECT * FROM profile_frames ORDER BY sort_order ASC, key ASC'),
     many<ProfileRideRow>('SELECT * FROM profile_rides ORDER BY sort_order ASC, key ASC'),
     many<ChatBubbleRow>('SELECT * FROM chat_bubbles ORDER BY sort_order ASC, key ASC'),
+    one<{ default_ride_key: string | null }>('SELECT default_ride_key FROM entrance_ride_settings WHERE singleton'),
   ]);
 
   if (themeRows.length === 0) {
@@ -214,6 +216,7 @@ async function fetchSnapshot(): Promise<Snapshot> {
         { key: row.key, name: row.name, url: row.url, format: row.format, durationMs: row.duration_ms },
       ]),
     ),
+    defaultRideKey: rideSettings?.default_ride_key ?? null,
     bubbles: new Map(bubbleRows.map((row) => [row.key, bubbleArt(row)])),
     categoryEffects: new Map(categoryRows.map((row) => [row.category, row.effect_key])),
     loadedAt: Date.now(),
@@ -363,9 +366,12 @@ export function wornRide(row: {
   profile_ride_key?: string | null;
   profile_ride_expires_at?: Date | null;
 }): RideArt | null {
-  if (!row.profile_ride_key) return null;
-  if (row.profile_ride_expires_at && row.profile_ride_expires_at.getTime() <= Date.now()) return null;
-  return current().rides.get(row.profile_ride_key) ?? null;
+  const registry = current();
+  if (row.profile_ride_key && (!row.profile_ride_expires_at || row.profile_ride_expires_at.getTime() > Date.now())) {
+    const personal = registry.rides.get(row.profile_ride_key);
+    if (personal) return personal;
+  }
+  return registry.defaultRideKey ? registry.rides.get(registry.defaultRideKey) ?? null : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -377,6 +383,7 @@ export async function listAdminCatalogue(): Promise<{
   categoryEffects: CategoryEffectDto[];
   frames: ProfileFrameDto[];
   rides: ProfileRideDto[];
+  defaultRideKey: string | null;
   bubbles: ChatBubbleDto[];
 }> {
   const [themeRows, effectRows, categoryRows, usage] = await Promise.all([
@@ -406,6 +413,7 @@ export async function listAdminCatalogue(): Promise<{
     // One call for the whole decoration screen, priced rows and rings included.
     frames: await listFrames(),
     rides: await listRides(),
+    defaultRideKey: (await one<{ default_ride_key: string | null }>('SELECT default_ride_key FROM entrance_ride_settings WHERE singleton'))?.default_ride_key ?? null,
     bubbles: await listBubbles(),
   };
 }
@@ -1322,6 +1330,20 @@ async function rideAfterWrite(key: string): Promise<ProfileRideDto> {
     ['RIDE', key],
   );
   return rideDto(row, Number(holders?.n ?? 0));
+}
+
+/** Set or clear the platform-wide fallback entrance ride. Personal equipped rides always win. */
+export async function setDefaultRide(key: unknown): Promise<string | null> {
+  let next: string | null = null;
+  if (key !== null && key !== '') {
+    next = readIdentity(key, 'key');
+    if (!(await one<{ key: string }>('SELECT key FROM profile_rides WHERE key = $1', [next]))) {
+      throw ApiError.notFound('Entrance ride not found', 'ride_not_found');
+    }
+  }
+  await query('UPDATE entrance_ride_settings SET default_ride_key = $1, updated_at = now() WHERE singleton', [next]);
+  await loadThemeRegistry();
+  return next;
 }
 
 export async function listRides(): Promise<ProfileRideDto[]> {
