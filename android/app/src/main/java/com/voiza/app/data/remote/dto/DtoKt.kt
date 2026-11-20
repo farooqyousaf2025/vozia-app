@@ -160,6 +160,7 @@ data class RoomSummaryDto(
     @SerializedName("likeCount") val likeCount: Long? = null,
     @SerializedName("totalGiftValue") val totalGiftValue: Long = 0,
     @SerializedName("host") val host: MiniUserDto,
+    @SerializedName("ownerType") val ownerType: String? = null,
 )
 
 data class RoomDto(
@@ -192,6 +193,7 @@ data class RoomDto(
     @SerializedName("likeCount") val likeCount: Long? = null,
     @SerializedName("totalGiftValue") val totalGiftValue: Long = 0,
     @SerializedName("host") val host: MiniUserDto,
+    @SerializedName("ownerType") val ownerType: String? = null,
     // The API never nests seats inside `room` (they are a sibling key in the
     // envelope), and Gson leaves absent keys null rather than running the
     // default initializers — so this must be nullable, not `= emptyList()`.
