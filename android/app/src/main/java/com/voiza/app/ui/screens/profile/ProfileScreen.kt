@@ -64,6 +64,15 @@ import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.RCoinGreen
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
+import com.voiza.app.ui.theme.DiamondGold
+import com.voiza.app.ui.theme.Violet
+import com.voiza.app.ui.theme.VioletLight
+import com.voiza.app.ui.theme.VoizaBackground
+import com.voiza.app.ui.theme.VoizaGoldGradient
+import com.voiza.app.ui.theme.VoizaHeroGradient
+import com.voiza.app.ui.theme.VoizaOutline
+import com.voiza.app.ui.theme.VoizaSurfaceVariant
+import com.voiza.app.ui.theme.WarningAmber
 import com.voiza.app.viewmodel.AgencyAccessViewModel
 import com.voiza.app.viewmodel.AuthViewModel
 import com.voiza.app.viewmodel.PartnerAccessViewModel
@@ -136,7 +145,7 @@ fun ProfileScreen(
             Text("Profile", color = OnDarkHigh, fontSize = 19.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
             IconButton(onClick = { editOpen = true }) {
-                Icon(Icons.Default.Edit, contentDescription = "Edit profile", tint = Cyan)
+                Icon(Icons.Default.Edit, contentDescription = "Edit profile", tint = VioletLight)
             }
         }
 
@@ -146,7 +155,7 @@ fun ProfileScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    Brush.verticalGradient(listOf(Color(0xFF241652), Color(0xFF151233)))
+                    VoizaHeroGradient
                 )
                 .padding(vertical = 22.dp, horizontal = 16.dp),
         ) {
@@ -212,7 +221,7 @@ fun ProfileScreen(
         VoizaButton(
             text = "Cosmetic store",
             onClick = onOpenStore,
-            gradient = Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670))),
+            gradient = Brush.horizontalGradient(listOf(VoizaSurfaceVariant, VoizaSurfaceHigh)),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
@@ -221,7 +230,7 @@ fun ProfileScreen(
         VoizaButton(
             text = "Open wallet",
             onClick = onOpenWallet,
-            gradient = Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670))),
+            gradient = Brush.horizontalGradient(listOf(VoizaSurfaceVariant, VoizaSurfaceHigh)),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
@@ -230,7 +239,7 @@ fun ProfileScreen(
         VoizaButton(
             text = "Friends & messages",
             onClick = onOpenFriends,
-            gradient = Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670))),
+            gradient = Brush.horizontalGradient(listOf(VoizaSurfaceVariant, VoizaSurfaceHigh)),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
@@ -239,7 +248,7 @@ fun ProfileScreen(
         VoizaButton(
             text = "Become a Partner",
             onClick = onOpenPartner,
-            gradient = Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670))),
+            gradient = Brush.horizontalGradient(listOf(VoizaSurfaceVariant, VoizaSurfaceHigh)),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
@@ -257,7 +266,7 @@ fun ProfileScreen(
             VoizaButton(
                 text = "Agency desk",
                 onClick = onOpenAgency,
-                gradient = Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670))),
+                gradient = Brush.horizontalGradient(listOf(VoizaSurfaceVariant, VoizaSurfaceHigh)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
@@ -271,7 +280,7 @@ fun ProfileScreen(
             VoizaButton(
                 text = "Partner desk",
                 onClick = onOpenPartnerDesk,
-                gradient = Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670))),
+                gradient = Brush.horizontalGradient(listOf(VoizaSurfaceVariant, VoizaSurfaceHigh)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
@@ -328,12 +337,12 @@ fun ProfileScreen(
 @Composable
 private fun RoleBadge(user: User) {
     val (label, brush) = when (user.userType.uppercase()) {
-        "HOST" -> "HOST" to Brush.horizontalGradient(listOf(Color(0xFFE040FB), Color(0xFF7C4DFF)))
-        "AGENCY_ADMIN" -> "AGENCY" to Brush.horizontalGradient(listOf(Color(0xFFFFC246), Color(0xFFFF6EC7)))
-        "COIN_SELLER" -> "SELLER" to Brush.horizontalGradient(listOf(Color(0xFF00E5A0), Color(0xFF00B8D4)))
-        "BD_MANAGER" -> "BD MANAGER" to Brush.horizontalGradient(listOf(Color(0xFFFFC246), Color(0xFFFF8A00)))
-        "BD_AGENT" -> "BD AGENT" to Brush.horizontalGradient(listOf(Color(0xFF64B5F6), Color(0xFF7C4DFF)))
-        else -> "MEMBER" to Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670)))
+        "HOST" -> "HOST" to Brush.horizontalGradient(listOf(Violet, VioletLight))
+        "AGENCY_ADMIN" -> "AGENCY" to Brush.horizontalGradient(listOf(WarningAmber, DiamondGold))
+        "COIN_SELLER" -> "SELLER" to Brush.horizontalGradient(listOf(RCoinGreen, VioletLight))
+        "BD_MANAGER" -> "BD MANAGER" to VoizaGoldGradient
+        "BD_AGENT" -> "BD AGENT" to Brush.horizontalGradient(listOf(VioletLight, Violet))
+        else -> "MEMBER" to Brush.horizontalGradient(listOf(VoizaSurfaceVariant, VoizaSurfaceHigh))
     }
     Box(
         modifier = Modifier
@@ -350,10 +359,10 @@ private fun VipBadge(level: Int) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
-            .background(Brush.horizontalGradient(listOf(Color(0xFFFFC246), Color(0xFFFF8A00))))
+            .background(VoizaGoldGradient)
             .padding(horizontal = 10.dp, vertical = 4.dp),
     ) {
-        Text("VIP $level", color = Color(0xFF2A1A00), fontSize = 10.sp, fontWeight = FontWeight.Black)
+        Text("VIP $level", color = VoizaBackground, fontSize = 10.sp, fontWeight = FontWeight.Black)
     }
 }
 
@@ -379,11 +388,11 @@ private fun EditProfileDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF151233),
+        containerColor = VoizaSurfaceHigh,
         shape = RoundedCornerShape(22.dp),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Edit, contentDescription = null, tint = Fuchsia)
+                Icon(Icons.Default.Edit, contentDescription = null, tint = VioletLight)
                 Spacer(Modifier.width(8.dp))
                 Text("Edit profile", color = OnDarkHigh, fontWeight = FontWeight.Bold)
             }
@@ -441,10 +450,10 @@ private fun EditProfileDialog(
 @Composable
 private fun fieldColors() = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = Fuchsia,
-    unfocusedBorderColor = Color(0xFF3D3670),
+    unfocusedBorderColor = VoizaOutline,
     focusedLabelColor = Fuchsia,
     unfocusedLabelColor = OnDarkMedium,
-    cursorColor = Cyan,
+    cursorColor = Violet,
     focusedTextColor = OnDarkHigh,
     unfocusedTextColor = OnDarkHigh,
 )

@@ -9,6 +9,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.voiza.app.ui.screens.agency.AgencyDashboardScreen
 import com.voiza.app.ui.screens.auth.AuthScreen
+import com.voiza.app.ui.screens.discover.DiscoverScreen
 import com.voiza.app.ui.screens.game.GameLobbyScreen
 import com.voiza.app.ui.screens.game.GameScreen
 import com.voiza.app.ui.screens.friends.FriendsScreen
@@ -26,6 +27,7 @@ import com.voiza.app.ui.screens.rankings.RankingsScreen
 import com.voiza.app.ui.screens.room.PartyRoomScreen
 import com.voiza.app.ui.screens.store.StoreScreen
 import com.voiza.app.ui.screens.wallet.WalletScreen
+import com.voiza.app.viewmodel.FriendsTab
 
 /**
  * App graph. Start destination is decided by MainActivity from the persisted
@@ -60,6 +62,25 @@ fun VoizaNavHost(
                 onOpenStore = { navController.navigate(Routes.STORE) },
                 onOpenProfile = { navController.navigate(Routes.PROFILE) },
                 onOpenRankings = { navController.navigate(Routes.RANKINGS) },
+                onOpenDiscover = { navController.navigate(Routes.DISCOVER) },
+                onOpenMessages = { navController.navigate(Routes.MESSAGES) },
+            )
+        }
+
+        // The shell's Discover tab. Pushed rather than swapped so the lobby's
+        // state (and the room under it, if any) survives the visit.
+        composable(Routes.DISCOVER) {
+            DiscoverScreen(
+                onBack = { navController.popBackStack() },
+                onOpenRoom = { roomId -> navController.navigate(Routes.room(roomId)) },
+            )
+        }
+
+        // The shell's Messages tab: friends route with the conversation pane preselected.
+        composable(Routes.MESSAGES) {
+            FriendsScreen(
+                onBack = { navController.popBackStack() },
+                initialTab = FriendsTab.MESSAGES,
             )
         }
 

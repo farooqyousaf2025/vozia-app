@@ -76,6 +76,7 @@ import com.voiza.app.ui.components.VoizaSecondaryButton
 import com.voiza.app.ui.components.VoizaSheet
 import com.voiza.app.ui.components.VoizaTextButton
 import com.voiza.app.ui.components.asAssetUrl
+import com.voiza.app.ui.components.RoomGridSkeleton
 import com.voiza.app.ui.screens.room.RideArtLayer
 import com.voiza.app.ui.screens.room.WelcomeEffect
 import com.voiza.app.ui.theme.Cyan
@@ -89,6 +90,8 @@ import com.voiza.app.ui.theme.OnDarkMuted
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
 import com.voiza.app.ui.theme.VoizaSurfaceVariant
 import com.voiza.app.ui.theme.WarningAmber
+import com.voiza.app.ui.theme.VioletDark
+import com.voiza.app.ui.theme.VoizaBackground
 import com.voiza.app.viewmodel.StoreViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
 
@@ -163,7 +166,7 @@ fun StoreScreen(
 
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 when {
-                    state.loading && state.snapshot == null -> LoadingProgress(overlay = true)
+                    state.loading && state.snapshot == null -> RoomGridSkeleton(count = 6, modifier = Modifier.padding(horizontal = 14.dp))
 
                     // A guest has no account to own a ring, so the shop cannot even quote prices.
                     state.user == null && state.snapshot == null -> EmptyState(
@@ -295,7 +298,7 @@ private fun StoreCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (item.kind == StoreItemKind.BUBBLE) Modifier.heightIn(min = 104.dp) else Modifier.height(104.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xFF2A2459), Color(0xFF1B1740)))),
+                .background(Brush.verticalGradient(listOf(VoizaSurfaceVariant, VoizaSurfaceHigh))),
         ) {
             ItemArt(item = item, user = user, size = 72.dp)
             if (item.equipped) {
@@ -377,7 +380,7 @@ private fun StatusPill(text: String, color: Color, modifier: Modifier = Modifier
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(50))
-            .background(Color(0xCC0B0A1F))
+            .background(VoizaBackground.copy(alpha = 0.80f))
             .padding(horizontal = 8.dp, vertical = 3.dp),
     ) {
         Text(text, color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -541,7 +544,7 @@ private fun StoreDetailSheet(
                 .fillMaxWidth()
                 .then(if (item.kind == StoreItemKind.BUBBLE) Modifier.heightIn(min = 150.dp) else Modifier.height(150.dp))
                 .clip(RoundedCornerShape(14.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xFF2A2459), Color(0xFF1B1740))))
+                .background(Brush.verticalGradient(listOf(VoizaSurfaceVariant, VoizaSurfaceHigh)))
                 .then(
                     if (playable) Modifier.clickable(onClick = onPreview) else Modifier,
                 ),
@@ -758,7 +761,7 @@ private fun EffectPreview(item: StoreItem, onClose: () -> Unit) {
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xF00B0A1F))
+                .background(VoizaBackground.copy(alpha = 0.94f))
                 .clickable(onClick = onClose),
         ) {
             if (rideUrl != null) {
@@ -799,7 +802,7 @@ private fun StoreSnack(text: String, onConsumed: () -> Unit) {
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xE6221B4E))
+                .background(VioletDark.copy(alpha = 0.90f))
                 .padding(horizontal = 14.dp, vertical = 8.dp),
         )
     }

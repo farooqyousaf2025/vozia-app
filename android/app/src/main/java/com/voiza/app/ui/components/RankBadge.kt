@@ -7,6 +7,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import coil.compose.AsyncImage
 import com.voiza.app.domain.model.UserRank
+import com.voiza.app.ui.theme.Mint
 
 /**
  * The rung a member earned, painted as the admin panel configured it.

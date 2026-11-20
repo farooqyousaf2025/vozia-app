@@ -53,7 +53,9 @@ import com.voiza.app.ui.theme.Mint
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.OnDarkMuted
+import com.voiza.app.ui.theme.VioletLight
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
+import com.voiza.app.ui.theme.VoizaSurfaceVariant
 import com.voiza.app.ui.theme.WarningAmber
 import com.voiza.app.ui.screens.home.voizaFieldColors
 
@@ -102,7 +104,7 @@ fun MemberSheet(
             } else {
                 ModerationRow(
                     icon = if (relationship.following) Icons.Default.PersonRemove else Icons.Default.PersonAdd,
-                    tint = if (relationship.following) OnDarkMedium else Cyan,
+                    tint = if (relationship.following) OnDarkMedium else VioletLight,
                     title = if (relationship.following) "Unfollow" else "Follow",
                     subtitle = when {
                         interactionClosed -> "Blocked, so follows are refused in both directions"
@@ -141,7 +143,7 @@ fun MemberSheet(
                 } else {
                     ModerationRow(
                         icon = Icons.Default.PersonOff,
-                        tint = Color(0xFFFF8FA0),
+                        tint = DangerRed.copy(alpha = 0.90f),
                         title = "Block",
                         subtitle = "Closes gifts and follows both ways. They stay in this room.",
                         danger = true,
@@ -277,7 +279,7 @@ private fun ModerationRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(if (danger) Color(0x22FF5B6E) else Color(0xFF1B1740))
+            .background(if (danger) DangerRed.copy(alpha = 0.13f) else VoizaSurfaceHigh)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
@@ -286,7 +288,7 @@ private fun ModerationRow(
             modifier = Modifier
                 .size(32.dp)
                 .clip(CircleShape)
-                .background(if (danger) Color(0x33FF5B6E) else Color(0xFF241F3D)),
+                .background(if (danger) DangerRed.copy(alpha = 0.20f) else VoizaSurfaceVariant),
         ) {
             Icon(
                 imageVector = icon,
@@ -299,7 +301,7 @@ private fun ModerationRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                color = if (danger) Color(0xFFFF8FA0) else OnDarkHigh,
+                color = if (danger) DangerRed.copy(alpha = 0.90f) else OnDarkHigh,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.alpha(alpha),

@@ -35,7 +35,9 @@ import com.voiza.app.ui.screens.room.gifts.VIDEO_MAX_MS
 import com.voiza.app.ui.screens.room.gifts.animationSlotMs
 import com.voiza.app.ui.screens.room.gifts.loadSvgaArt
 import com.voiza.app.ui.screens.room.gifts.svga.SvgaPlayer
+import com.voiza.app.ui.theme.DiamondGold
 import com.voiza.app.ui.theme.OnDarkHigh
+import com.voiza.app.ui.theme.VoizaBackground
 import kotlinx.coroutines.delay
 
 /**
@@ -80,7 +82,7 @@ fun EntryRideOverlay(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 56.dp)
                 .clip(RoundedCornerShape(50))
-                .background(Color(0xB3140D1F))
+                .background(VoizaBackground.copy(alpha = 0.70f))
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         )
     }
@@ -169,7 +171,7 @@ private fun ArrivingLine(ride: EntryRide, username: String, avatarUrl: String?, 
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
         )
-        Text(ride.name, color = Color(0xFFFFF3B0), fontSize = 12.sp, fontWeight = FontWeight.Black)
+        Text(ride.name, color = DiamondGold, fontSize = 12.sp, fontWeight = FontWeight.Black)
     }
 }
 

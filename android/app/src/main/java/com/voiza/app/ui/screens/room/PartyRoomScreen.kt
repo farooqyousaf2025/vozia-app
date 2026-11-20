@@ -67,6 +67,8 @@ import com.voiza.app.ui.components.DiamondChip
 import com.voiza.app.ui.components.ListenerBadge
 import com.voiza.app.ui.components.LoadingProgress
 import com.voiza.app.ui.components.FlameBadge
+import com.voiza.app.ui.components.StatusPill
+import com.voiza.app.ui.components.StatusTone
 import com.voiza.app.ui.screens.gift.GiftDialog
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.Fuchsia
@@ -80,6 +82,16 @@ import com.voiza.app.ui.theme.WarningAmber
 import com.voiza.app.viewmodel.PartyRoomViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
 import kotlinx.coroutines.delay
+import com.voiza.app.ui.theme.DangerRed
+import com.voiza.app.ui.theme.DiamondGold
+import com.voiza.app.ui.theme.OnDarkMuted
+import com.voiza.app.ui.theme.Violet
+import com.voiza.app.ui.theme.VioletLight
+import com.voiza.app.ui.theme.VoizaBackground
+import com.voiza.app.ui.theme.VoizaGoldGradient
+import com.voiza.app.ui.theme.VoizaOutline
+import com.voiza.app.ui.theme.VoizaSurfaceHigh
+import com.voiza.app.ui.theme.VoizaSurfaceVariant
 
 /**
  * The core experience. Owns: join -> LiveKit connect (publish only when
@@ -214,12 +226,12 @@ fun PartyRoomScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp, vertical = 4.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xE6C8A233))
+                            .background(DiamondGold.copy(alpha = 0.92f))
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                     ) {
                         Text(
                             text = "Voiza moderation: $warning",
-                            color = OnDarkHigh,
+                            color = VoizaBackground,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.weight(1f),
@@ -231,7 +243,7 @@ fun PartyRoomScreen(
                             Icon(
                                 Icons.Default.Close,
                                 contentDescription = "Dismiss warning",
-                                tint = OnDarkHigh,
+                                tint = VoizaBackground,
                                 modifier = Modifier.size(16.dp),
                             )
                         }
@@ -336,7 +348,7 @@ fun PartyRoomScreen(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xE6FF5B6E))
+                        .background(DangerRed.copy(alpha = 0.92f))
                         .clickable { viewModel.clearError() }
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                 )
@@ -400,7 +412,7 @@ fun PartyRoomScreen(
         var pw by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { },
-            containerColor = Color(0xFF151233),
+            containerColor = VoizaSurfaceHigh,
             title = { Text("Private room", color = OnDarkHigh) },
             text = {
                 OutlinedTextField(
@@ -412,7 +424,7 @@ fun PartyRoomScreen(
                     keyboardOptions = KeyboardOptions(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Fuchsia,
-                        unfocusedBorderColor = Color(0xFF3D3670),
+                        unfocusedBorderColor = VoizaOutline,
                         focusedTextColor = OnDarkHigh,
                         unfocusedTextColor = OnDarkHigh,
                     ),
@@ -445,7 +457,7 @@ fun PartyRoomScreen(
     state.invitedToSeat?.let { seatIndex ->
         AlertDialog(
             onDismissRequest = { },
-            containerColor = Color(0xFF151233),
+            containerColor = VoizaSurfaceHigh,
             title = { Text("The host invited you up", color = OnDarkHigh) },
             text = {
                 Text(
@@ -594,7 +606,7 @@ private fun RoomTopBar(
                 val tags = listOfNotNull(language, region).joinToString(" \u00B7 ")
                 if (tags.isNotBlank()) {
                     Spacer(Modifier.width(6.dp))
-                    Text(tags, color = Cyan, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text(tags, color = VioletLight, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
             Row(
@@ -603,19 +615,19 @@ private fun RoomTopBar(
             ) {
                 ListenerBadge(count = listenerCount)
                 if (totalGiftValue > 0) FlameBadge(value = totalGiftValue)
-                // Connection pip: socket + livekit health at a glance.
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(
-                            when {
-                                livekitConnected && socketConnected -> Mint
-                                livekitConnected || socketConnected -> Color(0xFFFFC246)
-                                else -> Color(0xFFFF5B6E)
-                            }
-                        ),
-                    content = {},
+                // Connection pill: socket + livekit health, labelled rather than a bare pip.
+                val tone = when {
+                    livekitConnected && socketConnected -> StatusTone.LIVE
+                    livekitConnected || socketConnected -> StatusTone.WARN
+                    else -> StatusTone.ERROR
+                }
+                StatusPill(
+                    label = when (tone) {
+                        StatusTone.LIVE -> "Live"
+                        StatusTone.WARN -> "Syncing"
+                        else -> "Offline"
+                    },
+                    tone = tone,
                 )
             }
         }
@@ -626,7 +638,7 @@ private fun RoomTopBar(
             Icon(
                 imageVector = Icons.Default.SportsEsports,
                 contentDescription = "Games",
-                tint = Cyan,
+                tint = VioletLight,
             )
         }
         if (isHost) {
@@ -641,7 +653,7 @@ private fun RoomTopBar(
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "Close room",
-                    tint = Color(0xFFFF5B6E),
+                    tint = DangerRed,
                 )
             }
         }
@@ -660,13 +672,13 @@ private fun RulesBanner(rules: String) {
             .fillMaxWidth()
             .padding(horizontal = 12.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0x4D231F4E))
+            .background(VoizaSurfaceVariant.copy(alpha = 0.30f))
             .clickable { expanded = !expanded }
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Text(
             text = "House rules",
-            color = Cyan,
+            color = VioletLight,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
         )
@@ -700,7 +712,7 @@ private fun AnnouncementBanner(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 2.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(if (pinned != null) Color(0x40F472B1) else Color(0x26FFFFFF))
+            .background(if (pinned != null) Violet.copy(alpha = 0.25f) else Color(0x26FFFFFF))
             .clickable(enabled = isHost, onClick = onPin)
             .padding(horizontal = 12.dp, vertical = 7.dp),
     ) {
@@ -748,7 +760,7 @@ private fun AnnouncementEditorDialog(
     var text by remember { mutableStateOf(current.orEmpty()) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF151233),
+        containerColor = VoizaSurfaceHigh,
         title = { Text("Pinned notice", color = OnDarkHigh) },
         text = {
             OutlinedTextField(
@@ -759,7 +771,7 @@ private fun AnnouncementEditorDialog(
                 maxLines = 6,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Fuchsia,
-                    unfocusedBorderColor = Color(0xFF3D3670),
+                    unfocusedBorderColor = VoizaOutline,
                     focusedTextColor = OnDarkHigh,
                     unfocusedTextColor = OnDarkHigh,
                 ),
@@ -790,7 +802,7 @@ private fun RoomNoticePill(text: String, onClick: () -> Unit, modifier: Modifier
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(50))
-            .background(Color(0x334DE0A0))
+            .background(Mint.copy(alpha = 0.20f))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
@@ -835,14 +847,14 @@ private fun PkRoomBanner(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 2.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0x3322D3EE))
+            .background(Violet.copy(alpha = 0.20f))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Icon(
             Icons.Default.FlashOn,
             contentDescription = null,
-            tint = if (battle?.isActive == true) WarningAmber else Cyan,
+            tint = if (battle?.isActive == true) WarningAmber else VioletLight,
             modifier = Modifier.size(16.dp),
         )
         Spacer(Modifier.width(8.dp))
@@ -877,7 +889,7 @@ private fun PkRoomBanner(
                 battle.isActive -> battle.clockLabel(battle.remainingAt(nowMs))
                 else -> "Waiting"
             },
-            color = if (battle?.isActive == true) WarningAmber else Cyan,
+            color = if (battle?.isActive == true) WarningAmber else VioletLight,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
         )
@@ -919,7 +931,7 @@ private fun AudienceStrip(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
-                .background(Color(0x40231F4E))
+                .background(VoizaSurfaceVariant.copy(alpha = 0.25f))
                 .clickable(onClick = onOpenList)
                 .padding(horizontal = 10.dp, vertical = 5.dp),
         ) {
@@ -934,12 +946,12 @@ private fun AudienceStrip(
                 Icon(
                     imageVector = Icons.Default.VoiceChat,
                     contentDescription = "$handRaisedCount waiting to speak",
-                    tint = GiftPink,
+                    tint = VioletLight,
                     modifier = Modifier.size(12.dp),
                 )
                 Text(
                     text = " $handRaisedCount",
-                    color = GiftPink,
+                    color = VioletLight,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                 )
@@ -960,12 +972,12 @@ private fun AudienceStrip(
         // Barrage (danmaku) on/off, TUIKit-style.
         Text(
             text = if (barrageOn) "Barrage on" else "Barrage off",
-            color = if (barrageOn) Cyan else OnDarkMedium,
+            color = if (barrageOn) VioletLight else OnDarkMedium,
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
-                .background(Color(0x40231F4E))
+                .background(VoizaSurfaceVariant.copy(alpha = 0.25f))
                 .clickable(onClick = onToggleBarrage)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
         )
@@ -994,7 +1006,7 @@ private fun RoomActionBar(
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xCC120F2B))
+            .background(VoizaBackground.copy(alpha = 0.80f))
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .padding(bottom = 6.dp),
     ) {
@@ -1002,13 +1014,13 @@ private fun RoomActionBar(
         ActionCircle(
             enabled = canPublish,
             gradient = if (micMuted || !canPublish) null else VoizaAccentGradient,
-            background = if (micMuted || !canPublish) Color(0xFF241F3D) else Color.Transparent,
+            background = if (micMuted || !canPublish) VoizaSurfaceVariant else Color.Transparent,
             onClick = onToggleMic,
         ) {
             Icon(
                 imageVector = if (micMuted) Icons.Default.MicOff else Icons.Default.Mic,
                 contentDescription = if (micMuted) "Unmute" else "Mute",
-                tint = if (!canPublish) Color(0xFF6A6490) else OnDarkHigh,
+                tint = if (!canPublish) OnDarkMuted else OnDarkHigh,
             )
         }
 
@@ -1017,7 +1029,7 @@ private fun RoomActionBar(
             ActionCircle(
                 enabled = true,
                 gradient = if (handRaised) VoizaAccentGradient else null,
-                background = if (handRaised) Color.Transparent else Color(0xFF241F3D),
+                background = if (handRaised) Color.Transparent else VoizaSurfaceVariant,
                 onClick = onRaiseHand,
             ) {
                 Icon(
@@ -1028,7 +1040,7 @@ private fun RoomActionBar(
             }
             Text(
                 text = if (handRaised) "Requested" else "Raise hand",
-                color = if (handRaised) Cyan else OnDarkMedium,
+                color = if (handRaised) VioletLight else OnDarkMedium,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -1045,7 +1057,7 @@ private fun RoomActionBar(
             ActionCircle(
                 enabled = true,
                 gradient = null,
-                background = Color(0xFF241F3D),
+                background = VoizaSurfaceVariant,
                 onClick = onLike,
             ) {
                 Icon(Icons.Default.Favorite, contentDescription = "Like the room", tint = GiftPink)
@@ -1061,7 +1073,7 @@ private fun RoomActionBar(
         // Gift box — the money button.
         ActionCircle(
             enabled = true,
-            gradient = Brush.horizontalGradient(listOf(Color(0xFFFF6EC7), Fuchsia)),
+            gradient = VoizaGoldGradient,
             background = Color.Transparent,
             onClick = onOpenGifts,
         ) {
@@ -1072,10 +1084,10 @@ private fun RoomActionBar(
         ActionCircle(
             enabled = true,
             gradient = null,
-            background = Color(0x33FF5B6E),
+            background = DangerRed.copy(alpha = 0.20f),
             onClick = onLeave,
         ) {
-            Icon(Icons.Default.PersonOff, contentDescription = "Leave room", tint = Color(0xFFFF5B6E))
+            Icon(Icons.Default.PersonOff, contentDescription = "Leave room", tint = DangerRed)
         }
     }
 }

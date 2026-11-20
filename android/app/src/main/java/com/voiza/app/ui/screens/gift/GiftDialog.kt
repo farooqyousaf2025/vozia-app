@@ -52,6 +52,18 @@ import com.voiza.app.ui.components.LoadingProgress
 import com.voiza.app.ui.components.VoizaButton
 import com.voiza.app.ui.components.banner.PromoBannerStrip
 import com.voiza.app.viewmodel.PartyRoomViewModel
+import com.voiza.app.ui.theme.DangerRed
+import com.voiza.app.ui.theme.DiamondGold
+import com.voiza.app.ui.theme.OnDarkHigh
+import com.voiza.app.ui.theme.OnDarkMedium
+import com.voiza.app.ui.theme.Violet
+import com.voiza.app.ui.theme.VioletLight
+import com.voiza.app.ui.theme.VoizaBackground
+import com.voiza.app.ui.theme.VoizaCtaGradient
+import com.voiza.app.ui.theme.VoizaOutline
+import com.voiza.app.ui.theme.VoizaSurfaceHigh
+import com.voiza.app.ui.theme.VoizaSurfaceVariant
+import com.voiza.app.ui.theme.WarningAmber
 
 /**
  * Modal gift catalogue bound to PartyRoomViewModel's gift state:
@@ -82,20 +94,20 @@ fun GiftDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF151233),
+        containerColor = VoizaSurfaceHigh,
         shape = RoundedCornerShape(22.dp),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Send a gift", color = Color(0xFFF3F1FF), fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Text("Send a gift", color = OnDarkHigh, fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 Spacer(Modifier.width(10.dp))
                 Text(
                     text = "Ranking",
-                    color = Color(0xFF4DD0E1),
+                    color = VioletLight,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(Color(0xFF241F3D))
+                        .background(VoizaSurfaceVariant)
                         .clickable(onClick = onOpenRanking)
                         .padding(horizontal = 9.dp, vertical = 4.dp),
                 )
@@ -117,7 +129,7 @@ fun GiftDialog(
                 // ---- Receiver chips (seated speakers; host default) ----
                 val receivers = state.seatedUsers
                 if (receivers.isNotEmpty()) {
-                    Text("To", color = Color(0xFFB9B4D6), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("To", color = OnDarkMedium, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Box(
@@ -128,9 +140,9 @@ fun GiftDialog(
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(
                                     if (state.selectedReceiverId == receivers.firstOrNull()?.id) {
-                                        Color(0xFF2A2459)
+                                        VoizaSurfaceVariant
                                     } else {
-                                        Color(0xFF1B1740)
+                                        VoizaSurfaceHigh
                                     }
                                 )
                                 .clickable { receivers.firstOrNull()?.let { onSelectReceiver(it.id) } },
@@ -143,7 +155,7 @@ fun GiftDialog(
                                 )
                                 Text(
                                     text = receivers.firstOrNull()?.username?.take(6) ?: "-",
-                                    color = Color(0xFFF3F1FF),
+                                    color = OnDarkHigh,
                                     fontSize = 9.sp,
                                 )
                             }
@@ -222,9 +234,9 @@ fun GiftDialog(
                                         .clip(CircleShape)
                                         .background(
                                             if (index == pagerState.currentPage) {
-                                                Color(0xFF4DD0E1)
+                                                VioletLight
                                             } else {
-                                                Color(0xFF3D3670)
+                                                VoizaOutline
                                             },
                                         ),
                                 )
@@ -262,11 +274,11 @@ fun GiftDialog(
                             onClick = { onQuantitySet(state.giftQuantity - 1) },
                             enabled = state.giftQuantity > 1,
                         ) {
-                            Icon(Icons.Default.Remove, contentDescription = "less", tint = Color(0xFFF3F1FF))
+                            Icon(Icons.Default.Remove, contentDescription = "less", tint = OnDarkHigh)
                         }
                         Text(
                             text = "${state.giftQuantity}",
-                            color = Color(0xFFF3F1FF),
+                            color = OnDarkHigh,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                         )
@@ -274,7 +286,7 @@ fun GiftDialog(
                             onClick = { onQuantitySet(state.giftQuantity + 1) },
                             enabled = affordable,
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = "more", tint = Color(0xFFF3F1FF))
+                            Icon(Icons.Default.Add, contentDescription = "more", tint = OnDarkHigh)
                         }
                         Spacer(Modifier.width(8.dp))
                         listOf(1, 5, 10, 20).forEach { preset ->
@@ -298,13 +310,13 @@ fun GiftDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0x33FFC94D))
+                                .background(WarningAmber.copy(alpha = 0.20f))
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
                         ) {
                             Text(
                                 text = "Needs VIP ${selected.minVipLevel} — you are VIP ${state.user?.vipLevel ?: 0}. " +
                                     "An operator sets the tier.",
-                                color = Color(0xFFFFC94D),
+                                color = WarningAmber,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -314,12 +326,12 @@ fun GiftDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0x33FF5B6E))
+                                .background(DangerRed.copy(alpha = 0.20f))
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
                         ) {
                             Text(
                                 text = "Need \u2756 $cost, you have \u2756 $balance. Recharge to send.",
-                                color = Color(0xFFFF8FA0),
+                                color = DangerRed.copy(alpha = 0.90f),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -327,7 +339,7 @@ fun GiftDialog(
                     } else {
                         Text(
                             text = "Total \u2756 $cost \u2192 host earns \u25C9 ${selected.rCoinValue * state.giftQuantity}",
-                            color = Color(0xFFB9B4D6),
+                            color = OnDarkMedium,
                             fontSize = 12.sp,
                         )
                     }
@@ -335,7 +347,7 @@ fun GiftDialog(
 
                 state.giftError?.let {
                     Spacer(Modifier.height(6.dp))
-                    Text(it, color = Color(0xFFFF5B6E), fontSize = 12.sp)
+                    Text(it, color = DangerRed, fontSize = 12.sp)
                 }
             }
         },
@@ -348,7 +360,7 @@ fun GiftDialog(
                     affordable &&
                     !state.selectedGiftLocked &&
                     !state.giftSending,
-                gradient = Brush.horizontalGradient(listOf(Color(0xFFE040FB), Color(0xFF22D3EE))),
+                gradient = VoizaCtaGradient,
                 modifier = Modifier.fillMaxWidth(),
                 height = 46,
             )
@@ -380,14 +392,14 @@ private fun ReceiversRow(
                     modifier = Modifier
                         .width(64.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(if (active) Color(0xFF2A2459) else Color(0xFF1B1740))
+                        .background(if (active) VoizaSurfaceVariant else VoizaSurfaceHigh)
                         .clickable { onSelectReceiver(user.id) }
                         .padding(vertical = 8.dp),
                 ) {
                     Avatar(url = user.avatarUrl, name = user.username, size = 30.dp)
                     Text(
                         text = user.username.take(6),
-                        color = Color(0xFFF3F1FF),
+                        color = OnDarkHigh,
                         fontSize = 9.sp,
                     )
                 }
@@ -410,8 +422,8 @@ private fun GiftTile(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(if (selected) Color(0xFF2A2459) else Color(0xFF1B1740))
-            .then(if (selected) Modifier.background(Brush.horizontalGradient(listOf(Color(0x33E040FB), Color(0x3322D3EE)))) else Modifier)
+            .background(if (selected) VoizaSurfaceVariant else VoizaSurfaceHigh)
+            .then(if (selected) Modifier.background(Brush.horizontalGradient(listOf(Violet.copy(alpha = 0.20f), VioletLight.copy(alpha = 0.20f)))) else Modifier)
             .clickable(onClick = onClick)
             .padding(vertical = 8.dp, horizontal = 4.dp),
     ) {
@@ -435,10 +447,10 @@ private fun GiftTile(
                 Icon(
                     imageVector = Icons.Default.Lock,
                     contentDescription = null,
-                    tint = Color(0xFFFFC94D),
+                    tint = WarningAmber,
                     modifier = Modifier
                         .size(14.dp)
-                        .background(Color(0xCC151233), CircleShape)
+                        .background(VoizaSurfaceHigh.copy(alpha = 0.80f), CircleShape)
                         .padding(2.dp),
                 )
             }
@@ -446,16 +458,16 @@ private fun GiftTile(
         Spacer(Modifier.height(2.dp))
         Text(
             text = gift.name,
-            color = Color(0xFFF3F1FF),
+            color = OnDarkHigh,
             fontSize = 10.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
         )
         Text(
             text = if (locked) "VIP ${gift.minVipLevel}" else "\u2756 ${gift.diamondPrice}",
             color = when {
-                locked -> Color(0xFFFFC94D)
-                affordable -> Color(0xFF4DD0E1)
-                else -> Color(0xFFFF8FA0)
+                locked -> WarningAmber
+                affordable -> VioletLight
+                else -> DangerRed.copy(alpha = 0.90f)
             },
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
@@ -467,7 +479,7 @@ private fun GiftTile(
             // the draw does not honour.
             Text(
                 text = luckyOddsLabel(gift),
-                color = Color(0xFFFFD24D),
+                color = DiamondGold,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
             )
@@ -497,10 +509,10 @@ private fun PresetChip(
         modifier = Modifier
             .size(width = 40.dp, height = 28.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(if (active) Color(0xFF7C4DFF) else Color(0xFF241F3D))
+            .background(if (active) Violet else VoizaSurfaceVariant)
             .clickable(onClick = onClick),
     ) {
-        Text(text, color = Color(0xFFF3F1FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text(text, color = OnDarkHigh, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -528,10 +540,10 @@ private fun CategoryTabs(
                     .then(
                         if (active) {
                             Modifier.background(
-                                Brush.horizontalGradient(listOf(Color(0xFFE040FB), Color(0xFF22D3EE))),
+                                VoizaCtaGradient,
                             )
                         } else {
-                            Modifier.background(Color(0xFF241F3D))
+                            Modifier.background(VoizaSurfaceVariant)
                         }
                     )
                     .clickable { onSelect(category?.key) }
@@ -539,7 +551,7 @@ private fun CategoryTabs(
             ) {
                 Text(
                     text = category?.name ?: "All",
-                    color = if (active) Color(0xFF140F2B) else Color(0xFFB9B4D6),
+                    color = if (active) VoizaBackground else OnDarkMedium,
                     fontSize = 11.sp,
                     fontWeight = if (active) FontWeight.Black else FontWeight.SemiBold,
                 )
@@ -561,7 +573,7 @@ private fun SelectedGiftBar(gift: Gift, quantity: Int, receiver: MiniUser?) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF1B1740))
+            .background(VoizaSurfaceHigh)
             .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
         AsyncImage(
@@ -574,13 +586,13 @@ private fun SelectedGiftBar(gift: Gift, quantity: Int, receiver: MiniUser?) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = gift.name,
-                color = Color(0xFFF3F1FF),
+                color = OnDarkHigh,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
             )
             Text(
                 text = "\u2756 ${gift.diamondPrice} each \u00B7 \u25C9 ${gift.rCoinValue} to the host",
-                color = Color(0xFFB9B4D6),
+                color = OnDarkMedium,
                 fontSize = 10.sp,
             )
         }
@@ -588,13 +600,13 @@ private fun SelectedGiftBar(gift: Gift, quantity: Int, receiver: MiniUser?) {
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     text = "\u00D7 $quantity",
-                    color = Color(0xFF4DD0E1),
+                    color = VioletLight,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Black,
                 )
                 Text(
                     text = "to ${receiver.username.take(10)}",
-                    color = Color(0xFFB9B4D6),
+                    color = OnDarkMedium,
                     fontSize = 10.sp,
                 )
             }

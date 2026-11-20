@@ -72,6 +72,7 @@ import com.voiza.app.ui.components.LoadingProgress
 import com.voiza.app.ui.components.RankBadge
 import com.voiza.app.ui.components.VoizaButton
 import com.voiza.app.ui.components.VoizaSheet
+import com.voiza.app.ui.components.ListSkeleton
 import com.voiza.app.ui.theme.DangerRed
 import com.voiza.app.ui.theme.GiftPink
 import com.voiza.app.ui.theme.Mint
@@ -239,7 +240,7 @@ fun RankingsScreen(
         // The board -------------------------------------------------------------------
         Box(modifier = Modifier.fillMaxSize()) {
             when {
-                state.loading && data == null -> LoadingProgress(overlay = true)
+                state.loading && data == null -> ListSkeleton(rows = 7, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
                 data == null -> EmptyState(
                     icon = Icons.Default.EmojiEvents,
                     title = state.error ?: "Could not load the rankings",

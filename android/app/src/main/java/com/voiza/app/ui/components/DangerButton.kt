@@ -17,6 +17,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.voiza.app.ui.theme.DangerRed
 import com.voiza.app.ui.theme.OnDarkHigh
+import com.voiza.app.ui.theme.OnDarkMuted
+import com.voiza.app.ui.theme.VoizaSurfaceVariant
 
 /** Destructive action button (kick / close room / logout). */
 @Composable
@@ -32,13 +34,13 @@ fun DangerButton(
         modifier = modifier
             .height(46.dp)
             .clip(shape)
-            .background(if (enabled) DangerRed.copy(alpha = 0.22f) else Color(0xFF241F3D))
+            .background(if (enabled) DangerRed.copy(alpha = 0.22f) else VoizaSurfaceVariant)
             .clickable(enabled = enabled) { onClick() }
             .padding(horizontal = 14.dp),
     ) {
         Text(
             text = text,
-            color = if (enabled) DangerRed else Color(0xFF6A6490),
+            color = if (enabled) DangerRed else OnDarkMuted,
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp,
         )

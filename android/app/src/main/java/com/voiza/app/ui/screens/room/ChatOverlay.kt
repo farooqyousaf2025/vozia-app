@@ -61,6 +61,11 @@ import com.voiza.app.ui.theme.GiftPink
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
+import com.voiza.app.ui.theme.DiamondGold
+import com.voiza.app.ui.theme.Violet
+import com.voiza.app.ui.theme.VoizaBackground
+import com.voiza.app.ui.theme.VoizaOutline
+import com.voiza.app.ui.theme.VoizaSurfaceVariant
 
 /**
  * Semi-transparent chat feed: a compact overlay window (~6 rows tall) with an
@@ -109,7 +114,7 @@ fun ChatOverlay(
                 .fillMaxWidth()
                 .height(168.dp) // ~6 visible rows
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color(0x400B0A1F)),
+                .background(VoizaBackground.copy(alpha = 0.25f)),
         ) {
             items(messages, key = { it.id }) { msg ->
                 ChatRow(msg, emojis, codePattern, onOpenMember)
@@ -124,7 +129,7 @@ fun ChatOverlay(
                     .fillMaxWidth()
                     .height(52.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0x590B0A1F)),
+                    .background(VoizaBackground.copy(alpha = 0.35f)),
             ) {
                 items(emojis, key = { it.key }) { option ->
                     EmojiTile(option) { input = (input + option.code).take(MAX_INPUT) }
@@ -144,12 +149,12 @@ fun ChatOverlay(
                 shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Fuchsia.copy(alpha = 0.7f),
-                    unfocusedBorderColor = Color(0xFF3D3670),
-                    cursorColor = Cyan,
+                    unfocusedBorderColor = VoizaOutline,
+                    cursorColor = Violet,
                     focusedTextColor = OnDarkHigh,
                     unfocusedTextColor = OnDarkHigh,
-                    focusedContainerColor = Color(0x66231F4E),
-                    unfocusedContainerColor = Color(0x66231F4E),
+                    focusedContainerColor = VoizaSurfaceVariant.copy(alpha = 0.65f),
+                    unfocusedContainerColor = VoizaSurfaceVariant.copy(alpha = 0.65f),
                 ),
                 modifier = Modifier
                     .weight(1f),
@@ -158,7 +163,7 @@ fun ChatOverlay(
                 Icon(
                     imageVector = Icons.Default.EmojiEmotions,
                     contentDescription = if (pickerOpen) "Hide emoji" else "Pick emoji",
-                    tint = if (pickerOpen) Cyan else OnDarkMedium,
+                    tint = if (pickerOpen) Violet else OnDarkMedium,
                 )
             }
             IconButton(
@@ -172,7 +177,7 @@ fun ChatOverlay(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Send,
                     contentDescription = "Send",
-                    tint = if (input.isNotBlank()) Cyan else OnDarkMedium,
+                    tint = if (input.isNotBlank()) Violet else OnDarkMedium,
                 )
             }
         }
@@ -222,8 +227,8 @@ private fun ChatRow(
         style = bubble,
         modifier = Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
         plainBackground = when {
-            isGift -> Color(0x40FF6EC7)
-            isSystem -> Color(0x3322D3EE)
+            isGift -> DiamondGold.copy(alpha = 0.25f)
+            isSystem -> Violet.copy(alpha = 0.20f)
             else -> Color(0x26000000)
         },
     ) { textColor, accent ->

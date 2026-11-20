@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.voiza.app.ui.theme.DiamondGold
 import com.voiza.app.ui.theme.OnDarkHigh
+import com.voiza.app.ui.theme.VoizaSurfaceVariant
 
 /**
  * Small diamond-balance pill. Tappable everywhere except inline usage.
@@ -36,7 +37,7 @@ fun DiamondChip(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         modifier = modifier
             .background(
-                color = Color(0xFF232C4E),
+                color = VoizaSurfaceVariant,
                 shape = shape,
             )
             .then(
@@ -79,7 +80,7 @@ fun FlameBadge(
     ) {
         Text(
             text = "\u2665",
-            color = Color(0xFFFF6EC7),
+            color = DiamondGold,
             fontSize = 11.sp,
         )
         Text(

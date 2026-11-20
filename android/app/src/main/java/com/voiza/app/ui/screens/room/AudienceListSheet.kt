@@ -48,6 +48,8 @@ import com.voiza.app.ui.theme.Mint
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.WarningAmber
+import com.voiza.app.ui.theme.DangerRed
+import com.voiza.app.ui.theme.VioletLight
 
 /**
  * Audience / co-host roster, opened by tapping the audience strip: who is on a
@@ -110,11 +112,11 @@ fun AudienceListSheet(
                     PersonRow(
                         user = seat.user!!,
                         badge = seatLabel(seat, hostId),
-                        badgeTint = if (seat.seatIndex == 0) WarningAmber else Cyan,
+                        badgeTint = if (seat.seatIndex == 0) WarningAmber else VioletLight,
                         trailing = if (seat.isMuted) {
-                            { MiniPill("muted", Color(0x33FF5B6E), Color(0xFFFF8FA0)) }
+                            { MiniPill("muted", DangerRed.copy(alpha = 0.20f), DangerRed.copy(alpha = 0.90f)) }
                         } else {
-                            { MiniPill("live", Color(0x334DE0A0), Mint) }
+                            { MiniPill("live", Mint.copy(alpha = 0.20f), Mint) }
                         },
                         onClick = { seat.user?.let { member -> onOpenMember(member.id) } },
                     )
@@ -136,13 +138,13 @@ fun AudienceListSheet(
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     QueueButton(
                                         text = "Decline",
-                                        background = Color(0x33FF5B6E),
-                                        tint = Color(0xFFFF8FA0),
+                                        background = DangerRed.copy(alpha = 0.20f),
+                                        tint = DangerRed.copy(alpha = 0.90f),
                                         onClick = { onReject(request) },
                                     )
                                     QueueButton(
                                         text = "Seat",
-                                        background = Color(0x334DE0A0),
+                                        background = Mint.copy(alpha = 0.20f),
                                         tint = Mint,
                                         onClick = { onApprove(request) },
                                     )
@@ -170,7 +172,7 @@ fun AudienceListSheet(
                             {
                                 QueueButton(
                                     text = "Invite up",
-                                    background = Color(0x334DE0A0),
+                                    background = Mint.copy(alpha = 0.20f),
                                     tint = Mint,
                                     onClick = { onInvite(user.id) },
                                 )
@@ -195,8 +197,8 @@ fun AudienceListSheet(
                             {
                                 QueueButton(
                                     text = "Invite",
-                                    background = Color(0x335BC8FF),
-                                    tint = Cyan,
+                                    background = VioletLight.copy(alpha = 0.20f),
+                                    tint = VioletLight,
                                     onClick = { onInvite(user.id) },
                                 )
                             }

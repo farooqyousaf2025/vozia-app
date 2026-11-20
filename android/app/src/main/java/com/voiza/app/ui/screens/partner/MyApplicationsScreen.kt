@@ -49,6 +49,7 @@ import com.voiza.app.ui.theme.DangerRed
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.RCoinGreen
+import com.voiza.app.ui.theme.VioletLight
 import com.voiza.app.ui.theme.VoizaSurface
 import com.voiza.app.viewmodel.MyApplicationsViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
@@ -191,7 +192,7 @@ private fun ApplicationRow(
             VoizaTextButton(
                 text = if (showAnswers) "Hide what you sent" else "Show what you sent",
                 onClick = { showAnswers = !showAnswers },
-                color = Cyan,
+                color = VioletLight,
                 modifier = Modifier.fillMaxWidth(),
             )
             if (showAnswers) {

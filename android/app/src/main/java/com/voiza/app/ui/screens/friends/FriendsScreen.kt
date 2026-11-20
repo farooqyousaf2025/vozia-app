@@ -62,6 +62,7 @@ import com.voiza.app.ui.components.EmptyState
 import com.voiza.app.ui.components.LoadingProgress
 import com.voiza.app.ui.components.VoizaButton
 import com.voiza.app.ui.components.VoizaCard
+import com.voiza.app.ui.components.ListSkeleton
 import com.voiza.app.ui.screens.home.voizaFieldColors
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.DangerRed
@@ -69,6 +70,8 @@ import com.voiza.app.ui.theme.Mint
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.OnDarkMuted
+import com.voiza.app.ui.theme.Violet
+import com.voiza.app.ui.theme.VioletLight
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
 import com.voiza.app.viewmodel.FriendsTab
 import com.voiza.app.viewmodel.FriendsViewModel
@@ -84,6 +87,7 @@ import com.voiza.app.viewmodel.voizaViewModelFactory
 @Composable
 fun FriendsScreen(
     onBack: () -> Unit,
+    initialTab: FriendsTab = FriendsTab.FRIENDS,
     viewModel: FriendsViewModel = viewModel(
         factory = voizaViewModelFactory { FriendsViewModel() },
     ),
@@ -92,6 +96,11 @@ fun FriendsScreen(
     var newFriendId by remember { mutableStateOf("") }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.load() }
+
+    // The shell's Messages tab lands straight on the conversation list.
+    LaunchedEffect(initialTab) {
+        if (state.tab != initialTab) viewModel.selectTab(initialTab)
+    }
 
     LaunchedEffect(state.message) {
         // The message is consumed by the effect so a rotate does not replay an old confirmation.
@@ -125,7 +134,7 @@ fun FriendsScreen(
                         .tabIndicatorOffset(positions[tabs.indexOf(state.tab).coerceAtLeast(0)])
                         .height(3.dp)
                         .clip(RoundedCornerShape(2.dp))
-                        .background(Brush.horizontalGradient(listOf(Cyan, Cyan.copy(alpha = 0.4f)))),
+                        .background(com.voiza.app.ui.theme.VoizaAccentGradient),
                 )
             },
         ) {
@@ -143,7 +152,7 @@ fun FriendsScreen(
                             },
                             fontSize = 14.sp,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (selected) Cyan else OnDarkMedium,
+                            color = if (selected) Violet else OnDarkMedium,
                         )
                     },
                 )
@@ -153,7 +162,7 @@ fun FriendsScreen(
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             when {
                 state.loading && state.friends.isEmpty() && state.incoming.isEmpty() && state.conversations.isEmpty() ->
-                    LoadingProgress(overlay = true)
+                    ListSkeleton(rows = 6, modifier = Modifier.padding(20.dp))
 
                 state.isGuest -> EmptyState(
                     icon = Icons.Default.Person,
@@ -428,7 +437,7 @@ private fun MessagesPane(
             )
             Spacer(Modifier.width(8.dp))
             IconButton(onClick = onSend, enabled = state.draft.isNotBlank() && !state.busy) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = if (state.busy) OnDarkMuted else Cyan)
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = if (state.busy) OnDarkMuted else Violet)
             }
         }
     }
@@ -456,7 +465,7 @@ private fun ConversationRow(conversation: Conversation, onClick: () -> Unit) {
                     color = OnDarkHigh,
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp,
-                    modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Cyan).padding(horizontal = 8.dp, vertical = 3.dp),
+                    modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Violet).padding(horizontal = 8.dp, vertical = 3.dp),
                 )
             }
             Spacer(Modifier.width(6.dp))
@@ -467,7 +476,7 @@ private fun ConversationRow(conversation: Conversation, onClick: () -> Unit) {
 
 @Composable
 private fun MessageBubble(message: DirectMessage, mine: Boolean) {
-    val background = if (mine) VoizaSurfaceHigh else Color(0x262B2A45)
+    val background = if (mine) VoizaSurfaceHigh else VoizaSurfaceHigh.copy(alpha = 0.80f)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
@@ -486,7 +495,7 @@ private fun MessageBubble(message: DirectMessage, mine: Boolean) {
 }
 
 @Composable
-private fun SmallAction(label: String, onClick: () -> Unit, tint: Color = Cyan) {
+private fun SmallAction(label: String, onClick: () -> Unit, tint: Color = VioletLight) {
     Text(
         text = label,
         color = tint,

@@ -33,6 +33,9 @@ import com.voiza.app.domain.model.EmojiOption
 import com.voiza.app.domain.model.FALLBACK_EMOJI_CODE_PATTERN
 import com.voiza.app.domain.model.MessageType
 import com.voiza.app.ui.theme.OnDarkHigh
+import com.voiza.app.ui.theme.DiamondGold
+import com.voiza.app.ui.theme.VioletLight
+import com.voiza.app.ui.theme.VoizaBackground
 
 /**
  * Danmaku layer: messages that arrive *while the screen is open* fly
@@ -104,9 +107,9 @@ private fun ChatMessage.toBarrageLine(): BarrageLine? {
     // Fills have to survive the dark room gradient, so the alpha is high and the
     // text colour is picked for contrast against the fill, not against the room.
     return when (type) {
-        MessageType.GIFT -> BarrageLine(id, text, Color(0xCCFF6EC7), Color.White)
-        MessageType.SYSTEM -> BarrageLine(id, text, Color(0xB322D3EE), Color(0xFF081018))
-        MessageType.TEXT -> BarrageLine(id, text, Color(0xB30B0A1F), OnDarkHigh)
+        MessageType.GIFT -> BarrageLine(id, text, DiamondGold.copy(alpha = 0.80f), Color.White)
+        MessageType.SYSTEM -> BarrageLine(id, text, VioletLight.copy(alpha = 0.70f), VoizaBackground)
+        MessageType.TEXT -> BarrageLine(id, text, VoizaBackground.copy(alpha = 0.70f), OnDarkHigh)
     }
 }
 

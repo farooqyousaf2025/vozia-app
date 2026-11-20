@@ -24,13 +24,18 @@ import com.voiza.app.domain.model.BubbleMotif
 import com.voiza.app.domain.model.BubbleStyle
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.OnDarkHigh
+import com.voiza.app.ui.theme.VoizaCardBorder
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
 
-/** Standard Voiza card container: elevated surface, 18dp radius, 14dp padding. */
+/**
+ * Standard Vozia card: charcoal surface, 18dp radius, hairline border so a
+ * card reads as an object on the black ground without a drop shadow.
+ */
 @Composable
 fun VoizaCard(
     modifier: Modifier = Modifier,
     backgroundColor: Color = MaterialTheme.colorScheme.surface,
+    bordered: Boolean = true,
     contentPadding: androidx.compose.ui.unit.Dp = 14.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -38,6 +43,7 @@ fun VoizaCard(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
             .background(backgroundColor)
+            .then(if (bordered) Modifier.border(1.dp, VoizaCardBorder, RoundedCornerShape(18.dp)) else Modifier)
             .padding(contentPadding),
         content = content,
     )

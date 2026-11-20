@@ -42,6 +42,11 @@ import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.VoizaSeatRingGradient
 import com.voiza.app.ui.theme.WarningAmber
+import com.voiza.app.ui.theme.DangerRed
+import com.voiza.app.ui.theme.DiamondGold
+import com.voiza.app.ui.theme.VoizaBackground
+import com.voiza.app.ui.theme.VoizaSurfaceHigh
+import com.voiza.app.ui.theme.VoizaSurfaceVariant
 
 /**
  * The seats this room has, host seat emphasised: slightly larger, permanent gradient
@@ -125,8 +130,8 @@ private fun SeatCell(
                 // visible where most people actually see each other.
                 frame = seat.user?.profileFrame,
                 fallbackBackground = when (seat.status) {
-                    SeatStatus.EMPTY -> Color(0xFF1C1840)
-                    SeatStatus.LOCKED -> Color(0xFF2A2459)
+                    SeatStatus.EMPTY -> VoizaSurfaceHigh
+                    SeatStatus.LOCKED -> VoizaSurfaceVariant
                     SeatStatus.OCCUPIED -> MaterialTheme.colorScheme.surfaceVariant
                 },
                 modifier = Modifier.clickable(onClick = onClick),
@@ -208,18 +213,18 @@ fun HostBadgeLabel(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .clip(RoundedCornerShape(50))
-            .background(Color(0xFF38230F))
+            .background(DiamondGold)
             .padding(horizontal = 8.dp, vertical = 3.dp),
     ) {
         Icon(
             imageVector = Icons.Default.RecordVoiceOver,
             contentDescription = null,
-            tint = OnDarkHigh,
+            tint = VoizaBackground,
             modifier = Modifier.size(12.dp),
         )
         Spacer(Modifier.width(4.dp))
-        Text("HOST", color = OnDarkHigh, fontSize = 9.sp, fontWeight = FontWeight.Black)
+        Text("HOST", color = VoizaBackground, fontSize = 9.sp, fontWeight = FontWeight.Black)
     }
 }
 
-private val DangerTint = Color(0xFFFF5B6E)
+private val DangerTint = DangerRed

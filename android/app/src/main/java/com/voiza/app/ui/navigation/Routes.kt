@@ -17,6 +17,12 @@ object Routes {
     // the screen and answered by /api/rankings, so nothing about them travels in the path.
     const val RANKINGS = "rankings"
 
+    // The shell's Discover tab: the full search surface (server-side search across open rooms).
+    const val DISCOVER = "discover"
+
+    // The shell's Messages tab: the friends route with its conversation pane preselected.
+    const val MESSAGES = "messages"
+
     const val ROOM_ARG = "roomId"
     const val ROOM_BASE = "room"
     const val ROOM_PATTERN = "$ROOM_BASE/{$ROOM_ARG}"

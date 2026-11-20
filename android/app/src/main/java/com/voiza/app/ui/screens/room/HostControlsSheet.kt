@@ -39,6 +39,8 @@ import com.voiza.app.ui.theme.DangerRed
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.WarningAmber
+import com.voiza.app.ui.theme.VoizaSurfaceHigh
+import com.voiza.app.ui.theme.VoizaSurfaceVariant
 
 /**
  * Host-only sheet for one seat: lock/unlock, mute/unmute occupant, kick.
@@ -66,7 +68,7 @@ fun HostControlsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFF1B1740))
+                .background(VoizaSurfaceHigh)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         ) {
             if (seat.user != null) {
@@ -139,7 +141,7 @@ private fun ControlRow(
             .fillMaxWidth()
             .padding(bottom = 8.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(if (danger) Color(0x22FF5B6E) else Color(0xFF1B1740))
+            .background(if (danger) DangerRed.copy(alpha = 0.13f) else VoizaSurfaceHigh)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
@@ -148,7 +150,7 @@ private fun ControlRow(
             modifier = Modifier
                 .size(32.dp)
                 .clip(CircleShape)
-                .background(if (danger) Color(0x33FF5B6E) else Color(0xFF241F3D)),
+                .background(if (danger) DangerRed.copy(alpha = 0.20f) else VoizaSurfaceVariant),
         ) {
             Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
         }
@@ -156,7 +158,7 @@ private fun ControlRow(
         androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                color = if (danger) Color(0xFFFF8FA0) else OnDarkHigh,
+                color = if (danger) DangerRed.copy(alpha = 0.90f) else OnDarkHigh,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
             )

@@ -38,6 +38,7 @@ import com.voiza.app.ui.components.asAssetUrl
 import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.sin
+import com.voiza.app.ui.theme.VoizaSurfaceVariant
 
 // ---------------------------------------------------------------------------
 // Quick reactions.
@@ -71,7 +72,7 @@ fun ReactionStrip(
                 modifier = Modifier
                     .size(34.dp)
                     .clip(CircleShape)
-                    .background(Color(0x66241F3D))
+                    .background(VoizaSurfaceVariant.copy(alpha = 0.65f))
                     .clickable { onReaction(option) },
             ) {
                 AsyncImage(

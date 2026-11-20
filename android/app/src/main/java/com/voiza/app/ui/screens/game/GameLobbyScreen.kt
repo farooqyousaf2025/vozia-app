@@ -41,6 +41,7 @@ import com.voiza.app.ui.theme.Mint
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.OnDarkMuted
+import com.voiza.app.ui.theme.VioletLight
 import com.voiza.app.viewmodel.GameLobbyViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
 
@@ -240,7 +241,7 @@ private fun SessionCard(
             )
             Text(
                 text = "${session.livePlayers.size}/${session.maxPlayers}",
-                color = Cyan,
+                color = VioletLight,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -317,7 +318,7 @@ private fun HistoryRow(row: GameHistoryRow, onOpen: () -> Unit) {
             )
             Text(
                 text = "open",
-                color = Cyan,
+                color = VioletLight,
                 fontSize = 11.sp,
                 modifier = Modifier
                     .padding(start = 10.dp)

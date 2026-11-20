@@ -36,6 +36,9 @@ import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.screens.room.gifts.GiftComboBadge
 import kotlinx.coroutines.delay
+import com.voiza.app.ui.theme.DiamondGold
+import com.voiza.app.ui.theme.VoizaSurface
+import com.voiza.app.ui.theme.VoizaSurfaceHigh
 
 /**
  * The quiet half of the gift effects: a rose or a lollipop scrolls past here
@@ -76,7 +79,7 @@ private fun TickerRow(event: GiftAnimatedEvent) {
         horizontalArrangement = Arrangement.spacedBy(7.dp),
         modifier = Modifier
             .clip(RoundedCornerShape(50))
-            .background(Brush.horizontalGradient(listOf(Color(0xE62A2459), Color(0xB3151233))))
+            .background(Brush.horizontalGradient(listOf(VoizaSurfaceHigh, VoizaSurface)))
             .padding(horizontal = 8.dp, vertical = 5.dp),
     ) {
         Avatar(url = event.sender.avatarUrl, name = event.sender.username, size = 22.dp)
@@ -114,7 +117,7 @@ private fun TickerRow(event: GiftAnimatedEvent) {
         }
         Text(
             text = "\u2756 ${event.totalDiamonds}",
-            color = Color(0xFFFFF3B0),
+            color = DiamondGold,
             fontSize = 10.sp,
             fontWeight = FontWeight.Black,
         )

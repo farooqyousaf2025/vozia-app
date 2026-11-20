@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.Fuchsia
+import com.voiza.app.ui.theme.Violet
 
 /**
  * Animated pulse ring behind seat content while a participant is speaking.
@@ -74,7 +75,7 @@ fun SpeakingRing(
             )
             // Steady inner halo while voicing.
             drawCircle(
-                color = Color(0x33E040FB),
+                color = Violet.copy(alpha = 0.20f),
                 radius = maxRadius * 0.78f * amplitude,
             )
         }

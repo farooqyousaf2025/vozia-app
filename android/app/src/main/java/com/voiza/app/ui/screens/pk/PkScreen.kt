@@ -61,9 +61,13 @@ import com.voiza.app.ui.theme.Mint
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.OnDarkMuted
+import com.voiza.app.ui.theme.VioletLight
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
 import com.voiza.app.ui.theme.VoizaSurfaceVariant
 import com.voiza.app.ui.theme.WarningAmber
+import com.voiza.app.ui.theme.Violet
+import com.voiza.app.ui.theme.VioletDark
+import com.voiza.app.ui.theme.VoizaBackground
 import com.voiza.app.viewmodel.PkViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
 
@@ -264,9 +268,9 @@ private fun StatusHeader(battle: PkBattle, nowMs: Long) {
                 .clip(RoundedCornerShape(50))
                 .background(
                     when {
-                        battle.isActive -> Color(0x33FFC246)
-                        battle.isInvited -> Color(0x2622D3EE)
-                        else -> Color(0x26B9B4D6)
+                        battle.isActive -> WarningAmber.copy(alpha = 0.20f)
+                        battle.isInvited -> Violet.copy(alpha = 0.15f)
+                        else -> OnDarkMedium.copy(alpha = 0.15f)
                     }
                 )
                 .padding(horizontal = 10.dp, vertical = 4.dp),
@@ -281,7 +285,7 @@ private fun StatusHeader(battle: PkBattle, nowMs: Long) {
                 },
                 color = when {
                     battle.isActive -> WarningAmber
-                    battle.isInvited -> Cyan
+                    battle.isInvited -> VioletLight
                     else -> OnDarkMedium
                 },
                 fontSize = 11.sp,
@@ -543,13 +547,13 @@ private fun DurationRow(settings: PkSettings, selected: Int?, onSelect: (Int) ->
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(if (isSelected) Cyan else VoizaSurfaceVariant)
+                    .background(if (isSelected) Violet else VoizaSurfaceVariant)
                     .clickable { onSelect(seconds) }
                     .padding(horizontal = 14.dp, vertical = 8.dp),
             ) {
                 Text(
                     text = if (seconds % 60 == 0) "${seconds / 60} min" else "$seconds s",
-                    color = if (isSelected) Color(0xFF0B0A1F) else OnDarkHigh,
+                    color = if (isSelected) VoizaBackground else OnDarkHigh,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -561,7 +565,7 @@ private fun DurationRow(settings: PkSettings, selected: Int?, onSelect: (Int) ->
 @Composable
 private fun OpponentRow(room: RoomSummary, selected: Boolean, onClick: () -> Unit) {
     VoizaCard(
-        backgroundColor = if (selected) Color(0x3322D3EE) else VoizaSurfaceHigh,
+        backgroundColor = if (selected) Violet.copy(alpha = 0.20f) else VoizaSurfaceHigh,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -572,7 +576,7 @@ private fun OpponentRow(room: RoomSummary, selected: Boolean, onClick: () -> Uni
                     .background(VoizaSurfaceVariant),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Default.FlashOn, contentDescription = null, tint = Cyan, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.FlashOn, contentDescription = null, tint = VioletLight, modifier = Modifier.size(18.dp))
             }
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -592,7 +596,7 @@ private fun OpponentRow(room: RoomSummary, selected: Boolean, onClick: () -> Uni
                 )
             }
             if (selected) {
-                Text("Selected", color = Cyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("Selected", color = VioletLight, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -721,7 +725,7 @@ private fun PkSnack(text: String, onConsumed: () -> Unit) {
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xE6221B4E))
+                .background(VioletDark.copy(alpha = 0.90f))
                 .padding(horizontal = 14.dp, vertical = 8.dp),
         )
     }

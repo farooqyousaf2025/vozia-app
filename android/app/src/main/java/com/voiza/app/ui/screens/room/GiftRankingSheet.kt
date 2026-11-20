@@ -40,6 +40,10 @@ import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.WarningAmber
+import com.voiza.app.ui.theme.DangerRed
+import com.voiza.app.ui.theme.DiamondGold
+import com.voiza.app.ui.theme.Violet
+import com.voiza.app.ui.theme.VoizaSurfaceVariant
 
 /**
  * The board behind the gift panel: who is keeping this room alive, and who it
@@ -87,7 +91,7 @@ fun GiftRankingSheet(
 
             error != null -> Text(
                 text = error,
-                color = Color(0xFFFF8FA0),
+                color = DangerRed.copy(alpha = 0.90f),
                 fontSize = 12.sp,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
             )
@@ -119,7 +123,7 @@ private fun RankRowItem(rank: Int, row: RankRow, glyph: String) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(if (rank == 0) Color(0x33FFC94D) else Color(0x14FFFFFF))
+            .background(if (rank == 0) WarningAmber.copy(alpha = 0.20f) else Color(0x14FFFFFF))
             .padding(horizontal = 10.dp, vertical = 7.dp),
     ) {
         Text(
@@ -139,7 +143,7 @@ private fun RankRowItem(rank: Int, row: RankRow, glyph: String) {
             name = row.user.username,
             size = 30.dp,
             ringBrush = if (rank < 3) {
-                Brush.linearGradient(listOf(WarningAmber, Color(0xFFFF6EC7)))
+                Brush.linearGradient(listOf(WarningAmber, DiamondGold))
             } else {
                 null
             },
@@ -175,7 +179,7 @@ private fun RankTab(text: String, active: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .height(30.dp)
             .clip(RoundedCornerShape(50))
-            .background(if (active) Color(0xFF7C4DFF) else Color(0xFF241F3D))
+            .background(if (active) Violet else VoizaSurfaceVariant)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp),
     ) {

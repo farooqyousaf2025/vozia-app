@@ -34,6 +34,11 @@ import com.voiza.app.ui.components.RankBadge
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import kotlinx.coroutines.delay
+import com.voiza.app.ui.theme.DiamondGold
+import com.voiza.app.ui.theme.VioletDark
+import com.voiza.app.ui.theme.VioletLight
+import com.voiza.app.ui.theme.VoizaSurfaceVariant
+import com.voiza.app.ui.theme.WarningAmber
 
 /**
  * "X joined the room", styled by how much X spends.
@@ -73,12 +78,12 @@ fun EntryBanner(
                 .then(
                     when (tier) {
                         2 -> Modifier.background(
-                            Brush.horizontalGradient(listOf(Color(0xE6FFB300), Color(0xE6FF6EC7))),
+                            Brush.horizontalGradient(listOf(WarningAmber, DiamondGold)),
                         )
                         1 -> Modifier.background(
-                            Brush.horizontalGradient(listOf(Color(0xE67C4DFF), Color(0xE622D3EE))),
+                            Brush.horizontalGradient(listOf(VioletDark.copy(alpha = 0.90f), VioletLight.copy(alpha = 0.90f))),
                         )
-                        else -> Modifier.background(Color(0xB3241F3D))
+                        else -> Modifier.background(VoizaSurfaceVariant.copy(alpha = 0.70f))
                     },
                 )
                 .padding(horizontal = 9.dp, vertical = 4.dp),
@@ -90,7 +95,7 @@ fun EntryBanner(
                 ringBrush = if (tier == 0) {
                     null
                 } else {
-                    Brush.linearGradient(listOf(Color(0xFFFFF3B0), Color(0xFFFF6EC7)))
+                    Brush.linearGradient(listOf(DiamondGold, DiamondGold))
                 },
                 ringWidth = if (tier == 2) 3.dp else 2.dp,
                 frame = joined.user.profileFrame,
@@ -105,7 +110,7 @@ fun EntryBanner(
             )
             Text(
                 text = if (tier == 2) "arrives in style" else "joined the room",
-                color = Color(0xFFE7E3FF),
+                color = OnDarkHigh,
                 fontSize = 11.sp,
                 fontWeight = if (tier == 0) FontWeight.Normal else FontWeight.SemiBold,
                 maxLines = 1,
@@ -130,12 +135,12 @@ fun EntryBanner(
                     Icon(
                         imageVector = Icons.Default.WorkspacePremium,
                         contentDescription = null,
-                        tint = if (tier == 2) Color(0xFFFFF3B0) else Color(0xFFD7CEFF),
+                        tint = if (tier == 2) DiamondGold else VioletLight,
                         modifier = Modifier.size(13.dp),
                     )
                     Text(
                         text = " VIP ${joined.user.vipLevel}",
-                        color = if (tier == 2) Color(0xFFFFF3B0) else Color(0xFFD7CEFF),
+                        color = if (tier == 2) DiamondGold else VioletLight,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Black,
                     )

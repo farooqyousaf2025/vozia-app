@@ -41,6 +41,7 @@ import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.OnDarkMuted
 import com.voiza.app.ui.theme.VoizaOutline
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
+import com.voiza.app.ui.theme.VoizaBackground
 import kotlinx.coroutines.delay
 
 /**
@@ -156,7 +157,7 @@ fun SplashBannerOverlay() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xF20B0A1F)),
+            .background(VoizaBackground.copy(alpha = 0.95f)),
     ) {
         BannerCard(
             banner = banner,

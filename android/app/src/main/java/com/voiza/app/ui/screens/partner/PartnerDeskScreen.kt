@@ -83,9 +83,12 @@ import com.voiza.app.ui.theme.Fuchsia
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.RCoinGreen
+import com.voiza.app.ui.theme.Violet
+import com.voiza.app.ui.theme.VioletLight
 import com.voiza.app.ui.theme.VoizaSurface
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
 import com.voiza.app.ui.theme.WarningAmber
+import com.voiza.app.ui.theme.VoizaOutline
 import com.voiza.app.viewmodel.PartnerDeskViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
 import kotlinx.coroutines.Dispatchers
@@ -589,7 +592,7 @@ private fun SellersCard(
                     color = OnDarkMedium,
                     fontSize = 11.sp,
                 )
-                Text("Tap to read this seller's book", color = Cyan, fontSize = 10.sp)
+                Text("Tap to read this seller's book", color = VioletLight, fontSize = 10.sp)
             }
             Spacer(Modifier.height(6.dp))
         }
@@ -733,7 +736,7 @@ private fun EntriesCard(entries: List<CommissionEntry>, total: Int?) {
                 fontSize = 11.sp,
             )
             entry.settlementReference?.let {
-                Text("In batch $it", color = Cyan, fontSize = 10.sp)
+                Text("In batch $it", color = VioletLight, fontSize = 10.sp)
             }
             entry.reversalReason?.takeIf { it.isNotBlank() }?.let {
                 Text("Reversed: $it", color = DangerRed, fontSize = 10.sp)
@@ -1058,13 +1061,13 @@ private fun SelectableRow(title: String, subtitle: String?, selected: Boolean, o
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .background(if (selected) Cyan.copy(alpha = 0.14f) else VoizaSurface)
+            .background(if (selected) Violet.copy(alpha = 0.22f) else VoizaSurface)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
         Text(
             text = title,
-            color = if (selected) Cyan else OnDarkHigh,
+            color = if (selected) VioletLight else OnDarkHigh,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
         )
@@ -1124,10 +1127,10 @@ private fun Pill(label: String, color: Color) {
 @Composable
 private fun deskFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = Fuchsia,
-    unfocusedBorderColor = Color(0xFF3D3670),
+    unfocusedBorderColor = VoizaOutline,
     focusedLabelColor = Fuchsia,
     unfocusedLabelColor = OnDarkMedium,
-    cursorColor = Cyan,
+    cursorColor = Violet,
     focusedTextColor = OnDarkHigh,
     unfocusedTextColor = OnDarkHigh,
 )

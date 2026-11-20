@@ -1,6 +1,7 @@
 package com.voiza.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,13 +22,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.voiza.app.ui.theme.OnDarkHigh
+import com.voiza.app.ui.theme.OnDarkMedium
+import com.voiza.app.ui.theme.OnDarkMuted
+import com.voiza.app.ui.theme.VoizaCardBorder
 import com.voiza.app.ui.theme.VoizaCtaGradient
+import com.voiza.app.ui.theme.VoizaGoldGradient
 import com.voiza.app.ui.theme.VoizaSurfaceVariant
 
 /**
- * Voiza primary CTA: gradient-filled rounded button (fuchsia->violet->cyan).
- * Plain Box+clickable rather than Material Button so the gradient fills the
- * whole surface without ripple-shape fights.
+ * Vozia primary CTA: royal-purple gradient fill, rounded 16dp, medium-weight
+ * label. Plain Box+clickable rather than Material Button so the gradient fills
+ * the whole surface without ripple-shape fights.
+ *
+ * States: default (gradient), disabled (flat surface + muted label), and the
+ * pressed feedback the caller gets from the ripple.
  */
 @Composable
 fun VoizaButton(
@@ -51,13 +59,32 @@ fun VoizaButton(
     ) {
         Text(
             text = text,
-            color = if (enabled) OnDarkHigh else Color(0xFF6A6490),
-            fontWeight = FontWeight.Bold,
+            color = if (enabled) OnDarkHigh else OnDarkMuted,
+            fontWeight = FontWeight.SemiBold,
         )
     }
 }
 
-/** Outlined secondary button. */
+/** Champagne-gold CTA for premium moments: gifts, VIP, reward claims. */
+@Composable
+fun VoizaGoldButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    height: Int = 52,
+) {
+    VoizaButton(
+        text = text,
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        gradient = VoizaGoldGradient,
+        height = height,
+    )
+}
+
+/** Outlined secondary button on a charcoal surface. */
 @Composable
 fun VoizaSecondaryButton(
     text: String,
@@ -70,9 +97,10 @@ fun VoizaSecondaryButton(
         enabled = enabled,
         shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = OnDarkHigh),
+        border = androidx.compose.foundation.BorderStroke(1.dp, VoizaCardBorder),
         modifier = modifier.height(46.dp),
     ) {
-        Text(text, fontWeight = FontWeight.SemiBold)
+        Text(text, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -88,6 +116,6 @@ fun VoizaTextButton(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
     ) {
-        Text(text, fontWeight = FontWeight.SemiBold, color = color)
+        Text(text, fontWeight = FontWeight.Medium, color = color)
     }
 }

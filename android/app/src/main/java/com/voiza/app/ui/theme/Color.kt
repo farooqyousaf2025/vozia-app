@@ -4,43 +4,63 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 // ---------------------------------------------------------------------------
-// Voiza brand palette — dark-first party aesthetic.
-// Deep violet/indigo surfaces, fuchsia -> cyan accent gradient, diamond gold.
+// Vozia "Luxury Dark" palette.
+//
+// Deep black grounds, charcoal surfaces, royal purple for everything
+// interactive, champagne gold reserved for premium: VIP, gifts, rewards,
+// rankings and money. Two accents only — no neon, no third hue.
+//
+// Token names are the app's vocabulary; screens must never inline a hex.
 // ---------------------------------------------------------------------------
 
 // Surfaces
-val VoizaBackground = Color(0xFF0B0A1F)
-val VoizaSurface = Color(0xFF151233)
-val VoizaSurfaceHigh = Color(0xFF1E1A45)
-val VoizaSurfaceVariant = Color(0xFF2A2459)
-val VoizaOutline = Color(0xFF3D3670)
+val VoizaBackground = Color(0xFF09090D) // main background — near black
+val VoizaSurface = Color(0xFF111118) // secondary background
+val VoizaSurfaceHigh = Color(0xFF181820) // card background
+val VoizaSurfaceVariant = Color(0xFF22212B) // elevated surface
+val VoizaOutline = Color(0xFF2E2C3A) // hairline outline
 
-// Primary (deep violet)
-val Violet = Color(0xFF7C4DFF)
-val VioletDark = Color(0xFF5325C8)
-val VioletLight = Color(0xFFB39DFF)
+// Primary (royal purple) — actions, selection, active navigation
+val Violet = Color(0xFF8050E8)
+val VioletDark = Color(0xFF512B9C)
+val VioletLight = Color(0xFFB9A6F2)
 
-// Accents
-val Fuchsia = Color(0xFFE040FB)
-val Cyan = Color(0xFF22D3EE)
-val Mint = Color(0xFF34E5B4)
+// Secondary accent (champagne gold) — premium moments only
+val Fuchsia = Color(0xFF8050E8) // legacy name: the primary interactive accent
+val Cyan = Color(0xFFD8B46A) // legacy name: the premium highlight accent
+val Mint = Color(0xFF39C98A) // success / live / go
+
+// Currency & rewards
+val DiamondGold = Color(0xFFF1D69A) // light gold — coin and diamond figures
+val RCoinGreen = Color(0xFF39C98A) // R-coin ledger positives
 
 // Semantic
-val DiamondGold = Color(0xFF4DD0E1)
-val RCoinGreen = Color(0xFF66E0A3)
-val DangerRed = Color(0xFFFF5B6E)
-val WarningAmber = Color(0xFFFFC246)
-val GiftPink = Color(0xFFFF6EC7)
+val DangerRed = Color(0xFFF05C69)
+val WarningAmber = Color(0xFFE8B04B)
+val GiftPink = Color(0xFFD8B46A) // legacy name: gifts, likes, rewards -> gold
 
 // Text
-val OnDarkHigh = Color(0xFFF3F1FF)
-val OnDarkMedium = Color(0xFFB9B4D6)
-val OnDarkMuted = Color(0xFF7C76A3)
+val OnDarkHigh = Color(0xFFFFFFFF)
+val OnDarkMedium = Color(0xFFA6A3B0)
+val OnDarkMuted = Color(0xFF6F6C79)
 
-// Signature gradients (fuchsia -> cyan)
-val VoizaAccentGradient = Brush.horizontalGradient(listOf(Fuchsia, Cyan))
-val VoizaCtaGradient = Brush.horizontalGradient(listOf(VioletDark, Fuchsia, Cyan))
-val VoizaSeatRingGradient = Brush.sweepGradient(listOf(Fuchsia, Cyan, Fuchsia))
+// Signature gradients
+/** Purple sweep — speaking rings, host seats, selected chrome. */
+val VoizaAccentGradient = Brush.horizontalGradient(listOf(Violet, VioletLight))
+
+/** Primary CTA fill. Deep purple -> royal purple -> light edge. */
+val VoizaCtaGradient = Brush.horizontalGradient(listOf(VioletDark, Violet, Color(0xFF9A6BF0)))
+
+/** Premium fill for gifts, VIP and reward surfaces. */
+val VoizaGoldGradient = Brush.horizontalGradient(listOf(Color(0xFFB98D45), Color(0xFFD8B46A), Color(0xFFF1D69A)))
+
+/** Host / speaking ring: purple sweep with a gold thread, read at nine seats per screen. */
+val VoizaSeatRingGradient = Brush.sweepGradient(listOf(Violet, VioletLight, VioletDark, Violet))
+
+/** Room and hero atmosphere: lifted charcoal-purple falling into black. */
 val VoizaHeroGradient = Brush.verticalGradient(
-    listOf(Color(0xFF2A1A5E), Color(0xFF151233), VoizaBackground)
+    listOf(Color(0xFF191233), Color(0xFF100E1D), VoizaBackground),
 )
+
+/** Hairline card border, drawn over the card surface. */
+val VoizaCardBorder = Color(0x14FFFFFF)

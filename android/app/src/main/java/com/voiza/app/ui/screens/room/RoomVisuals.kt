@@ -20,6 +20,7 @@ import com.airbnb.lottie.compose.rememberLottieComposition
 import com.voiza.app.domain.model.DEFAULT_AMBIENT_EFFECT
 import com.voiza.app.ui.components.asAssetUrl
 import kotlinx.coroutines.delay
+import com.voiza.app.ui.theme.VoizaBackground
 
 // ---------------------------------------------------------------------------
 // Room look. Every URL here is the server's: themes and Lottie loops are rows an
@@ -49,7 +50,7 @@ fun RoomWallpaper(wallpaperUrl: String?, modifier: Modifier = Modifier) {
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0x73140D1F), Color(0xA6140D1F), Color(0xCC0B0714)),
+                        listOf(VoizaBackground.copy(alpha = 0.45f), VoizaBackground.copy(alpha = 0.65f), VoizaBackground.copy(alpha = 0.80f)),
                     )
                 ),
         )

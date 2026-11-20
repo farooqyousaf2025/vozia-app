@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -46,8 +47,12 @@ import com.voiza.app.ui.theme.DangerRed
 import com.voiza.app.ui.theme.Fuchsia
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
+import com.voiza.app.ui.theme.Violet
 import com.voiza.app.ui.theme.VoizaAccentGradient
+import com.voiza.app.ui.theme.VoizaHeroGradient
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
+import com.voiza.app.ui.theme.VoizaBackground
+import com.voiza.app.ui.theme.VoizaOutline
 import com.voiza.app.viewmodel.AuthViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
 
@@ -76,14 +81,8 @@ fun AuthScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        androidx.compose.ui.graphics.Color(0xFF1A1040),
-                        androidx.compose.ui.graphics.Color(0xFF0B0A1F),
-                    )
-                )
-            )
+            .background(VoizaHeroGradient)
+            .statusBarsPadding()
             .imePadding(),
     ) {
         Column(
@@ -301,10 +300,10 @@ private fun ErrorLine(message: String) {
 @Composable
 private fun fieldColors() = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = Fuchsia,
-    unfocusedBorderColor = androidx.compose.ui.graphics.Color(0xFF3D3670),
+    unfocusedBorderColor = VoizaOutline,
     focusedLabelColor = Fuchsia,
     unfocusedLabelColor = OnDarkMedium,
-    cursorColor = Cyan,
+    cursorColor = Violet,
     focusedTextColor = OnDarkHigh,
     unfocusedTextColor = OnDarkHigh,
 )

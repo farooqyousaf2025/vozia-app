@@ -1,6 +1,7 @@
 package com.voiza.app.ui.screens.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -27,7 +28,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.ChevronRight
@@ -37,14 +37,9 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.Wallet
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
@@ -94,21 +89,22 @@ import com.voiza.app.ui.components.DiamondChip
 import com.voiza.app.ui.components.EmptyState
 import com.voiza.app.ui.components.FlameBadge
 import com.voiza.app.ui.components.ListenerBadge
-import com.voiza.app.ui.components.LoadingProgress
+import com.voiza.app.ui.components.RoomGridSkeleton
+import com.voiza.app.ui.components.VoizaBottomBar
+import com.voiza.app.ui.components.VoizaNavTab
 import com.voiza.app.ui.components.VoizaTextButton
 import com.voiza.app.ui.components.banner.PromoBannerStrip
 import com.voiza.app.ui.screens.quests.DailyRewardDialog
-import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.DangerRed
-import com.voiza.app.ui.theme.Fuchsia
 import com.voiza.app.ui.theme.GiftPink
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.VoizaAccentGradient
+import com.voiza.app.ui.theme.VoizaCardBorder
 import com.voiza.app.ui.theme.VoizaHeroGradient
-import com.voiza.app.ui.theme.VoizaSurface
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
 import com.voiza.app.ui.theme.VoizaTheme
+import com.voiza.app.ui.theme.VioletLight
 import com.voiza.app.ui.theme.WarningAmber
 import com.voiza.app.ui.util.label
 import com.voiza.app.viewmodel.HomeViewModel
@@ -130,6 +126,8 @@ fun HomeScreen(
     onOpenStore: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenRankings: () -> Unit,
+    onOpenDiscover: () -> Unit = {},
+    onOpenMessages: () -> Unit = {},
     viewModel: HomeViewModel = viewModel(
         factory = voizaViewModelFactory { HomeViewModel() },
     ),
@@ -162,36 +160,14 @@ fun HomeScreen(
     Scaffold(
         containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
         bottomBar = {
-            NavigationBar(containerColor = VoizaSurface, tonalElevation = 0.dp) {
-                NavigationBarItem(
-                    selected = true,
-                    onClick = {},
-                    icon = { Icon(Icons.Default.Home, contentDescription = "Rooms") },
-                    label = { Text("Rooms") },
-                    colors = navItemColors(),
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onOpenStore,
-                    icon = { Icon(Icons.Default.ShoppingCart, contentDescription = "Store") },
-                    label = { Text("Store") },
-                    colors = navItemColors(),
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onOpenWallet,
-                    icon = { Icon(Icons.Default.Wallet, contentDescription = "Wallet") },
-                    label = { Text("Wallet") },
-                    colors = navItemColors(),
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onOpenProfile,
-                    icon = { Icon(Icons.Default.Person, contentDescription = "Profile") },
-                    label = { Text("Profile") },
-                    colors = navItemColors(),
-                )
-            }
+            VoizaBottomBar(
+                current = VoizaNavTab.HOME,
+                onHome = {},
+                onDiscover = onOpenDiscover,
+                onCreateRoom = onCreateRoom,
+                onMessages = onOpenMessages,
+                onProfile = onOpenProfile,
+            )
         },
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
@@ -280,7 +256,10 @@ fun HomeScreen(
 
             Box(modifier = Modifier.fillMaxSize()) {
                 when {
-                    state.loading && state.rooms.isEmpty() -> LoadingProgress(overlay = true)
+                    state.loading && state.rooms.isEmpty() -> RoomGridSkeleton(
+                        count = 6,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
 
                     state.error != null && state.rooms.isEmpty() -> EmptyState(
                         icon = Icons.Default.Search,
@@ -321,25 +300,6 @@ fun HomeScreen(
                                 RoomCard(room = room, onClick = { onOpenRoom(room.id) })
                             }
                         }
-                    }
-                }
-
-                // FAB: open your own room
-                Box(contentAlignment = Alignment.BottomEnd, modifier = Modifier.fillMaxSize()) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .padding(18.dp)
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(VoizaAccentGradient)
-                            .clickable { onCreateRoom() },
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Create room",
-                            tint = OnDarkHigh,
-                        )
                     }
                 }
             }
@@ -596,7 +556,7 @@ private fun HomeTopBar(
             Icon(
                 Icons.Default.Search,
                 contentDescription = "Search rooms",
-                tint = Cyan,
+                tint = VioletLight,
                 modifier = Modifier.size(20.dp),
             )
         }
@@ -641,10 +601,12 @@ fun RoomCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val shape = RoundedCornerShape(16.dp)
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(shape)
             .background(VoizaSurfaceHigh)
+            .border(1.dp, VoizaCardBorder, shape)
             .clickable(onClick = onClick),
     ) {
         Box(
@@ -714,15 +676,6 @@ fun RoomCard(
     }
 }
 
-@Composable
-private fun navItemColors() = NavigationBarItemDefaults.colors(
-    selectedIconColor = Fuchsia,
-    selectedTextColor = OnDarkHigh,
-    unselectedIconColor = OnDarkMedium,
-    unselectedTextColor = OnDarkMedium,
-    indicatorColor = VoizaSurface,
-)
-
 /** Gradient tab indicator. */
 private fun Modifier.tabIndicatorOffsetCompat(
     tabPositions: List<TabPosition>,
@@ -731,7 +684,7 @@ private fun Modifier.tabIndicatorOffsetCompat(
     tabPositions[selectedIndex.coerceIn(0, (tabPositions.size - 1).coerceAtLeast(0))]
 )
 
-private val WarningTint = Color(0xFFFFC246)
+private val WarningTint = WarningAmber
 
 // ---------------------------------------------------------------------------
 // Android Studio previews. These render in the Design/Split pane with sample

@@ -21,8 +21,10 @@ import com.voiza.app.domain.model.GiftAnimatedEvent
 import com.voiza.app.domain.model.GiftAnimationFormat
 import com.voiza.app.ui.components.Avatar
 import com.voiza.app.ui.theme.Cyan
+import com.voiza.app.ui.theme.DiamondGold
 import com.voiza.app.ui.theme.Fuchsia
 import com.voiza.app.ui.theme.OnDarkHigh
+import com.voiza.app.ui.theme.VoizaBackground
 
 /**
  * The gift engine's one door to a paid animation.
@@ -102,7 +104,7 @@ fun GiftBanner(event: GiftAnimatedEvent) {
         )
         Text(
             text = "${event.gift.name} \u00D7${event.quantity} ",
-            color = Color(0xFFFFF3B0),
+            color = DiamondGold,
             fontSize = 12.sp,
             fontWeight = FontWeight.Black,
         )
@@ -149,12 +151,12 @@ fun GiftComboBadge(event: GiftAnimatedEvent, compact: Boolean = false) {
         modifier = Modifier
             .padding(start = if (compact) 4.dp else 6.dp)
             .clip(RoundedCornerShape(percent = if (compact) 30 else 50))
-            .background(Color(0xFFFFD24D))
+            .background(DiamondGold)
             .padding(horizontal = 7.dp, vertical = if (compact) 1.dp else 3.dp),
     ) {
         Text(
             text = "COMBO \u00D7${event.comboCount}",
-            color = Color(0xFF2A1B00),
+            color = VoizaBackground,
             fontSize = if (compact) 8.sp else 11.sp,
             fontWeight = FontWeight.Black,
         )

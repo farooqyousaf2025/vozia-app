@@ -53,6 +53,7 @@ import com.voiza.app.ui.components.EmptyState
 import com.voiza.app.ui.components.LoadingProgress
 import com.voiza.app.ui.components.VoizaButton
 import com.voiza.app.ui.components.VoizaCard
+import com.voiza.app.ui.components.ListSkeleton
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.DangerRed
 import com.voiza.app.ui.theme.Mint
@@ -63,6 +64,7 @@ import com.voiza.app.ui.theme.VoizaAccentGradient
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
 import com.voiza.app.ui.theme.VoizaSurfaceVariant
 import com.voiza.app.ui.theme.WarningAmber
+import com.voiza.app.ui.theme.VioletDark
 import com.voiza.app.viewmodel.QuestsViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
 
@@ -104,7 +106,7 @@ fun QuestsScreen(
 
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             when {
-                state.loading && state.snapshot == null -> LoadingProgress(overlay = true)
+                state.loading && state.snapshot == null -> ListSkeleton(rows = 4, modifier = Modifier.padding(20.dp))
 
                 // There is no account to check in for, so the screen asks for one instead of
                 // showing an empty ladder.
@@ -344,7 +346,7 @@ private fun XpPill(quest: DailyQuest) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
-            .background(if (quest.completed) Color(0x2634E5B4) else Color(0x26FFC246))
+            .background(if (quest.completed) Mint.copy(alpha = 0.15f) else WarningAmber.copy(alpha = 0.15f))
             .padding(horizontal = 9.dp, vertical = 4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -390,7 +392,7 @@ private fun QuestSnack(text: String, onConsumed: () -> Unit) {
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xE6221B4E))
+                .background(VioletDark.copy(alpha = 0.90f))
                 .padding(horizontal = 14.dp, vertical = 8.dp),
         )
     }

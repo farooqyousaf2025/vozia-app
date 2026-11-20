@@ -49,6 +49,7 @@ import com.voiza.app.ui.theme.DangerRed
 import com.voiza.app.ui.theme.Fuchsia
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
+import com.voiza.app.ui.theme.Violet
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
 import com.voiza.app.ui.util.label
 import com.voiza.app.viewmodel.HomeViewModel
@@ -410,7 +411,7 @@ private fun SectionLabel(text: String) {
 @Composable
 private fun sliderColors() = SliderDefaults.colors(
     thumbColor = Fuchsia,
-    activeTrackColor = Cyan,
+    activeTrackColor = Violet,
     inactiveTrackColor = VoizaSurfaceHigh,
 )
 

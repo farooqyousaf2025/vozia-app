@@ -33,6 +33,8 @@ import com.voiza.app.ui.theme.DangerRed
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.RCoinGreen
+import com.voiza.app.ui.theme.VioletDark
+import com.voiza.app.ui.theme.VioletLight
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
 import com.voiza.app.ui.theme.WarningAmber
 import kotlinx.coroutines.delay
@@ -82,7 +84,7 @@ internal fun statusPresentation(application: RoleApplication): Pair<String, Colo
     val status = ApplicationStatus.fromWire(application.status)
     val colour = when (status) {
         ApplicationStatus.PENDING -> WarningAmber
-        ApplicationStatus.INFO_REQUESTED -> Cyan
+        ApplicationStatus.INFO_REQUESTED -> VioletLight
         ApplicationStatus.APPROVED -> RCoinGreen
         ApplicationStatus.REJECTED -> DangerRed
         ApplicationStatus.REVOKED -> DangerRed
@@ -172,7 +174,7 @@ internal fun PartnerSnack(text: String, onConsumed: () -> Unit) {
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xE6221B4E))
+                .background(VioletDark.copy(alpha = 0.90f))
                 .padding(horizontal = 14.dp, vertical = 8.dp),
         )
     }

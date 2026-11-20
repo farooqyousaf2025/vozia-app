@@ -33,6 +33,7 @@ import com.voiza.app.di.ServiceLocator
 import com.voiza.app.domain.model.TickerEvent
 import com.voiza.app.ui.theme.Cyan
 import com.voiza.app.ui.theme.OnDarkHigh
+import com.voiza.app.ui.theme.VioletLight
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
 import kotlinx.coroutines.delay
 
@@ -84,7 +85,7 @@ fun AnnouncementTicker(modifier: Modifier = Modifier) {
                 Icon(
                     imageVector = Icons.Default.Campaign,
                     contentDescription = null,
-                    tint = Cyan,
+                    tint = VioletLight,
                 )
                 Text(
                     text = event.text,

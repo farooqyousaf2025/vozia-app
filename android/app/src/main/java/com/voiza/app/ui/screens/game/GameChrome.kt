@@ -41,11 +41,13 @@ import com.voiza.app.ui.theme.Mint
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.OnDarkMuted
+import com.voiza.app.ui.theme.VioletLight
 import com.voiza.app.ui.theme.VoizaAccentGradient
 import com.voiza.app.ui.theme.VoizaHeroGradient
 import com.voiza.app.ui.theme.VoizaSurface
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
 import com.voiza.app.ui.theme.VoizaSurfaceVariant
+import com.voiza.app.ui.theme.WarningAmber
 
 // ---------------------------------------------------------------------------
 // Shared chrome for the game screens.
@@ -116,7 +118,7 @@ fun SessionStatusBar(session: GameSession, secondsLeft: Int?) {
         if (secondsLeft != null && session.status == GameStatus.IN_PROGRESS) {
             Text(
                 text = "${secondsLeft}s",
-                color = if (secondsLeft <= 5) DangerRed else Cyan,
+                color = if (secondsLeft <= 5) DangerRed else VioletLight,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
             )
@@ -127,7 +129,7 @@ fun SessionStatusBar(session: GameSession, secondsLeft: Int?) {
 @Composable
 private fun StatusChip(status: GameStatus, phase: GamePhase) {
     val (label, color) = when (status) {
-        GameStatus.WAITING -> "Waiting for players" to Color(0xFFFFC246)
+        GameStatus.WAITING -> "Waiting for players" to WarningAmber
         GameStatus.READY -> "Ready to start" to Mint
         GameStatus.IN_PROGRESS -> when (phase) {
             GamePhase.FINISHED -> "Finishing" to DiamondGold
@@ -189,7 +191,7 @@ fun PlayerStrip(
                         player.score > 0 -> "${player.score} pts"
                         else -> "seat ${player.position}"
                     },
-                    color = if (player.userId == turnOwnerId) Cyan else OnDarkMuted,
+                    color = if (player.userId == turnOwnerId) VioletLight else OnDarkMuted,
                     fontSize = 10.sp,
                 )
             }

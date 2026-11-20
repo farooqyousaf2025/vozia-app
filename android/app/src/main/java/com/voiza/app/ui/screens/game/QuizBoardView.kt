@@ -27,6 +27,8 @@ import com.voiza.app.ui.theme.Mint
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMedium
 import com.voiza.app.ui.theme.OnDarkMuted
+import com.voiza.app.ui.theme.Violet
+import com.voiza.app.ui.theme.VioletLight
 import com.voiza.app.ui.theme.VoizaSurface
 import com.voiza.app.ui.theme.VoizaSurfaceVariant
 
@@ -73,7 +75,7 @@ fun QuizBoardView(
         if (secondsLeft != null && !board.finished) {
             Text(
                 text = "${secondsLeft}s left",
-                color = if (secondsLeft <= 3) DangerRed else Cyan,
+                color = if (secondsLeft <= 3) DangerRed else VioletLight,
                 fontSize = 12.sp,
             )
         }
@@ -150,7 +152,7 @@ private fun OptionRow(
                 modifier = Modifier.weight(1f),
             )
             if (selected) {
-                Text("yours", color = Cyan, fontSize = 11.sp)
+                Text("yours", color = Violet, fontSize = 11.sp)
             }
         }
     }

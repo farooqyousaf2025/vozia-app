@@ -22,6 +22,12 @@ import com.voiza.app.domain.usecase.RoomEffects
 import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.sin
+import com.voiza.app.ui.theme.DangerRed
+import com.voiza.app.ui.theme.DiamondGold
+import com.voiza.app.ui.theme.Mint
+import com.voiza.app.ui.theme.Violet
+import com.voiza.app.ui.theme.VioletDark
+import com.voiza.app.ui.theme.WarningAmber
 
 /**
  * The floating hearts beside the like button.
@@ -85,14 +91,14 @@ private class FlyingHeart(val bornNanos: Long, val trackIndex: Int)
 private class Sprite(val color: Color, val size: Dp)
 
 private val SPRITES = listOf(
-    Sprite(Color(0xFFFF6EC7), 26.dp),
-    Sprite(Color(0xFFFF4D6D), 20.dp),
-    Sprite(Color(0xFFFFC94D), 17.dp),
-    Sprite(Color(0xFF4DD0E1), 24.dp),
-    Sprite(Color(0xFF7C4DFF), 19.dp),
-    Sprite(Color(0xFFFFF3B0), 15.dp),
-    Sprite(Color(0xFFE040FB), 22.dp),
-    Sprite(Color(0xFF22D3EE), 18.dp),
+    Sprite(DiamondGold, 26.dp),
+    Sprite(DangerRed, 20.dp),
+    Sprite(WarningAmber, 17.dp),
+    Sprite(Mint, 24.dp),
+    Sprite(Violet, 19.dp),
+    Sprite(DiamondGold, 15.dp),
+    Sprite(VioletDark, 22.dp),
+    Sprite(Violet, 18.dp),
     Sprite(Color(0xFFFFFFFF), 14.dp),
 )
 

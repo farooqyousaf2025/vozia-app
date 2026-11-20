@@ -77,6 +77,9 @@ import com.voiza.app.ui.theme.VoizaSurface
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
 import com.voiza.app.ui.theme.VoizaSurfaceVariant
 import com.voiza.app.ui.theme.WarningAmber
+import com.voiza.app.ui.theme.Violet
+import com.voiza.app.ui.theme.VioletDark
+import com.voiza.app.ui.theme.VoizaBackground
 import java.time.Duration
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -148,7 +151,7 @@ fun DailyRewardDialog(
                 modifier = Modifier
                     .width(340.dp)
                     .clip(RoundedCornerShape(28.dp))
-                    .background(Brush.verticalGradient(listOf(Color(0xFF2A1A5E), VoizaSurface)))
+                    .background(Brush.verticalGradient(listOf(VioletDark.copy(alpha = 0.55f), VoizaSurface)))
                     .border(BorderStroke(1.dp, VoizaOutline), RoundedCornerShape(28.dp))
                     .padding(20.dp),
             ) {
@@ -183,7 +186,7 @@ fun DailyRewardDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .clip(RoundedCornerShape(50))
-                            .background(Color(0x33FFC246))
+                            .background(WarningAmber.copy(alpha = 0.20f))
                             .padding(horizontal = 9.dp, vertical = 4.dp),
                     ) {
                         Icon(Icons.Default.Whatshot, contentDescription = null, tint = WarningAmber, modifier = Modifier.size(13.dp))
@@ -204,7 +207,7 @@ fun DailyRewardDialog(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(if (isToday) VoizaSurfaceVariant else Color(0x66151233))
+                                .background(if (isToday) VoizaSurfaceVariant else VoizaSurfaceHigh.copy(alpha = 0.40f))
                                 .then(
                                     if (isToday) Modifier.border(BorderStroke(1.5.dp, VoizaAccentGradient), RoundedCornerShape(12.dp))
                                     else Modifier,
@@ -238,7 +241,7 @@ fun DailyRewardDialog(
                                             .background(Mint),
                                         contentAlignment = Alignment.Center,
                                     ) {
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF0B0A1F), modifier = Modifier.size(8.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = VoizaBackground, modifier = Modifier.size(8.dp))
                                     }
                                 }
                             }
@@ -312,7 +315,7 @@ fun DailyRewardDialog(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(50))
-                                    .background(Color(0x2634E5B4))
+                                    .background(Mint.copy(alpha = 0.15f))
                                     .padding(horizontal = 14.dp, vertical = 6.dp),
                             ) {
                                 Text(
@@ -338,7 +341,7 @@ fun DailyRewardDialog(
                 } else {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Schedule, contentDescription = null, tint = Cyan, modifier = Modifier.size(14.dp))
+                            Icon(Icons.Default.Schedule, contentDescription = null, tint = VioletLight, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(5.dp))
                             Text(
                                 text = "Next reward in: ${remaining.toHours()}h ${remaining.toMinutes() % 60}m",
@@ -371,7 +374,7 @@ fun DailyRewardEntry(checkIn: CheckInState, onOpen: () -> Unit) {
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .clickable(onClick = onOpen)
-                .background(Brush.horizontalGradient(listOf(Color(0x33E040FB), Color(0x3322D3EE))))
+                .background(Brush.horizontalGradient(listOf(Violet.copy(alpha = 0.20f), VioletLight.copy(alpha = 0.20f))))
                 .padding(10.dp),
         ) {
             Box(

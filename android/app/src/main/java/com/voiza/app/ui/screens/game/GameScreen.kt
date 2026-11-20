@@ -39,6 +39,7 @@ import com.voiza.app.ui.components.VoizaSecondaryButton
 import com.voiza.app.ui.theme.DangerRed
 import com.voiza.app.ui.theme.OnDarkHigh
 import com.voiza.app.ui.theme.OnDarkMuted
+import com.voiza.app.ui.theme.VoizaSurfaceHigh
 import com.voiza.app.viewmodel.GameSessionViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
 import androidx.compose.material.icons.Icons
@@ -261,7 +262,7 @@ private fun MatchActions(
     if (disputeOpen) {
         AlertDialog(
             onDismissRequest = { disputeOpen = false },
-            containerColor = androidx.compose.ui.graphics.Color(0xFF151233),
+            containerColor = VoizaSurfaceHigh,
             title = { Text("Dispute this match", color = OnDarkHigh) },
             text = {
                 Column {

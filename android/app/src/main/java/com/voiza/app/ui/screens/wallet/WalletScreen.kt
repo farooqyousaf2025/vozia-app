@@ -73,6 +73,12 @@ import com.voiza.app.ui.theme.RCoinGreen
 import com.voiza.app.ui.theme.VoizaCtaGradient
 import com.voiza.app.ui.theme.VoizaSurface
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
+import com.voiza.app.ui.theme.Mint
+import com.voiza.app.ui.theme.Violet
+import com.voiza.app.ui.theme.VioletDark
+import com.voiza.app.ui.theme.VioletLight
+import com.voiza.app.ui.theme.VoizaOutline
+import com.voiza.app.ui.theme.VoizaSurfaceVariant
 import com.voiza.app.viewmodel.WalletViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
 import java.text.SimpleDateFormat
@@ -333,9 +339,9 @@ private fun HeroBalanceCard(
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            Color(0xFF6A3BE8),
-                            Color(0xFFB02FD6),
-                            Color(0xFF22D3EE),
+                            VioletDark,
+                            Violet,
+                            VioletLight,
                         )
                     )
                 )
@@ -367,7 +373,7 @@ private fun HeroBalanceCard(
                 VoizaButton(
                     text = "Withdraw",
                     onClick = onWithdraw,
-                    gradient = Brush.horizontalGradient(listOf(Color(0xFF1B1140), Color(0xFF2A2459))),
+                    gradient = Brush.horizontalGradient(listOf(VoizaSurfaceHigh, VoizaSurfaceVariant)),
                     height = 40,
                     modifier = Modifier.width(130.dp),
                 )
@@ -399,15 +405,15 @@ private fun PromoBonusCard(bonusDiamonds: Int, pocket: PromoPocket?) {
                 modifier = Modifier
                     .size(30.dp)
                     .clip(CircleShape)
-                    .background(Color(0x33B02FD6)),
+                    .background(Violet.copy(alpha = 0.20f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("\u2756", color = Fuchsia, fontSize = 14.sp)
+                Text("\u2756", color = DiamondGold, fontSize = 14.sp)
             }
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("Bonus diamonds", color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Text(bonusDiamonds.toString(), color = Fuchsia, fontSize = 22.sp, fontWeight = FontWeight.Black)
+                Text(bonusDiamonds.toString(), color = DiamondGold, fontSize = 22.sp, fontWeight = FontWeight.Black)
             }
         }
         Spacer(Modifier.height(6.dp))
@@ -435,7 +441,7 @@ private fun PromoBonusCard(bonusDiamonds: Int, pocket: PromoPocket?) {
                     }
                     Text(
                         text = "${grant.remaining} \u2756",
-                        color = Fuchsia,
+                        color = DiamondGold,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                     )
@@ -472,7 +478,7 @@ private fun StatsCard(diamondsSpent: Long, rCoinsEarned: Long, giftsSent: Long) 
         ) {
             StatColumn("Diamonds spent", diamondsSpent.toString(), DiamondGold)
             StatColumn("R-Coins earned", rCoinsEarned.toString(), RCoinGreen)
-            StatColumn("Gifts sent", giftsSent.toString(), Fuchsia)
+            StatColumn("Gifts sent", giftsSent.toString(), DiamondGold)
         }
     }
 }
@@ -533,7 +539,7 @@ private fun PartnerShortcuts(onOpenPartnerApply: (String) -> Unit) {
         VoizaButton(
             text = "Apply as a Host",
             onClick = { onOpenPartnerApply("HOST") },
-            gradient = Brush.horizontalGradient(listOf(Color(0xFF1B1140), Color(0xFF2A2459))),
+            gradient = Brush.horizontalGradient(listOf(VoizaSurfaceHigh, VoizaSurfaceVariant)),
             height = 44,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -541,7 +547,7 @@ private fun PartnerShortcuts(onOpenPartnerApply: (String) -> Unit) {
         VoizaButton(
             text = "Apply as a Coin Seller",
             onClick = { onOpenPartnerApply("COIN_SELLER") },
-            gradient = Brush.horizontalGradient(listOf(Color(0xFF1B1140), Color(0xFF2A2459))),
+            gradient = Brush.horizontalGradient(listOf(VoizaSurfaceHigh, VoizaSurfaceVariant)),
             height = 44,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -573,8 +579,8 @@ private fun TransactionRow(txn: Transaction) {
                     .clip(CircleShape)
                     .background(
                         when {
-                            incoming -> Color(0x3366E0A3)
-                            outgoing -> Color(0x33FF5B6E)
+                            incoming -> Mint.copy(alpha = 0.20f)
+                            outgoing -> DangerRed.copy(alpha = 0.20f)
                             else -> VoizaSurfaceHigh
                         }
                     ),
@@ -618,7 +624,7 @@ private fun TransactionRow(txn: Transaction) {
                     txn.amountRCoins > 0 -> (if (outgoing) "-" else "+") + "${txn.amountRCoins} \u25C9"
                     else -> "0"
                 },
-                color = if (outgoing) Color(0xFFFF8FA0) else RCoinGreen,
+                color = if (outgoing) DangerRed.copy(alpha = 0.90f) else RCoinGreen,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
             )
@@ -680,8 +686,8 @@ private fun WithdrawSheet(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true,
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Cyan,
-                unfocusedBorderColor = Color(0xFF3D3670),
+                focusedBorderColor = Violet,
+                unfocusedBorderColor = VoizaOutline,
                 focusedTextColor = OnDarkHigh,
                 unfocusedTextColor = OnDarkHigh,
             ),
@@ -718,7 +724,7 @@ private fun WithdrawSheet(
                     label = { Text(m, fontSize = 12.sp) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = VoizaSurfaceHigh,
-                        containerColor = Color(0xFF1B1740),
+                        containerColor = VoizaSurfaceHigh,
                         labelColor = OnDarkMedium,
                         selectedLabelColor = OnDarkHigh,
                     ),
@@ -732,8 +738,8 @@ private fun WithdrawSheet(
             label = { Text("Payout account / details", fontSize = 13.sp) },
             singleLine = true,
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Cyan,
-                unfocusedBorderColor = Color(0xFF3D3670),
+                focusedBorderColor = Violet,
+                unfocusedBorderColor = VoizaOutline,
                 focusedTextColor = OnDarkHigh,
                 unfocusedTextColor = OnDarkHigh,
             ),
@@ -781,7 +787,7 @@ private fun LaunchedMessage(text: String, onConsumed: () -> Unit) {
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xE6221B4E))
+                .background(VioletDark.copy(alpha = 0.90f))
                 .padding(horizontal = 14.dp, vertical = 8.dp),
         )
     }
