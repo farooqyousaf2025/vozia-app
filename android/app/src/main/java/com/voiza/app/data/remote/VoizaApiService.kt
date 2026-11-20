@@ -1,6 +1,11 @@
 package com.voiza.app.data.remote
 
 import com.voiza.app.data.remote.dto.AuthResponse
+import com.voiza.app.data.remote.dto.AgencyAnnouncementBody
+import com.voiza.app.data.remote.dto.AgencyAnnouncementsEnvelope
+import com.voiza.app.data.remote.dto.AgencyAnnouncementEnvelope
+import com.voiza.app.data.remote.dto.AgencyHostAnnouncementsEnvelope
+import com.voiza.app.data.remote.dto.AgencyAnnouncementReadEnvelope
 import com.voiza.app.data.remote.dto.AgencyLiveRoomsEnvelope
 import com.voiza.app.data.remote.dto.AgencyRoomMembersEnvelope
 import com.voiza.app.data.remote.dto.AgencyRoomModerationAuditEnvelope
@@ -676,6 +681,18 @@ interface VoizaApiService {
      * member who runs nothing is refused with the server's own sentence rather than an empty payload.
      * [agencySubAgencies] is master-only: a sub-agency has none, and `requireMasterAgency` says so.
      */
+    @GET("api/agency/announcements")
+    suspend fun agencyAnnouncements(): AgencyAnnouncementsEnvelope
+
+    @POST("api/agency/announcements")
+    suspend fun publishAgencyAnnouncement(@Body body: AgencyAnnouncementBody): AgencyAnnouncementEnvelope
+
+    @GET("api/agency/announcements/inbox")
+    suspend fun myAgencyAnnouncements(): AgencyHostAnnouncementsEnvelope
+
+    @POST("api/agency/announcements/{id}/read")
+    suspend fun markAgencyAnnouncementRead(@Path("id") id: String): AgencyAnnouncementReadEnvelope
+
     @GET("api/agency/position")
     suspend fun agencyPosition(): AgencyPositionEnvelope
 
