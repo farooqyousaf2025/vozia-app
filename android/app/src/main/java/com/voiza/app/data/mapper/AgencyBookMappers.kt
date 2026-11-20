@@ -128,11 +128,11 @@ fun AgencyHostAttendanceEnvelope.toAttendanceDomain(): AgencyHostAttendanceRepor
         totals = AgencyHostAttendanceTotals(
             totals?.checkIns ?: 0, totals?.hostsCheckedIn ?: 0, totals?.hostAttendanceDays ?: 0,
         ),
-        daily = report.daily.orEmpty().mapNotNull { row ->
+        daily = report.daily.orEmpty().filterNotNull().mapNotNull { row ->
             val date = row.date?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
             AgencyHostAttendanceDay(date, row.checkIns ?: 0, row.hostsCheckedIn ?: 0)
         },
-        hosts = report.hosts.orEmpty().mapNotNull { row ->
+        hosts = report.hosts.orEmpty().filterNotNull().mapNotNull { row ->
             val username = row.username?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
             AgencyHostAttendanceRow(username, row.avatarUrl, row.checkIns ?: 0, row.attendanceDays ?: 0, row.lastCheckInAt)
         },
