@@ -54,7 +54,7 @@ fun List<AgencyHostRow>.toRosterCsv(): String {
         append('\uFEFF')
         append(header.joinToString(",") { it.toCsvField() })
         append("\r\n")
-        forEach { host ->
+        this@toRosterCsv.forEach { host ->
             val row = listOf(
                 host.username,
                 host.statusLabel,
