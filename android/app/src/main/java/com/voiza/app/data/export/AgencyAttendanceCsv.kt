@@ -39,9 +39,17 @@ fun AgencyHostAttendanceReport.toAttendanceCsv(): String {
     }
 }
 
-private fun String.toCsvField(): String =
-    if (any { it == ',' || it == '"' || it == '\r' || it == '\n' }) {
-        "\"" + replace("\"", "\"\"") + "\""
+private fun String.toCsvField(): String {
+    // Treat user-controlled text beginning with a spreadsheet formula marker as plain text.
+    // Also guard leading control characters commonly used to bypass CSV formula checks.
+    val firstMeaningful = dropWhile { it == ' ' || it == '\t' || it == '\r' || it == '\n' }
+        .firstOrNull()
+    val formulaLike = firstMeaningful in setOf('=', '+', '-', '@')
+    val controlPrefixed = firstOrNull() in setOf('\t', '\r', '\n')
+    val safe = if (formulaLike || controlPrefixed) "'$this" else this
+    return if (safe.any { it == ',' || it == '"' || it == '\r' || it == '\n' }) {
+        "\"" + safe.replace("\"", "\"\"") + "\""
     } else {
-        this
+        safe
     }
+}
