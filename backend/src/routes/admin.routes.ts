@@ -55,6 +55,7 @@ router.get('/reports', requirePermission('user:read'), admin.reports);
 router.post('/reports/:id/review', requirePermission('user:moderate'), admin.reviewReportEndpoint);
 
 router.get('/rooms', requirePermission('room:read'), admin.rooms);
+router.post('/rooms', requirePermission('room:create'), admin.createSystemRoomEndpoint);
 // Before '/rooms/:id', which would otherwise read 'seat-policy' as a room id.
 router.get('/rooms/seat-policy', requirePermission('room:read'), admin.seatPolicy);
 router.put('/rooms/seat-policy', requirePermission('config:manage'), admin.setSeatPolicy);
