@@ -171,7 +171,7 @@ export async function takeSeatOrRequest(
   if (seatIndex === 0 && room.host_id !== userId) {
     throw ApiError.forbidden('Only the host can sit in the host seat', 'seat_reserved');
   }
-  if (room.host_id === userId || !room.speaker_approval_required) {
+  if (!room.host_id || room.host_id === userId || !room.speaker_approval_required) {
     return { kind: 'seated', seats: (await takeSeat(userId, roomId, seatIndex)).seats };
   }
   if (seatIndex === 0) throw ApiError.badRequest('The host seat is not requestable', 'seat_reserved');
