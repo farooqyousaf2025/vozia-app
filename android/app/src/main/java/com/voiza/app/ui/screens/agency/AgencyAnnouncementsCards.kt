@@ -75,13 +75,13 @@ fun AgencyOwnerAnnouncementsCard(
                 Text("Agency Communication Center", color = OnDarkHigh, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Text("Announcements for your currently assigned active hosts", color = OnDarkMedium, fontSize = 10.sp)
             }
-            if (pendingReads > 0) Text("$pendingReads pending", color = RCoinGreen, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            if (pendingReads > 0) Text("$pendingReads pending reads", color = RCoinGreen, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             SummaryMetric("Announcements", state.items.size.toString(), Modifier.weight(1f))
-            SummaryMetric("Host reads", "$totalReads / $totalRecipients", Modifier.weight(1f))
-            SummaryMetric("Pending", pendingReads.toString(), Modifier.weight(1f))
+            SummaryMetric("Read receipts", "$totalReads / $totalRecipients", Modifier.weight(1f))
+            SummaryMetric("Pending reads", pendingReads.toString(), Modifier.weight(1f))
         }
         Spacer(Modifier.height(10.dp))
         OutlinedTextField(
