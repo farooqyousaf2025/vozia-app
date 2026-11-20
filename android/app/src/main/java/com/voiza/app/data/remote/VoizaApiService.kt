@@ -3,6 +3,7 @@ package com.voiza.app.data.remote
 import com.voiza.app.data.remote.dto.AuthResponse
 import com.voiza.app.data.remote.dto.AgencyLiveRoomsEnvelope
 import com.voiza.app.data.remote.dto.AgencyRoomMembersEnvelope
+import com.voiza.app.data.remote.dto.AgencyRoomModerationAuditEnvelope
 import com.voiza.app.data.remote.dto.AgencyMuteMemberBody
 import com.voiza.app.data.remote.dto.AgencyRoomModerationBody
 import com.voiza.app.data.remote.dto.AgencyRoomModerationActionEnvelope
@@ -676,6 +677,12 @@ interface VoizaApiService {
 
     @GET("api/agency/rooms/{id}/members")
     suspend fun agencyRoomMembers(@Path("id") roomId: String): AgencyRoomMembersEnvelope
+
+    @GET("api/agency/rooms/{id}/moderation-audit")
+    suspend fun agencyRoomModerationAudit(
+        @Path("id") roomId: String,
+        @Query("limit") limit: Int = 50,
+    ): AgencyRoomModerationAuditEnvelope
 
     @POST("api/agency/rooms/{id}/mute")
     suspend fun agencyMuteMember(@Path("id") roomId: String, @Body body: AgencyMuteMemberBody): AgencyRoomModerationActionEnvelope
