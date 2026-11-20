@@ -271,6 +271,9 @@ fun PartnerDeskScreen(
                 DeskTab.OVERVIEW -> {
                     item { AccountCard(account) }
                     item { NumbersCard(state.dashboard, state.dashboardError) }
+                    if (account.isBd) {
+                        item { BdTerritorySnapshotCard(state.sellers, state.sellersError, account.kind == com.voiza.app.domain.model.PartnerKind.BD_MANAGER) }
+                    }
                     if (account.isSeller) {
                         item {
                             VoizaButton(
@@ -373,6 +376,42 @@ private enum class DeskTab(val label: String) {
 // ---------------------------------------------------------------------------
 // Overview: who this account is, and the numbers the platform has booked for it.
 // ---------------------------------------------------------------------------
+
+@Composable
+private fun BdTerritorySnapshotCard(
+    sellers: List<PartnerSellerRow>,
+    error: String?,
+    isManager: Boolean,
+) {
+    VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
+        DeskSectionLabel(if (isManager) "Your seller territory" else "Your assigned sellers")
+        if (error != null) {
+            Text(error, color = DangerRed, fontSize = 11.sp)
+            return@VoizaCard
+        }
+        if (sellers.isEmpty()) {
+            Text("No seller rows are currently available in your authorized territory.", color = OnDarkMedium, fontSize = 12.sp)
+            return@VoizaCard
+        }
+        val active = sellers.count { it.status == PartnerAccountStatus.ACTIVE }
+        val pending = sellers.count { it.status == PartnerAccountStatus.PENDING }
+        val suspended = sellers.count { it.status == PartnerAccountStatus.SUSPENDED }
+        val orders = sellers.sumOf { it.recharge.orders }
+        val credited = sellers.sumOf { it.recharge.credited }
+        val diamonds = sellers.sumOf { it.recharge.processedDiamonds }
+        FigureRow("Sellers returned by your BD scope", count(sellers.size), OnDarkHigh)
+        FigureRow("Active · Pending · Suspended", "$active · $pending · $suspended", OnDarkHigh)
+        Spacer(Modifier.height(6.dp))
+        FigureRow("Combined orders", count(orders), OnDarkHigh)
+        FigureRow("Credited orders", count(credited), RCoinGreen)
+        FigureRow("Diamonds processed", count(diamonds), OnDarkHigh)
+        Text(
+            "Summary uses only the seller rows returned for your signed-in BD account. It does not include another BD's territory or change seller access.",
+            color = OnDarkMedium.copy(alpha = 0.75f),
+            fontSize = 10.sp,
+        )
+    }
+}
 
 @Composable
 private fun AccountCard(account: PartnerAccount) {
