@@ -11,17 +11,17 @@ type AgencyRoomScope = {
   livekit_room_name: string;
 };
 
-async function assignedRoom(actorUserId: string, roomId: string): Promise<AgencyRoomScope> {
+async function assignedRoom(actorUserId: string, agencyId: string, roomId: string): Promise<AgencyRoomScope> {
   const scope = await one<AgencyRoomScope>(
     `SELECT a.id AS agency_id, r.id AS room_id, r.host_id AS host_user_id,
             r.livekit_room_name
        FROM agencies a
        JOIN agency_hosts ah ON ah.agency_id = a.id
        JOIN rooms r ON r.host_id = ah.host_user_id
-      WHERE a.owner_user_id = $1 AND a.status = 'ACTIVE'
+      WHERE a.owner_user_id = $1 AND a.id = $2 AND a.status = 'ACTIVE'
         AND ah.status = 'ACTIVE' AND r.id = $2 AND r.status = 'ACTIVE'
       LIMIT 1`,
-    [actorUserId, roomId],
+    [actorUserId, agencyId, roomId],
   );
   if (!scope) {
     throw ApiError.forbidden('You may moderate only active rooms owned by hosts currently assigned to your agency', 'agency_room_scope_denied');
@@ -53,8 +53,8 @@ async function audit(scope: AgencyRoomScope, actorUserId: string, targetUserId: 
   );
 }
 
-export async function agencyMuteRoomMember(actorUserId: string, roomId: string, targetUserId: string, muted: boolean): Promise<{ seats: SeatDto[] }> {
-  const scope = await assignedRoom(actorUserId, roomId);
+export async function agencyMuteRoomMember(actorUserId: string, agencyId: string, roomId: string, targetUserId: string, muted: boolean): Promise<{ seats: SeatDto[] }> {
+  const scope = await assignedRoom(actorUserId, agencyId, roomId);
   await assertTarget(scope, targetUserId);
   const seat = await one<{ seat_index: number }>(
     'SELECT seat_index FROM room_seats WHERE room_id = $1 AND user_id = $2 AND status = \'OCCUPIED\'',
@@ -68,7 +68,7 @@ export async function agencyMuteRoomMember(actorUserId: string, roomId: string, 
   return { seats: await fetchSeats(roomId) };
 }
 
-export async function agencyKickRoomMember(actorUserId: string, roomId: string, targetUserId: string, reason?: string | null): Promise<{ seats: SeatDto[]; wasPresent: boolean }> {
+export async function agencyKickRoomMember(actorUserId: string, agencyId: string, roomId: string, targetUserId: string, reason?: string | null): Promise<{ seats: SeatDto[]; wasPresent: boolean }> {
   const scope = await assignedRoom(actorUserId, roomId);
   await assertTarget(scope, targetUserId);
   const result = await disconnectFromRoom(roomId, targetUserId);
@@ -76,7 +76,7 @@ export async function agencyKickRoomMember(actorUserId: string, roomId: string, 
   return result;
 }
 
-export async function agencyBanRoomMember(actorUserId: string, roomId: string, targetUserId: string, reason?: string | null, minutes?: number | null): Promise<{ seats: SeatDto[]; wasPresent: boolean; expiresAt: string | null }> {
+export async function agencyBanRoomMember(actorUserId: string, agencyId: string, roomId: string, targetUserId: string, reason?: string | null, minutes?: number | null): Promise<{ seats: SeatDto[]; wasPresent: boolean; expiresAt: string | null }> {
   const scope = await assignedRoom(actorUserId, roomId);
   await assertTarget(scope, targetUserId);
   const expiresAt = minutes ? new Date(Date.now() + minutes * 60_000) : null;
@@ -107,7 +107,7 @@ export async function agencyBanRoomMember(actorUserId: string, roomId: string, t
   return { ...result, expiresAt: expiresAt?.toISOString() ?? null };
 }
 
-export async function agencyUnbanRoomMember(actorUserId: string, roomId: string, targetUserId: string): Promise<{ removed: boolean }> {
+export async function agencyUnbanRoomMember(actorUserId: string, agencyId: string, roomId: string, targetUserId: string): Promise<{ removed: boolean }> {
   const scope = await assignedRoom(actorUserId, roomId);
   if (targetUserId === scope.host_user_id) throw ApiError.forbidden('Agency moderators cannot act on the room owner', 'agency_host_protected');
   return withTransaction(async (client) => {
@@ -127,7 +127,7 @@ export async function agencyUnbanRoomMember(actorUserId: string, roomId: string,
   });
 }
 
-export async function listAgencyRoomModerationAudit(actorUserId: string, roomId: string, limit = 50) {
+export async function listAgencyRoomModerationAudit(actorUserId: string, agencyId: string, roomId: string, limit = 50) {
   const scope = await assignedRoom(actorUserId, roomId);
   return many(
     `SELECT id, target_user_id AS "targetUserId", action, reason, details, created_at AS "createdAt"
