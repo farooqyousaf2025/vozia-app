@@ -49,6 +49,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.voiza.app.domain.model.AgencyAccount
 import com.voiza.app.domain.model.AgencyHostAttendanceReport
 import com.voiza.app.data.export.toAttendanceCsv
+import com.voiza.app.data.export.toRosterCsv
 import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyHostGoals
 import com.voiza.app.domain.model.AgencyHostRecognition
@@ -99,6 +100,7 @@ fun AgencyDashboardScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var pendingAttendanceExport by remember { mutableStateOf<AgencyHostAttendanceReport?>(null) }
+    var pendingRosterExport by remember { mutableStateOf<List<AgencyHostRow>?>(null) }
     val attendanceExportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv"),
     ) { uri ->
@@ -116,6 +118,25 @@ fun AgencyDashboardScreen(
             ).show()
         }
         pendingAttendanceExport = null
+    }
+
+    val rosterExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri ->
+        val hosts = pendingRosterExport
+        if (uri != null && hosts != null) {
+            val saved = runCatching {
+                context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use {
+                    it.write(hosts.toRosterCsv())
+                } ?: error("Could not open the selected file.")
+            }.isSuccess
+            Toast.makeText(
+                context,
+                if (saved) "Host roster CSV saved." else "Could not save host roster CSV.",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+        pendingRosterExport = null
     }
 
     // A rate or an accrual can change while the member is elsewhere in the app.
@@ -255,6 +276,10 @@ fun AgencyDashboardScreen(
                     onStatusFilterChange = { hostStatusFilter = it },
                     sort = hostSort,
                     onSortChange = { hostSort = it },
+                    onExport = {
+                        pendingRosterExport = state.hosts.toList()
+                        rosterExportLauncher.launch("vozia-host-roster.csv")
+                    },
                 )
             }
             item { BatchesCard(state.settlements, state.batchesError) }
@@ -1026,6 +1051,7 @@ private fun RosterCard(
     onStatusFilterChange: (String) -> Unit,
     sort: String,
     onSortChange: (String) -> Unit,
+    onExport: () -> Unit,
 ) {
     val matchingHosts = hosts.filter { host ->
         val matchesQuery = query.isBlank() || host.username.contains(query.trim(), ignoreCase = true)
@@ -1043,7 +1069,10 @@ private fun RosterCard(
         else -> matchingHosts.sortedBy { it.username.lowercase() }
     }
     VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
-        SectionLabel("Your hosts · ${hosts.size}")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) { SectionLabel("Your hosts · ${hosts.size}") }
+            TextButton(onClick = onExport, enabled = hosts.isNotEmpty()) { Text("Export CSV") }
+        }
         if (hosts.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(bottom = 8.dp)) {
                 HostCount("Active", hosts.count { it.status == AgencyStatus.ACTIVE }, RCoinGreen)
