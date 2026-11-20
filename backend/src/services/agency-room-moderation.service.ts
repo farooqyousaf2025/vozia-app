@@ -19,7 +19,7 @@ async function assignedRoom(actorUserId: string, agencyId: string, roomId: strin
        JOIN agency_hosts ah ON ah.agency_id = a.id
        JOIN rooms r ON r.host_id = ah.host_user_id
       WHERE a.owner_user_id = $1 AND a.id = $2 AND a.status = 'ACTIVE'
-        AND ah.status = 'ACTIVE' AND r.id = $2 AND r.status = 'ACTIVE'
+        AND ah.status = 'ACTIVE' AND r.id = $3 AND r.status = 'ACTIVE'
       LIMIT 1`,
     [actorUserId, agencyId, roomId],
   );
@@ -69,7 +69,7 @@ export async function agencyMuteRoomMember(actorUserId: string, agencyId: string
 }
 
 export async function agencyKickRoomMember(actorUserId: string, agencyId: string, roomId: string, targetUserId: string, reason?: string | null): Promise<{ seats: SeatDto[]; wasPresent: boolean }> {
-  const scope = await assignedRoom(actorUserId, roomId);
+  const scope = await assignedRoom(actorUserId, agencyId, roomId);
   await assertTarget(scope, targetUserId);
   const result = await disconnectFromRoom(roomId, targetUserId);
   await audit(scope, actorUserId, targetUserId, 'KICK', reason);
