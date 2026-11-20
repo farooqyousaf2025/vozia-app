@@ -471,3 +471,9 @@ export async function listFriendDistances(userId: string): Promise<FriendLocatio
   );
   return rows.map(row => ({ friendId: row.friend_id, distanceMeters: row.distance_meters == null ? null : Number(row.distance_meters) }));
 }
+
+
+export async function getFriendLocationSharing(userId: string): Promise<{ enabled: boolean }> {
+  const row = await one<{ enabled: boolean }>('SELECT enabled FROM friend_location_sharing WHERE user_id = $1', [userId]);
+  return { enabled: row?.enabled === true };
+}
