@@ -127,7 +127,7 @@ export const ROOM_SELECT = `
          u.profile_frame_key AS host_profile_frame_key,
          u.profile_frame_expires_at AS host_profile_frame_expires_at
     FROM rooms r
-    JOIN users u ON u.id = r.host_id`;
+    LEFT JOIN users u ON u.id = r.host_id`;
 
 async function run(client: PoolClient | undefined, text: string, params: readonly unknown[] = []) {
   // pg's signatures want a mutable any[]; copying keeps the readonly contract local.
@@ -251,7 +251,7 @@ export type RoomWithState = {
   audience: MiniUser[];
   handRaises: ParticipantDto[];
   livekitRoomName: string;
-  hostId: string;
+  hostId: string | null;
 };
 
 async function snapshot(room: RoomRow, client?: PoolClient): Promise<RoomWithState> {
@@ -382,7 +382,7 @@ export async function listRooms(opts: {
 export async function quickJoinRoom(userId: string): Promise<RoomDto> {
   const row = await one<RoomRow>(
     `${ROOM_SELECT}
-      WHERE r.status = 'ACTIVE' AND r.type = 'PUBLIC' AND r.host_id <> $1
+      WHERE r.status = 'ACTIVE' AND r.type = 'PUBLIC' AND r.host_id IS DISTINCT FROM $1
         AND NOT EXISTS (SELECT 1 FROM room_bans b WHERE b.room_id = r.id AND b.user_id = $1)
         AND NOT EXISTS (SELECT 1 FROM room_participants p
                          WHERE p.room_id = r.id AND p.user_id = $1 AND p.left_at IS NULL)
@@ -441,6 +441,66 @@ export type CreateRoomInput = {
   region?: string | null;
   rules?: string | null;
 };
+/**
+ * Operator-owned room. It has no member host and does not create a shadow/fake user.
+ * Its seat grid starts empty; operator moderation is performed through the admin room console.
+ */
+export async function createSystemRoom(
+  adminId: string,
+  input: CreateRoomInput,
+): Promise<RoomDto & { seats: SeatDto[] }> {
+  const seatCapacity = await resolveSeatCapacity(input.seatCapacity);
+  if (input.type === 'PRIVATE' && !input.password) {
+    throw ApiError.badRequest('Private rooms need a password', 'password_required');
+  }
+  if (input.theme && !isTheme(input.theme)) {
+    throw ApiError.badRequest('Unknown room theme', 'theme_unknown');
+  }
+  const passwordHash = input.type === 'PRIVATE' ? hashSecret(input.password!) : null;
+
+  const roomId = await withTransaction(async (client) => {
+    let inserted: RoomRow | undefined;
+    for (let attempt = 0; attempt < 8 && !inserted; attempt += 1) {
+      const roomNumber = randomRoomNumber();
+      try {
+        const result = await client.query<RoomRow>(
+          `INSERT INTO rooms
+             (room_number, title, description, cover_url, host_id, owner_type, owner_admin_id,
+              type, password_hash, seat_capacity, status, category, livekit_room_name, theme,
+              language, region, rules)
+           VALUES ($1,$2,$3,$4,NULL,'SYSTEM',$5,$6,$7,$8,'ACTIVE',$9,$10,$11,$12,$13,$14)
+           RETURNING *`,
+          [
+            roomNumber, input.title, input.description ?? null, input.coverUrl ?? null, adminId,
+            input.type, passwordHash, seatCapacity, input.category, `voiza-room-${roomNumber}`,
+            input.theme ?? defaultThemeSlug(), normalizeLanguage(input.language),
+            normalizeRegion(input.region), normalizeRules(input.rules),
+          ],
+        );
+        inserted = result.rows[0];
+      } catch (err) {
+        if ((err as { code?: string }).code !== '23505') throw err;
+      }
+    }
+    if (!inserted) throw ApiError.conflict('Could not allocate a room number, try again');
+
+    // All seats, including index 0, are empty: a system room has no human host seat.
+    for (let index = 0; index < seatCapacity; index += 1) {
+      await client.query(
+        `INSERT INTO room_seats (room_id, seat_index, user_id, status, is_speaker, is_muted)
+         VALUES ($1,$2,NULL,'EMPTY',FALSE,FALSE)`,
+        [inserted.id, index],
+      );
+    }
+    return inserted.id;
+  });
+
+  const room = await loadRoom(roomId);
+  const sessionSid = await ensureLivekitRoom(room.livekit_room_name, { maxParticipants: 1000 });
+  if (sessionSid) await query('UPDATE rooms SET livekit_session_sid = $2 WHERE id = $1', [roomId, sessionSid]);
+  return { ...toRoom(room), seats: await fetchSeats(roomId) };
+}
+
 
 /** Every active member may create a room; partner approval is not a room-creation gate. */
 export async function createRoom(hostUserId: string, input: CreateRoomInput): Promise<RoomDto & { seats: SeatDto[] }> {
