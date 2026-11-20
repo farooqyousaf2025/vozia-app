@@ -321,7 +321,7 @@ export default function RoomsPage() {
       {drawerRoom !== null && (
         <RoomDrawer
           room={drawerRoom}
-          canModerate={can('room:moderate')}
+          canModerate={can('room:moderate') && drawerRoom.status === 'ACTIVE'}
           onClose={() => setDrawerRoomId(null)}
           onDisconnected={() => void load()}
         />
