@@ -124,6 +124,20 @@ data class AgencyHostActivityReport(
     val daily: List<AgencyHostActivityDay>, val weekly: List<AgencyHostActivityWeek>, val hosts: List<AgencyHostActivityRow>,
 )
 
+data class AgencyHostAttendanceTotals(
+    val checkIns: Int, val hostsCheckedIn: Int, val hostAttendanceDays: Int,
+)
+data class AgencyHostAttendanceDay(
+    val date: String, val checkIns: Int, val hostsCheckedIn: Int,
+)
+data class AgencyHostAttendanceRow(
+    val username: String, val avatarUrl: String?, val checkIns: Int, val attendanceDays: Int, val lastCheckInAt: String?,
+)
+data class AgencyHostAttendanceReport(
+    val days: Int, val timezone: String, val totals: AgencyHostAttendanceTotals,
+    val daily: List<AgencyHostAttendanceDay>, val hosts: List<AgencyHostAttendanceRow>,
+)
+
 /** One host on the roster. No phone number and no account id: those are the operator's columns. */
 data class AgencyHostRow(
     val username: String,

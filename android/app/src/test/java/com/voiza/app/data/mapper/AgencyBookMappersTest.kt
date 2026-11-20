@@ -2,6 +2,7 @@ package com.voiza.app.data.mapper
 
 import com.google.gson.Gson
 import com.voiza.app.data.remote.dto.AgencyHostsEnvelope
+import com.voiza.app.data.remote.dto.AgencyHostAttendanceEnvelope
 import com.voiza.app.data.remote.dto.AgencyPositionEnvelope
 import com.voiza.app.data.remote.dto.AgencySettlementsEnvelope
 import com.voiza.app.data.remote.dto.AgencySubsEnvelope
@@ -136,6 +137,32 @@ class AgencyBookMappersTest {
         assertEquals(AgencyStatus.PENDING, hosts[1].status)
         assertEquals(0, hosts[1].accruedCoins)
         assertNull(hosts[1].joinedAt)
+    }
+
+    @Test
+    fun `host attendance mapper preserves verified check-ins and omits absent hosts`() {
+        val report = gson.fromJson(
+            """{"report":{
+                "days":7,"timezone":"UTC",
+                "totals":{"checkIns":5,"hostsCheckedIn":2,"hostAttendanceDays":4},
+                "daily":[{"date":"2026-11-20","checkIns":3,"hostsCheckedIn":2},{"date":"2026-11-21","checkIns":2,"hostsCheckedIn":1}],
+                "hosts":[
+                  {"username":"ali_live","avatarUrl":null,"checkIns":3,"attendanceDays":2,"lastCheckInAt":"2026-11-20T18:30:00.000Z"},
+                  null,
+                  {"username":"sara","checkIns":2,"attendanceDays":2,"lastCheckInAt":"2026-11-21T09:00:00.000Z"}
+                ]
+            }}""",
+            AgencyHostAttendanceEnvelope::class.java,
+        ).toAttendanceDomain()!!
+
+        assertEquals(5, report.totals.checkIns)
+        assertEquals(2, report.totals.hostsCheckedIn)
+        assertEquals(4, report.totals.hostAttendanceDays)
+        assertEquals(2, report.daily.size)
+        assertEquals(3, report.daily.first().checkIns)
+        assertEquals(listOf("ali_live", "sara"), report.hosts.map { it.username })
+        assertEquals(2, report.hosts.first().attendanceDays)
+        assertEquals("2026-11-20T18:30:00.000Z", report.hosts.first().lastCheckInAt)
     }
 
     @Test

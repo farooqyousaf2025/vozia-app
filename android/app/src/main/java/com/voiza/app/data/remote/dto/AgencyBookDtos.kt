@@ -106,6 +106,34 @@ data class AgencyHostActivityEnvelope(
     @SerializedName("report") val report: AgencyHostActivityReportDto? = null,
 )
 
+data class AgencyAttendanceTotalsDto(
+    @SerializedName("checkIns") val checkIns: Int? = null,
+    @SerializedName("hostsCheckedIn") val hostsCheckedIn: Int? = null,
+    @SerializedName("hostAttendanceDays") val hostAttendanceDays: Int? = null,
+)
+data class AgencyAttendanceDayDto(
+    @SerializedName("date") val date: String? = null,
+    @SerializedName("checkIns") val checkIns: Int? = null,
+    @SerializedName("hostsCheckedIn") val hostsCheckedIn: Int? = null,
+)
+data class AgencyHostAttendanceRowDto(
+    @SerializedName("username") val username: String? = null,
+    @SerializedName("avatarUrl") val avatarUrl: String? = null,
+    @SerializedName("checkIns") val checkIns: Int? = null,
+    @SerializedName("attendanceDays") val attendanceDays: Int? = null,
+    @SerializedName("lastCheckInAt") val lastCheckInAt: String? = null,
+)
+data class AgencyHostAttendanceReportDto(
+    @SerializedName("days") val days: Int? = null,
+    @SerializedName("timezone") val timezone: String? = null,
+    @SerializedName("totals") val totals: AgencyAttendanceTotalsDto? = null,
+    @SerializedName("daily") val daily: List<AgencyAttendanceDayDto>? = null,
+    @SerializedName("hosts") val hosts: List<AgencyHostAttendanceRowDto>? = null,
+)
+data class AgencyHostAttendanceEnvelope(
+    @SerializedName("report") val report: AgencyHostAttendanceReportDto? = null,
+)
+
 data class AgencyHostDto(
     @SerializedName("username") val username: String? = null,
     @SerializedName("avatarUrl") val avatarUrl: String? = null,

@@ -4,7 +4,12 @@ import com.voiza.app.data.remote.dto.AgencyAccountDto
 import com.voiza.app.data.remote.dto.AgencyEarningsDto
 import com.voiza.app.data.remote.dto.AgencyHostDto
 import com.voiza.app.data.remote.dto.AgencyHostActivityEnvelope
+import com.voiza.app.data.remote.dto.AgencyHostAttendanceEnvelope
 import com.voiza.app.domain.model.AgencyHostActivityWeek
+import com.voiza.app.domain.model.AgencyHostAttendanceReport
+import com.voiza.app.domain.model.AgencyHostAttendanceTotals
+import com.voiza.app.domain.model.AgencyHostAttendanceDay
+import com.voiza.app.domain.model.AgencyHostAttendanceRow
 import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyHostActivityTotals
 import com.voiza.app.domain.model.AgencyHostActivityDay
@@ -110,6 +115,26 @@ fun AgencyHostActivityEnvelope.toDomain(): AgencyHostActivityReport? {
         hosts = report.hosts.orEmpty().mapNotNull { row ->
             val username = row.username?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
             AgencyHostActivityRow(username, row.avatarUrl, row.roomsCreated ?: 0, row.roomsWithVisitors ?: 0, row.memberVisits ?: 0, row.uniqueVisitors ?: 0)
+        },
+    )
+}
+
+fun AgencyHostAttendanceEnvelope.toAttendanceDomain(): AgencyHostAttendanceReport? {
+    val report = report ?: return null
+    val totals = report.totals
+    return AgencyHostAttendanceReport(
+        days = report.days ?: 7,
+        timezone = report.timezone ?: "UTC",
+        totals = AgencyHostAttendanceTotals(
+            totals?.checkIns ?: 0, totals?.hostsCheckedIn ?: 0, totals?.hostAttendanceDays ?: 0,
+        ),
+        daily = report.daily.orEmpty().mapNotNull { row ->
+            val date = row.date?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            AgencyHostAttendanceDay(date, row.checkIns ?: 0, row.hostsCheckedIn ?: 0)
+        },
+        hosts = report.hosts.orEmpty().mapNotNull { row ->
+            val username = row.username?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            AgencyHostAttendanceRow(username, row.avatarUrl, row.checkIns ?: 0, row.attendanceDays ?: 0, row.lastCheckInAt)
         },
     )
 }
