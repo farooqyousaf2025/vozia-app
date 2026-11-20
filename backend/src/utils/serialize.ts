@@ -381,6 +381,8 @@ export function toSeat(row: SeatRow): SeatDto {
             avatar_url: row.avatar_url,
             profile_frame_key: row.profile_frame_key,
             profile_frame_expires_at: row.profile_frame_expires_at,
+            profile_ride_key: row.profile_ride_key,
+            profile_ride_expires_at: row.profile_ride_expires_at,
           })
         : null,
   };
@@ -503,6 +505,8 @@ export function toParticipant(row: ParticipantRow): ParticipantDto {
       avatar_url: row.avatar_url ?? null,
       profile_frame_key: row.profile_frame_key,
       profile_frame_expires_at: row.profile_frame_expires_at,
+      profile_ride_key: row.profile_ride_key,
+      profile_ride_expires_at: row.profile_ride_expires_at,
     }),
   };
 }
