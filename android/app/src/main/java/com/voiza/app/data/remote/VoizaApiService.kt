@@ -12,6 +12,7 @@ import com.voiza.app.data.remote.dto.AgencyHostActivityEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostAttendanceEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostGoalsEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostGoalsUpdateBody
+import com.voiza.app.data.remote.dto.AgencyHostRecognitionEnvelope
 import com.voiza.app.data.remote.dto.AgencyPositionEnvelope
 import com.voiza.app.data.remote.dto.AgencySettlementsEnvelope
 import com.voiza.app.data.remote.dto.AgencySubsEnvelope
@@ -709,6 +710,9 @@ interface VoizaApiService {
 
     @GET("api/agency/goals")
     suspend fun agencyHostGoals(): AgencyHostGoalsEnvelope
+
+    @GET("api/agency/recognition")
+    suspend fun agencyHostRecognition(): AgencyHostRecognitionEnvelope
 
     @PUT("api/agency/goals")
     suspend fun updateAgencyHostGoals(@Body body: AgencyHostGoalsUpdateBody): AgencyHostGoalsEnvelope

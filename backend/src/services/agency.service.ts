@@ -1698,6 +1698,72 @@ export async function agencySelfUpdateHostGoals(agencyId: string, targetDays: nu
   return agencySelfHostGoals(agencyId);
 }
 
+export type AgencyHostMilestone = {
+  code: string; title: string; description: string; attendanceDaysRequired: number; unlockedAt: string | null;
+};
+export type AgencyHostRecognitionRow = {
+  username: string; avatarUrl: string | null; attendanceDays: number; milestones: AgencyHostMilestone[];
+};
+export type AgencyHostRecognition = {
+  timezone: 'UTC'; activeHostCount: number; hostsWithAchievements: number; hosts: AgencyHostRecognitionRow[];
+};
+
+/**
+ * Read-only recognition history derived from distinct UTC dates with verified LiveKit check-ins.
+ * No achievement writes, points, rewards, payouts, or status changes are performed.
+ */
+export async function agencySelfHostRecognition(agencyId: string): Promise<AgencyHostRecognition> {
+  const rows = await many<{
+    username: string; avatar_url: string | null; attendance_days: string | number;
+    milestones: AgencyHostMilestone[];
+  }>(
+    `WITH roster AS (
+       SELECT ah.host_user_id, u.username, u.avatar_url
+       FROM agency_hosts ah
+       JOIN agencies a ON a.id = ah.agency_id
+       JOIN users u ON u.id = ah.host_user_id
+       WHERE ah.agency_id = $1 AND ah.status = 'ACTIVE' AND a.status = 'ACTIVE'
+     ), host_days AS (
+       SELECT DISTINCT c.host_user_id, (c.checked_in_at AT TIME ZONE 'UTC')::date AS activity_date
+       FROM room_host_checkins c JOIN roster h ON h.host_user_id = c.host_user_id
+     ), ranked_days AS (
+       SELECT host_user_id, activity_date,
+              ROW_NUMBER() OVER (PARTITION BY host_user_id ORDER BY activity_date)::int AS attendance_day_number
+       FROM host_days
+     ), milestones AS (
+       SELECT * FROM (VALUES
+         ('FIRST_CHECK_IN', 'First Spark', 'Completed a first verified attendance day', 1),
+         ('SEVEN_DAYS', 'Seven-Day Milestone', 'Reached seven distinct verified attendance days', 7),
+         ('THIRTY_DAYS', 'Thirty-Day Milestone', 'Reached thirty distinct verified attendance days', 30),
+         ('HUNDRED_DAYS', 'Century Club', 'Reached one hundred verified attendance days', 100)
+       ) AS m(code, title, description, threshold)
+     ), totals AS (
+       SELECT host_user_id, COUNT(*)::int AS attendance_days FROM host_days GROUP BY host_user_id
+     )
+     SELECT h.username, h.avatar_url, COALESCE(t.attendance_days, 0)::int AS attendance_days,
+            json_agg(json_build_object(
+              'code', m.code, 'title', m.title, 'description', m.description,
+              'attendanceDaysRequired', m.threshold,
+              'unlockedAt', to_char(r.activity_date, 'YYYY-MM-DD')
+            ) ORDER BY m.threshold) AS milestones
+     FROM roster h CROSS JOIN milestones m
+     LEFT JOIN ranked_days r ON r.host_user_id = h.host_user_id AND r.attendance_day_number = m.threshold
+     LEFT JOIN totals t ON t.host_user_id = h.host_user_id
+     GROUP BY h.host_user_id, h.username, h.avatar_url, t.attendance_days
+     ORDER BY COALESCE(t.attendance_days, 0) DESC, h.username`,
+    [agencyId],
+  );
+  const hosts = rows.map(row => ({
+    username: row.username, avatarUrl: row.avatar_url, attendanceDays: minor(row.attendance_days),
+    milestones: Array.isArray(row.milestones) ? row.milestones : [],
+  }));
+  return {
+    timezone: 'UTC', activeHostCount: hosts.length,
+    hostsWithAchievements: hosts.filter(host => host.milestones.some(milestone => milestone.unlockedAt !== null)).length,
+    hosts,
+  };
+}
+
 export type AgencyHostAttendanceDay = { date: string; checkIns: number; hostsCheckedIn: number };
 export type AgencyHostAttendanceRow = {
   username: string; avatarUrl: string | null; checkIns: number; attendanceDays: number; lastCheckInAt: string | null;

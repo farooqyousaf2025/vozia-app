@@ -104,6 +104,35 @@ async function memberToken(phone, username) {
     final.status === 200 && final.json.goals.weeklyAttendanceTargetDays === 3,
     final.json && final.json.goals && final.json.goals.weeklyAttendanceTargetDays);
 
+  for (let day = 3; day < 100; day += 1) await addCheckin(hostA, day);
+
+  const recognition = await api('GET', '/api/agency/recognition', { token: owner.token });
+  const recognitionHosts = recognition.json && recognition.json.recognition && recognition.json.recognition.hosts || [];
+  const recognisedA = recognitionHosts.find(h => h.username === tag + 'hosta');
+  const recognisedB = recognitionHosts.find(h => h.username === tag + 'hostb');
+  report('owner sees verified lifetime attendance milestones with earned dates',
+    recognition.status === 200 && recognition.json.recognition.activeHostCount === 2
+      && recognisedA && recognisedA.attendanceDays === 100
+      && recognisedA.milestones.length === 4
+      && recognisedA.milestones.every(m => typeof m.unlockedAt === 'string')
+      && recognisedA.milestones[0].code === 'FIRST_CHECK_IN'
+      && recognisedA.milestones[3].code === 'HUNDRED_DAYS'
+      && recognisedB && recognisedB.attendanceDays === 1
+      && recognisedB.milestones.filter(m => m.unlockedAt !== null).length === 1,
+    recognition.json && recognition.json.recognition);
+
+  const recognitionRefused = await api('GET', '/api/agency/recognition', { token: plain.token });
+  report('members without an agency cannot read host recognition',
+    recognitionRefused.status === 403 && recognitionRefused.code === 'agency_not_found',
+    recognitionRefused.code);
+
+  const checkinCount = await sql("SELECT COUNT(*)::int AS count FROM room_host_checkins WHERE host_user_id IN ($1, $2)", [hostA.id, hostB.id]);
+  const recognitionAgain = await api('GET', '/api/agency/recognition', { token: owner.token });
+  const countAfterRead = await sql("SELECT COUNT(*)::int AS count FROM room_host_checkins WHERE host_user_id IN ($1, $2)", [hostA.id, hostB.id]);
+  report('reading recognition is read-only and does not create attendance records',
+    recognitionAgain.status === 200 && checkinCount.rows[0].count === countAfterRead.rows[0].count,
+    { before: checkinCount.rows[0].count, after: countAfterRead.rows[0].count });
+
   out.push('');
   out.push(out.filter(line => line.startsWith('PASS')).length + '/' + (out.length - 1) + ' agency-host-goals checks passed');
   process.stdout.write(out.join('\n') + '\n');

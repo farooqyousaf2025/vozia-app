@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.voiza.app.data.remote.dto.AgencyHostsEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostAttendanceEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostGoalsEnvelope
+import com.voiza.app.data.remote.dto.AgencyHostRecognitionEnvelope
 import com.voiza.app.data.remote.dto.AgencyPositionEnvelope
 import com.voiza.app.data.remote.dto.AgencySettlementsEnvelope
 import com.voiza.app.data.remote.dto.AgencySubsEnvelope
@@ -190,6 +191,39 @@ class AgencyBookMappersTest {
         assertEquals(100, goals.hosts.first().progressPercent)
         assertEquals(2, goals.hosts.last().remainingDays)
         assertFalse(goals.hosts.last().metTarget)
+    }
+
+    @Test
+    fun `host recognition mapper keeps earned dates and safely ignores null rows`() {
+        val recognition = gson.fromJson(
+            """{"recognition":{
+                "timezone":"UTC","activeHostCount":2,"hostsWithAchievements":1,
+                "hosts":[
+                  {"username":"ali_live","attendanceDays":30,"milestones":[
+                    {"code":"FIRST_CHECK_IN","title":"First Spark","description":"First verified day","attendanceDaysRequired":1,"unlockedAt":"2026-08-01"},
+                    null,
+                    {"code":"SEVEN_DAYS","title":"Weekly Regular","description":"Seven days","attendanceDaysRequired":7,"unlockedAt":"2026-08-07"},
+                    {"code":"THIRTY_DAYS","title":"Monthly Star","description":"Thirty days","attendanceDaysRequired":30,"unlockedAt":"2026-08-30"},
+                    {"code":"HUNDRED_DAYS","title":"Century Club","description":"One hundred days","attendanceDaysRequired":100,"unlockedAt":null}
+                  ]},
+                  null,
+                  {"username":"sara","attendanceDays":0,"milestones":[
+                    {"code":"FIRST_CHECK_IN","title":"First Spark","attendanceDaysRequired":1,"unlockedAt":null}
+                  ]}
+                ]
+            }}""",
+            AgencyHostRecognitionEnvelope::class.java,
+        ).toRecognitionDomain()!!
+
+        assertEquals("UTC", recognition.timezone)
+        assertEquals(2, recognition.activeHostCount)
+        assertEquals(1, recognition.hostsWithAchievements)
+        assertEquals(listOf("ali_live", "sara"), recognition.hosts.map { it.username })
+        assertEquals(30, recognition.hosts.first().attendanceDays)
+        assertEquals(4, recognition.hosts.first().milestones.size)
+        assertEquals("2026-08-01", recognition.hosts.first().milestones.first().unlockedAt)
+        assertEquals(null, recognition.hosts.first().milestones.last().unlockedAt)
+        assertEquals(null, recognition.hosts.last().milestones.single().unlockedAt)
     }
 
     @Test

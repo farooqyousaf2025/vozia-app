@@ -6,6 +6,7 @@ import {
   agencySelfHostActivity,
   agencySelfHostAttendance,
   agencySelfHostGoals,
+  agencySelfHostRecognition,
   agencySelfUpdateHostGoals,
   agencySelfSettlements,
   agencySelfSubs,
@@ -44,6 +45,10 @@ export const hostAttendance = asyncHandler(async (req: Request, res: Response) =
 
 export const hostGoals = asyncHandler(async (req: Request, res: Response) => {
   res.json({ goals: await agencySelfHostGoals(agencyId(req)) });
+});
+
+export const hostRecognition = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ recognition: await agencySelfHostRecognition(agencyId(req)) });
 });
 
 export const updateHostGoals = asyncHandler(async (req: Request, res: Response) => {
