@@ -86,7 +86,7 @@ export default function OverviewPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-ink">Overview</h1>
-          <p className="mt-0.5 text-sm text-muted">Live pulse of the Voiza platform.</p>
+          <p className="mt-0.5 text-sm text-muted">Live pulse of the Vozia platform.</p>
         </div>
         <Button icon={<IconRefresh className="h-4 w-4" />} onClick={() => void load()}>
           Refresh
@@ -216,11 +216,14 @@ export default function OverviewPage() {
                 <Tr key={room.id}>
                   <Td>
                     <div className="min-w-0">
-                      <p className="truncate font-semibold text-ink">{room.title}</p>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p className="truncate font-semibold text-ink">{room.title}</p>
+                        {room.ownerType === 'SYSTEM' && <span className="shrink-0 rounded-full border border-premium/30 bg-premium/10 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-premium">SYSTEM</span>}
+                      </div>
                       <p className="text-xs text-faint">#{room.roomNumber}</p>
                     </div>
                   </Td>
-                  <Td className="truncate">{room.host.username}</Td>
+                  <Td className="truncate">{room.ownerType === 'SYSTEM' ? 'Vozia Operations' : room.host.username}</Td>
                   <Td>{categoryBadge(room.category)}</Td>
                   <Td align="center">
                     <span className="tabular-nums">

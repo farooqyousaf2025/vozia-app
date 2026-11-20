@@ -136,6 +136,23 @@ export default function RoomsPage() {
         </div>
       </div>
 
+      {rooms !== null && (
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          {[
+            { label: 'Active rooms', value: formatCompact(rooms.length), detail: 'currently monitored', tone: 'text-violet-200', accent: 'border-violet-400/20' },
+            { label: 'Listeners', value: formatCompact(rooms.reduce((sum, room) => sum + room.listenerCount, 0)), detail: 'audience across rooms', tone: 'text-sky-200', accent: 'border-sky-400/20' },
+            { label: 'Occupied seats', value: formatCompact(rooms.reduce((sum, room) => sum + room.onlineSeatCount, 0)), detail: 'speakers on stage', tone: 'text-fuchsia-200', accent: 'border-fuchsia-400/20' },
+            { label: 'System rooms', value: formatCompact(rooms.filter((room) => room.ownerType === 'SYSTEM').length), detail: 'Vozia-operated rooms', tone: 'text-premium', accent: 'border-premium/25' },
+          ].map((metric) => (
+            <div key={metric.label} className={`panel rounded-xl border ${metric.accent} px-4 py-3`}>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">{metric.label}</p>
+              <p className={`mt-1 text-2xl font-bold tabular-nums ${metric.tone}`}>{metric.value}</p>
+              <p className="mt-0.5 text-[11px] text-faint">{metric.detail}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       <SeatPolicyCard />
 
       <Card bodyClassName="p-0">
