@@ -89,7 +89,7 @@ export async function listAudit(opts: {
       WHERE ($1::uuid IS NULL OR a.admin_id = $1)
         AND ($2::uuid IS NULL OR a.business_id = $2)
         AND ($3::text IS NULL OR a.target_type = $3)
-        AND ($6::uuid IS NULL OR a.target_id = $6 OR a.details->>'userId' = $6::text)
+        AND ($6::text IS NULL OR a.target_id = $6::text OR a.details->>'userId' = $6::text)
         AND ($5::text IS NULL
              OR ($5 = 'business' AND a.business_id IS NOT NULL)
              OR ($5 = 'admin'    AND a.business_id IS NULL AND a.admin_id IS NOT NULL)
