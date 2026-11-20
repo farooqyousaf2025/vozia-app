@@ -145,7 +145,7 @@ fun AgencyHostAttendanceEnvelope.toAttendanceDomain(): AgencyHostAttendanceRepor
 fun AgencyHostGoalsEnvelope.toGoalsDomain(): AgencyHostGoals? {
     val goals = goals ?: return null
     val target = (goals.weeklyAttendanceTargetDays ?: 5).coerceIn(1, 7)
-    val hosts = goals.hosts.orEmpty().mapNotNull { row ->
+    val hosts = goals.hosts.orEmpty().filterNotNull().mapNotNull { row ->
         val username = row.username?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
         val days = (row.attendanceDays ?: 0).coerceIn(0, 7)
         val rowTarget = (row.targetDays ?: target).coerceIn(1, 7)
