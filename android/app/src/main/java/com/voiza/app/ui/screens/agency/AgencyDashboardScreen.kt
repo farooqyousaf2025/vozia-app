@@ -151,6 +151,32 @@ fun AgencyDashboardScreen(
     }
 }
 
+@Composable
+private fun AgencyActiveRoomsCard(rooms: List<com.voiza.app.domain.model.AgencyLiveRoom>, error: String?) {
+    VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
+        SectionLabel("Live rooms · ${rooms.size}")
+        Text("Rooms owned by your currently assigned active hosts.", color = OnDarkMedium, fontSize = 11.sp)
+        if (error != null) {
+            Text(error, color = DangerRed, fontSize = 11.sp)
+        } else if (rooms.isEmpty()) {
+            Text("No assigned-host rooms are live right now.", color = OnDarkMedium, fontSize = 12.sp)
+        } else {
+            rooms.forEach { room ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(room.title.ifBlank { "Room ${room.roomNumber}" }, color = OnDarkHigh, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Text("Host @${room.hostUsername} · #${room.roomNumber}", color = OnDarkMedium, fontSize = 11.sp)
+                    }
+                    Pill("LIVE", Mint)
+                    Spacer(Modifier.width(8.dp))
+                    Text("${room.memberCount} members", color = OnDarkHigh, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The position: who this agency is, and where its share of the money went.
 // ---------------------------------------------------------------------------
