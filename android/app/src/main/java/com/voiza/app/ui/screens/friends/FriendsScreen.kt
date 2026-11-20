@@ -1,5 +1,15 @@
 package com.voiza.app.ui.screens.friends
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.LocationManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.compose.material3.Switch
+import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -94,6 +104,24 @@ fun FriendsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var newFriendId by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        if (result.values.any { it }) {
+            viewModel.setLocationSharing(true)
+            val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val providers = manager.getProviders(true)
+            val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            if (fine || coarse) {
+                val location = providers.mapNotNull { provider ->
+                    try { manager.getLastKnownLocation(provider) } catch (_: SecurityException) { null }
+                }.filter { System.currentTimeMillis() - it.time < 120_000L }.maxByOrNull { it.time }
+                location?.let { viewModel.updateLocation(it.latitude, it.longitude) }
+            }
+        } else viewModel.setLocationSharing(false)
+    }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.load() }
 
@@ -194,6 +222,14 @@ fun FriendsScreen(
                         },
                         onOpen = viewModel::openConversation,
                         onUnfriend = viewModel::unfriend,
+                        onLocationSharingChange = { enabled ->
+                            if (!enabled) viewModel.setLocationSharing(false)
+                            else {
+                                val allowed = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                if (allowed) viewModel.setLocationSharing(true)
+                                else locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
+                            }
+                        },
                     )
 
                     FriendsTab.REQUESTS -> RequestsList(state = state, viewModel = viewModel)
@@ -232,12 +268,24 @@ private fun FriendsList(
     onAdd: () -> Unit,
     onOpen: (MiniUser) -> Unit,
     onUnfriend: (String) -> Unit,
+    onLocationSharingChange: (Boolean) -> Unit,
 ) {
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
+        item {
+            VoizaCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Share live distance", color = OnDarkHigh, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Distance is visible only when both friends opt in. Sharing is optional and revocable.", color = OnDarkMedium, fontSize = 11.sp)
+                    }
+                    Switch(checked = state.locationSharingEnabled, onCheckedChange = onLocationSharingChange)
+                }
+            }
+        }
         item {
             VoizaCard {
                 Text("Add a friend", color = OnDarkHigh, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
@@ -286,6 +334,12 @@ private fun FriendsList(
                         Column(Modifier.weight(1f)) {
                             Text(friend.username, color = OnDarkHigh, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("VIP ${friend.vipLevel}", color = OnDarkMuted, fontSize = 11.sp)
+                            val meters = state.friendDistances[friend.id]
+                            Text(
+                                text = if (meters == null) "Distance unavailable" else if (meters < 1000) "$meters m away" else String.format("%.1f km away", meters / 1000.0),
+                                color = if (meters == null) OnDarkMuted else Cyan,
+                                fontSize = 10.sp,
+                            )
                         }
                         SmallAction(label = "Chat", onClick = { onOpen(friend) })
                         Spacer(Modifier.width(6.dp))
