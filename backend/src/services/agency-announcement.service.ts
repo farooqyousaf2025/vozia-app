@@ -1,4 +1,4 @@
-import { many, one, query, withTransaction } from '../config/db';
+import { many, one, withTransaction } from '../config/db';
 import { ApiError } from '../utils/http';
 
 export type AgencyAnnouncement = {
