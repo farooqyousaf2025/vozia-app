@@ -676,6 +676,18 @@ interface VoizaApiService {
      * member who runs nothing is refused with the server's own sentence rather than an empty payload.
      * [agencySubAgencies] is master-only: a sub-agency has none, and `requireMasterAgency` says so.
      */
+    @GET("api/agency/announcements")
+    suspend fun agencyAnnouncements(): AgencyAnnouncementsEnvelope
+
+    @POST("api/agency/announcements")
+    suspend fun publishAgencyAnnouncement(@Body body: AgencyAnnouncementBody): AgencyAnnouncementEnvelope
+
+    @GET("api/agency/announcements/inbox")
+    suspend fun myAgencyAnnouncements(): AgencyHostAnnouncementsEnvelope
+
+    @POST("api/agency/announcements/{id}/read")
+    suspend fun markAgencyAnnouncementRead(@Path("id") id: String): AgencyAnnouncementReadEnvelope
+
     @GET("api/agency/position")
     suspend fun agencyPosition(): AgencyPositionEnvelope
 
