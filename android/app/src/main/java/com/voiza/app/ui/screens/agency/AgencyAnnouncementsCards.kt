@@ -79,9 +79,9 @@ fun AgencyOwnerAnnouncementsCard(
         }
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            SummaryMetric("Announcements", state.items.size.toString())
-            SummaryMetric("Host reads", "$totalReads / $totalRecipients")
-            SummaryMetric("Pending", pendingReads.toString())
+            SummaryMetric("Announcements", state.items.size.toString(), Modifier.weight(1f))
+            SummaryMetric("Host reads", "$totalReads / $totalRecipients", Modifier.weight(1f))
+            SummaryMetric("Pending", pendingReads.toString(), Modifier.weight(1f))
         }
         Spacer(Modifier.height(10.dp))
         OutlinedTextField(
@@ -152,8 +152,8 @@ fun AgencyOwnerAnnouncementsCard(
 }
 
 @Composable
-private fun SummaryMetric(label: String, value: String) {
-    Column(modifier = Modifier.weight(1f).clip(RoundedCornerShape(9.dp)).background(Color(0xFF242438)).padding(8.dp)) {
+private fun SummaryMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.clip(RoundedCornerShape(9.dp)).background(Color(0xFF242438)).padding(8.dp)) {
         Text(value, color = OnDarkHigh, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         Text(label, color = OnDarkMedium, fontSize = 9.sp)
     }
