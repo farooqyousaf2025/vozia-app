@@ -1,6 +1,7 @@
 package com.voiza.app.ui.screens.agency
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,9 +19,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Modifier
@@ -116,6 +121,9 @@ fun AgencyDashboardScreen(
             return@Column
         }
 
+        var hostQuery by remember(position.id) { mutableStateOf("") }
+        var hostStatusFilter by remember(position.id) { mutableStateOf("All") }
+
         LazyColumn(
             contentPadding = PaddingValues(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -126,7 +134,16 @@ fun AgencyDashboardScreen(
             if (position.isMaster) {
                 item { AllocationCard(state.subAgencies, state.allocationError, position.subAgencyCount) }
             }
-            item { RosterCard(state.hosts, state.rosterError) }
+            item {
+                RosterCard(
+                    hosts = state.hosts,
+                    error = state.rosterError,
+                    query = hostQuery,
+                    onQueryChange = { hostQuery = it },
+                    statusFilter = hostStatusFilter,
+                    onStatusFilterChange = { hostStatusFilter = it },
+                )
+            }
             item { BatchesCard(state.settlements, state.batchesError) }
         }
     }
@@ -259,9 +276,26 @@ private fun AllocationCard(subs: List<AgencySubRow>, error: String?, subAgencyCo
  * would be a number the agency could not settle against anything.
  */
 @Composable
-private fun RosterCard(hosts: List<AgencyHostRow>, error: String?) {
+private fun RosterCard(
+    hosts: List<AgencyHostRow>,
+    error: String?,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    statusFilter: String,
+    onStatusFilterChange: (String) -> Unit,
+) {
+    val filteredHosts = hosts.filter { host ->
+        val matchesQuery = query.isBlank() || host.username.contains(query.trim(), ignoreCase = true)
+        val matchesStatus = when (statusFilter) {
+            "Active" -> host.status == AgencyStatus.ACTIVE
+            "Pending" -> host.status == AgencyStatus.PENDING
+            "Suspended" -> host.status == AgencyStatus.SUSPENDED
+            else -> true
+        }
+        matchesQuery && matchesStatus
+    }
     VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
-        SectionLabel("Your hosts")
+        SectionLabel("Your hosts · ${hosts.size}")
         if (error != null) {
             Text(error, color = DangerRed, fontSize = 11.sp)
             return@VoizaCard
@@ -273,12 +307,46 @@ private fun RosterCard(hosts: List<AgencyHostRow>, error: String?) {
                 fontSize = 12.sp,
             )
         } else {
-            hosts.forEach { host -> HostRow(host) }
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("Search hosts by username", fontSize = 12.sp) },
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = OnDarkHigh),
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                listOf("All", "Active", "Pending", "Suspended").forEach { filter ->
+                    Text(
+                        text = filter,
+                        color = if (statusFilter == filter) RCoinGreen else OnDarkMedium,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (statusFilter == filter) RCoinGreen.copy(alpha = 0.14f) else Color.Transparent)
+                            .clickable { onStatusFilterChange(filter) }
+                            .padding(horizontal = 9.dp, vertical = 6.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(7.dp))
+            Text(
+                text = "Showing ${filteredHosts.size} of ${hosts.size} hosts",
+                color = OnDarkMedium,
+                fontSize = 10.sp,
+            )
+            if (filteredHosts.isEmpty()) {
+                Text("No hosts match this search or status filter.", color = OnDarkMedium, fontSize = 12.sp)
+            } else {
+                filteredHosts.forEach { host -> HostRow(host) }
+            }
         }
         Spacer(Modifier.height(6.dp))
         Text(
             text = "Commission follows the gifts each host received. Hours a host spent live are not " +
-                "reported to agencies yet.",
+                "reported to agencies yet. Host assignment and financial controls remain with authorized operators.",
             color = OnDarkMedium.copy(alpha = 0.75f),
             fontSize = 10.sp,
         )
