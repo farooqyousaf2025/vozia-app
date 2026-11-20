@@ -121,6 +121,38 @@ async function memberToken(phone, username) {
       && recognisedB.milestones.filter(m => m.unlockedAt !== null).length === 1,
     recognition.json && recognition.json.recognition);
 
+  const leaderboard7 = await api('GET', '/api/agency/leaderboard?days=7', { token: owner.token });
+  const board7 = leaderboard7.json && leaderboard7.json.leaderboard;
+  const boardA = board7 && board7.hosts.find(h => h.username === tag + 'hosta');
+  const boardB = board7 && board7.hosts.find(h => h.username === tag + 'hostb');
+  report('7-day leaderboard ranks only active assigned hosts by verified attendance and joins',
+    leaderboard7.status === 200 && board7.days === 7 && board7.activeHostCount === 2
+      && board7.hosts.length === 2 && board7.hostsWithAttendance === 2
+      && board7.totalCheckIns === 8 && board7.totalAttendanceDays === 8
+      && boardA && boardA.rank === 1 && boardA.attendanceDays === 7 && boardA.checkIns === 7
+      && boardB && boardB.rank === 2 && boardB.attendanceDays === 1 && boardB.checkIns === 1
+      && boardA.badges.length === 4 && boardB.badges.length === 1,
+    board7);
+
+  const leaderboard30 = await api('GET', '/api/agency/leaderboard?days=30', { token: owner.token });
+  const board30 = leaderboard30.json && leaderboard30.json.leaderboard;
+  report('30-day leaderboard provides the selected period and cumulative earned badges',
+    leaderboard30.status === 200 && board30.days === 30 && board30.activeHostCount === 2
+      && board30.totalCheckIns === 31 && board30.totalAttendanceDays === 31
+      && board30.hosts[0].username === tag + 'hosta'
+      && board30.hosts[0].badges.some(badge => badge.code === 'HUNDRED_DAYS'),
+    board30);
+
+  const leaderboardRefused = await api('GET', '/api/agency/leaderboard', { token: plain.token });
+  report('members without an agency cannot read the leaderboard',
+    leaderboardRefused.status === 403 && leaderboardRefused.code === 'agency_not_found',
+    leaderboardRefused.code);
+
+  const leaderboardInvalid = await api('GET', '/api/agency/leaderboard?days=14', { token: owner.token });
+  report('leaderboard rejects unsupported reporting windows',
+    leaderboardInvalid.status === 400 && leaderboardInvalid.code === 'invalid_leaderboard_window',
+    leaderboardInvalid.code);
+
   const recognitionRefused = await api('GET', '/api/agency/recognition', { token: plain.token });
   report('members without an agency cannot read host recognition',
     recognitionRefused.status === 403 && recognitionRefused.code === 'agency_not_found',
