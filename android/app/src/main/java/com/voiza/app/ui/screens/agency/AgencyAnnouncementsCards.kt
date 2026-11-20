@@ -1,6 +1,5 @@
 package com.voiza.app.ui.screens.agency
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,15 +8,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,6 +27,7 @@ import com.voiza.app.ui.theme.RCoinGreen
 import com.voiza.app.ui.theme.VoizaSurface
 import com.voiza.app.viewmodel.AgencyAnnouncementsViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
+import kotlinx.coroutines.delay
 
 @Composable
 fun AgencyOwnerAnnouncementsCard(
@@ -39,8 +35,18 @@ fun AgencyOwnerAnnouncementsCard(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { viewModel.loadOwner() }
+    androidx.compose.runtime.LaunchedEffect(viewModel) {
+        while (true) {
+            delay(30_000)
+            viewModel.loadOwner(silent = true)
+        }
+    }
+    val pendingReads = state.items.sumOf { (it.recipientCount - it.readCount).coerceAtLeast(0) }
     VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
-        Text("Host announcements", color = OnDarkHigh, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Host announcements", color = OnDarkHigh, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            if (pendingReads > 0) Text("$pendingReads pending reads", color = RCoinGreen, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        }
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(value = state.title, onValueChange = viewModel::setTitle, modifier = Modifier.fillMaxWidth(),
             singleLine = true, label = { Text("Announcement title") })
@@ -73,8 +79,18 @@ fun HostAgencyAnnouncementsCard(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { viewModel.loadHostInbox() }
+    androidx.compose.runtime.LaunchedEffect(viewModel) {
+        while (true) {
+            delay(30_000)
+            viewModel.loadHostInbox(silent = true)
+        }
+    }
+    val unreadCount = state.items.count { !it.isRead }
     VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
-        Text("Agency messages", color = OnDarkHigh, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Agency messages", color = OnDarkHigh, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            if (unreadCount > 0) Text("$unreadCount new", color = RCoinGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        }
         Spacer(Modifier.height(6.dp))
         if (state.items.isEmpty() && !state.loading) Text("No agency announcements.", color = OnDarkMedium, fontSize = 11.sp)
         state.items.forEach { item ->
