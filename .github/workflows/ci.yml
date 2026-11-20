@@ -183,6 +183,8 @@ jobs:
 
   android:
     runs-on: ubuntu-latest
+    env:
+      VOIZA_API_BASE_URL: ${{ secrets.VOIZA_API_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -215,10 +217,8 @@ jobs:
       # secret is configured, build the unsigned release variant; otherwise report the
       # release-only check as skipped while debug/unit/wire-fixture checks still run.
       - name: Release APK (unsigned in CI; production URL required)
-        if: ${{ secrets.VOIZA_API_BASE_URL != '' }}
+        if: ${{ env.VOIZA_API_BASE_URL != '' }}
         working-directory: android
-        env:
-          VOIZA_API_BASE_URL: ${{ secrets.VOIZA_API_BASE_URL }}
         run: ./gradlew --no-daemon assembleRelease -PVOIZA_API_BASE_URL="$VOIZA_API_BASE_URL"
 
       - name: Wire-fixture harness
