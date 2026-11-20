@@ -222,6 +222,8 @@ fun PartnerDeskScreen(
         }
 
         var tab by remember(account.id) { mutableStateOf(DeskTab.OVERVIEW) }
+        var sellerQuery by remember(account.id) { mutableStateOf("") }
+        var sellerStatusFilter by remember(account.id) { mutableStateOf("All") }
         val tabs = if (account.isSeller) {
             listOf(DeskTab.OVERVIEW, DeskTab.ORDERS, DeskTab.SALES, DeskTab.STATEMENT)
         } else {
@@ -289,7 +291,15 @@ fun PartnerDeskScreen(
                     }
                 }
                 DeskTab.SELLERS -> item {
-                    SellersCard(state.sellers, state.sellersError, viewModel::openSellerReport)
+                    SellersCard(
+                        sellers = state.sellers,
+                        error = state.sellersError,
+                        query = sellerQuery,
+                        onQueryChange = { sellerQuery = it },
+                        statusFilter = sellerStatusFilter,
+                        onStatusFilterChange = { sellerStatusFilter = it },
+                        onOpen = viewModel::openSellerReport,
+                    )
                 }
                 DeskTab.STATEMENT -> item { StatementSection(state.statement, state.statementError) }
             }
@@ -556,10 +566,25 @@ private fun SalesCard(
 private fun SellersCard(
     sellers: List<PartnerSellerRow>,
     error: String?,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    statusFilter: String,
+    onStatusFilterChange: (String) -> Unit,
     onOpen: (String) -> Unit,
 ) {
+    val filteredSellers = sellers.filter { seller ->
+        val matchesQuery = query.isBlank() || seller.displayName.contains(query.trim(), ignoreCase = true) ||
+            seller.code.contains(query.trim(), ignoreCase = true)
+        val matchesStatus = when (statusFilter) {
+            "Active" -> seller.status == PartnerAccountStatus.ACTIVE
+            "Pending" -> seller.status == PartnerAccountStatus.PENDING
+            "Suspended" -> seller.status == PartnerAccountStatus.SUSPENDED
+            else -> true
+        }
+        matchesQuery && matchesStatus
+    }
     VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
-        DeskSectionLabel(if (sellers.isNotEmpty()) "Sellers under you · ${sellers.size}" else "Sellers under you")
+        DeskSectionLabel("Your seller network · ${sellers.size}")
         if (error != null) {
             Text(error, color = DangerRed, fontSize = 11.sp)
             return@VoizaCard
@@ -568,34 +593,70 @@ private fun SellersCard(
             Text("No seller reports to you yet.", color = OnDarkMedium, fontSize = 12.sp)
             return@VoizaCard
         }
-        sellers.forEach { seller ->
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable { onOpen(seller.id) }
-                    .padding(vertical = 4.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = seller.displayName.ifBlank { seller.code },
-                        color = OnDarkHigh,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Pill(seller.statusLabel, accountColor(seller.status))
-                }
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            placeholder = { Text("Search by seller name or code", fontSize = 12.sp) },
+            textStyle = MaterialTheme.typography.bodyMedium.copy(color = OnDarkHigh),
+            colors = deskFieldColors(),
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            listOf("All", "Active", "Pending", "Suspended").forEach { filter ->
                 Text(
-                    text = "${seller.code} · ${count(seller.recharge.orders)} orders · " +
-                        "${count(seller.recharge.credited)} credited · ${count(seller.recharge.processedDiamonds)} diamonds",
-                    color = OnDarkMedium,
-                    fontSize = 11.sp,
+                    text = filter,
+                    color = if (statusFilter == filter) RCoinGreen else OnDarkMedium,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (statusFilter == filter) RCoinGreen.copy(alpha = 0.14f) else Color.Transparent)
+                        .clickable { onStatusFilterChange(filter) }
+                        .padding(horizontal = 9.dp, vertical = 6.dp),
                 )
-                Text("Tap to read this seller's book", color = VioletLight, fontSize = 10.sp)
             }
-            Spacer(Modifier.height(6.dp))
         }
+        Spacer(Modifier.height(7.dp))
+        Text("Showing ${filteredSellers.size} of ${sellers.size} sellers", color = OnDarkMedium, fontSize = 10.sp)
+        if (filteredSellers.isEmpty()) {
+            Text("No sellers match this search or status filter.", color = OnDarkMedium, fontSize = 12.sp)
+        } else {
+            filteredSellers.forEach { seller ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onOpen(seller.id) }
+                        .padding(vertical = 4.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = seller.displayName.ifBlank { seller.code },
+                            color = OnDarkHigh,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Pill(seller.statusLabel, accountColor(seller.status))
+                    }
+                    Text(
+                        text = "${seller.code} · ${count(seller.recharge.orders)} orders · " +
+                            "${count(seller.recharge.credited)} credited · ${count(seller.recharge.processedDiamonds)} diamonds",
+                        color = OnDarkMedium,
+                        fontSize = 11.sp,
+                    )
+                    Text("Tap to read this seller's book", color = VioletLight, fontSize = 10.sp)
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+        }
+        Text(
+            "Only sellers assigned to your BD account are shown. Search and filters do not expand your access.",
+            color = OnDarkMedium.copy(alpha = 0.75f),
+            fontSize = 10.sp,
+        )
     }
 }
 
