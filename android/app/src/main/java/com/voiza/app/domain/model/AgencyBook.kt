@@ -105,6 +105,25 @@ data class AgencyPosition(
     val isMaster: Boolean get() = kind == AgencyKind.MASTER
 }
 
+/** Read-only activity derived from persisted room creation and non-host participant-entry records. */
+data class AgencyHostActivityTotals(
+    val roomsCreated: Int, val roomsWithVisitors: Int, val memberVisits: Int, val uniqueVisitors: Int,
+)
+data class AgencyHostActivityDay(
+    val date: String, val roomsCreated: Int, val roomsWithVisitors: Int, val memberVisits: Int, val uniqueVisitors: Int,
+)
+data class AgencyHostActivityRow(
+    val username: String, val avatarUrl: String?, val roomsCreated: Int, val roomsWithVisitors: Int,
+    val memberVisits: Int, val uniqueVisitors: Int,
+)
+data class AgencyHostActivityWeek(
+    val weekStart: String, val roomsCreated: Int, val roomsWithVisitors: Int, val memberVisits: Int, val uniqueVisitors: Int,
+)
+data class AgencyHostActivityReport(
+    val days: Int, val timezone: String, val totals: AgencyHostActivityTotals,
+    val daily: List<AgencyHostActivityDay>, val weekly: List<AgencyHostActivityWeek>, val hosts: List<AgencyHostActivityRow>,
+)
+
 /** One host on the roster. No phone number and no account id: those are the operator's columns. */
 data class AgencyHostRow(
     val username: String,

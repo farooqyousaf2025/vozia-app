@@ -8,6 +8,7 @@ import com.voiza.app.domain.model.AgencyLiveRoom
 import com.voiza.app.domain.model.AgencyRoomMember
 import com.voiza.app.domain.model.AgencyRoomModerationAudit
 import com.voiza.app.domain.model.AgencyHostRow
+import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencySubRow
@@ -43,6 +44,10 @@ class AgencyBookViewModel(
     data class AgencyBookUiState(
         val position: AgencyPosition? = null,
         val hosts: List<AgencyHostRow> = emptyList(),
+        val hostActivity: AgencyHostActivityReport? = null,
+        val activityDays: Int = 7,
+        val activityLoading: Boolean = false,
+        val activityError: String? = null,
         val activeRooms: List<AgencyLiveRoom> = emptyList(),
         val expandedRoomId: String? = null,
         val roomMembers: List<AgencyRoomMember> = emptyList(),
@@ -82,6 +87,27 @@ class AgencyBookViewModel(
                 is ApiResult.Success -> {
                     _state.update { it.copy(position = result.data, loading = false) }
                     loadSections(result.data)
+                }
+            }
+        }
+    }
+
+    fun setActivityDays(days: Int) {
+        val selected = if (days == 30) 30 else 7
+        if (_state.value.activityDays == selected && _state.value.hostActivity != null) return
+        _state.update { it.copy(activityDays = selected) }
+        loadHostActivity(selected)
+    }
+
+    fun loadHostActivity(days: Int = _state.value.activityDays) {
+        viewModelScope.launch {
+            _state.update { it.copy(activityLoading = true, activityError = null) }
+            when (val result = agencyBookRepository.hostActivity(days)) {
+                is ApiResult.Success -> _state.update {
+                    it.copy(hostActivity = result.data, activityDays = days, activityLoading = false)
+                }
+                is ApiResult.Failure -> _state.update {
+                    it.copy(activityLoading = false, activityError = result.message)
                 }
             }
         }
@@ -156,12 +182,16 @@ class AgencyBookViewModel(
 
     private suspend fun loadSections(position: AgencyPosition) {
         val rooms = agencyBookRepository.activeRooms()
+        val activity = agencyBookRepository.hostActivity(_state.value.activityDays)
         val roster = agencyBookRepository.hosts()
         // Master-only, and skipped rather than called: the server's own answer for a sub is a refusal.
         val allocations = if (position.isMaster) agencyBookRepository.subAgencies() else null
         val batches = agencyBookRepository.settlements()
         _state.update {
             it.copy(
+                hostActivity = (activity as? ApiResult.Success)?.data ?: it.hostActivity,
+                activityError = (activity as? ApiResult.Failure)?.message,
+                activityLoading = false,
                 activeRooms = (rooms as? ApiResult.Success)?.data ?: it.activeRooms,
                 roomsError = (rooms as? ApiResult.Failure)?.message,
                 hosts = (roster as? ApiResult.Success)?.data ?: it.hosts,

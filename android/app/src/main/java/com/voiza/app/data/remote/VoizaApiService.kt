@@ -8,6 +8,7 @@ import com.voiza.app.data.remote.dto.AgencyMuteMemberBody
 import com.voiza.app.data.remote.dto.AgencyRoomModerationBody
 import com.voiza.app.data.remote.dto.AgencyRoomModerationActionEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostsEnvelope
+import com.voiza.app.data.remote.dto.AgencyHostActivityEnvelope
 import com.voiza.app.data.remote.dto.AgencyPositionEnvelope
 import com.voiza.app.data.remote.dto.AgencySettlementsEnvelope
 import com.voiza.app.data.remote.dto.AgencySubsEnvelope
@@ -695,6 +696,9 @@ interface VoizaApiService {
 
     @DELETE("api/agency/rooms/{id}/ban/{userId}")
     suspend fun agencyUnbanMember(@Path("id") roomId: String, @Path("userId") userId: String): AgencyRoomModerationActionEnvelope
+
+    @GET("api/agency/activity")
+    suspend fun agencyHostActivity(@Query("days") days: Int = 7): AgencyHostActivityEnvelope
 
     @GET("api/agency/hosts")
     suspend fun agencyHosts(@Query("limit") limit: Int? = null): AgencyHostsEnvelope

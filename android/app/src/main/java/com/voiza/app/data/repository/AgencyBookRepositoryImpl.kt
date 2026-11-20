@@ -5,6 +5,7 @@ import com.voiza.app.domain.model.AgencyRoomMember
 import com.voiza.app.domain.model.AgencyRoomModerationAudit
 import com.voiza.app.data.remote.dto.AgencyMuteMemberBody
 import com.voiza.app.data.remote.dto.AgencyRoomModerationBody
+import com.voiza.app.data.mapper.toDomain
 import com.voiza.app.data.mapper.toHosts
 import com.voiza.app.data.mapper.toPosition
 import com.voiza.app.data.mapper.toSettlements
@@ -13,6 +14,7 @@ import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.data.remote.VoizaApiService
 import com.voiza.app.data.remote.apiCall
 import com.voiza.app.domain.model.AgencyHostRow
+import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencySubRow
@@ -77,6 +79,12 @@ class AgencyBookRepositoryImpl(
         apiCall { api.agencyPosition() }.flatMapSuccess { envelope ->
             envelope.toPosition()?.let { ApiResult.Success(it) }
                 ?: ApiResult.Failure("The answer carried no agency.")
+        }
+
+    override suspend fun hostActivity(days: Int): ApiResult<AgencyHostActivityReport> =
+        apiCall { api.agencyHostActivity(if (days == 30) 30 else 7) }.flatMapSuccess { envelope ->
+            envelope.toDomain()?.let { ApiResult.Success(it) }
+                ?: ApiResult.Failure("The activity report was empty.")
         }
 
     override suspend fun hosts(limit: Int): ApiResult<List<AgencyHostRow>> =
