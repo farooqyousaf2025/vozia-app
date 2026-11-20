@@ -454,11 +454,11 @@ export async function listFriendDistances(userId: string): Promise<FriendLocatio
   const rows = await many<{ friend_id: string; distance_meters: number | null }>(
     `SELECT f.friend_id,
       CASE WHEN mine.user_id IS NOT NULL AND theirs.user_id IS NOT NULL
-        THEN ROUND((6371000 * 2 * ASIN(SQRT(
+        THEN (ROUND((6371000 * 2 * ASIN(SQRT(
           POWER(SIN(RADIANS(theirs.latitude - mine.latitude) / 2), 2) +
           COS(RADIANS(mine.latitude)) * COS(RADIANS(theirs.latitude)) *
           POWER(SIN(RADIANS(theirs.longitude - mine.longitude) / 2), 2)
-        )))) / 100) * 100)::int ELSE NULL END AS distance_meters
+        ))) / 100) * 100)::int ELSE NULL END AS distance_meters
      FROM (
        SELECT CASE WHEN user_a_id = $1 THEN user_b_id ELSE user_a_id END AS friend_id
          FROM friendships WHERE user_a_id = $1 OR user_b_id = $1
