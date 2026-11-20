@@ -289,6 +289,10 @@ fun PartnerDeskScreen(
                             onAttachProof = { order ->
                                 attach(PartnerDeskViewModel.ReceiptTarget(order.id, null, order.reference))
                             },
+                        query = "",
+                        onQueryChange = {},
+                        statusFilter = "All",
+                        onStatusFilterChange = {},
                         )
                     }
                 }
