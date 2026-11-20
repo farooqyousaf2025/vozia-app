@@ -28,6 +28,7 @@ import com.voiza.app.domain.model.DirectMessage
 import com.voiza.app.domain.model.FriendPage
 import com.voiza.app.domain.model.FriendRequest
 import com.voiza.app.domain.model.FriendRequestPage
+import com.voiza.app.domain.model.FriendDistance
 import com.voiza.app.domain.model.FirstRechargeStatus
 import com.voiza.app.domain.model.MessagePage
 import com.voiza.app.domain.model.EmojiCatalogue
@@ -400,6 +401,10 @@ data class GameLobbyBundle(
  * the 403 is surfaced as the server's own sentence rather than predicted on this device.
  */
 interface FriendsRepository {
+    suspend fun locationSharingEnabled(): ApiResult<Boolean>
+    suspend fun setLocationSharing(enabled: Boolean): ApiResult<Boolean>
+    suspend fun updateLocation(latitude: Double, longitude: Double): ApiResult<Boolean>
+    suspend fun friendDistances(): ApiResult<List<FriendDistance>>
     /** Ask a member to be a friend. The server answers 409 if one is already pending. */
     suspend fun sendFriendRequest(targetUserId: String): ApiResult<FriendRequest>
 
