@@ -4,6 +4,8 @@ import com.voiza.app.domain.model.AgencyHostAttendanceDay
 import com.voiza.app.domain.model.AgencyHostAttendanceReport
 import com.voiza.app.domain.model.AgencyHostAttendanceRow
 import com.voiza.app.domain.model.AgencyHostAttendanceTotals
+import com.voiza.app.domain.model.AgencyHostRow
+import com.voiza.app.domain.model.AgencyStatus
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -65,4 +67,40 @@ class AgencyAttendanceCsvTest {
         assertTrue(csv.contains("'=HYPERLINK(\"\"https://example.com\"\")"))
         assertTrue(csv.contains("'  @SUM(1,1)"))
     }
+    @Test
+    fun `roster export includes authorized roster fields and excludes identifiers`() {
+        val hosts = listOf(
+            AgencyHostRow(
+                username = "ali_live",
+                avatarUrl = "https://example.com/avatar.png",
+                status = AgencyStatus.ACTIVE,
+                statusLabel = "Active",
+                joinedAt = "2026-10-01T12:00:00Z",
+                commissionLabel = "10%",
+                accruedCoins = 12500,
+                last30dCoins = 2400,
+            ),
+        )
+
+        val csv = hosts.toRosterCsv()
+
+        assertTrue(csv.startsWith("\uFEFFusername,status,joined_at,commission_rate"))
+        assertTrue(csv.contains("ali_live,Active,2026-10-01T12:00:00Z,10%,12500,2400"))
+        assertTrue(!csv.contains("avatar.png"))
+        assertTrue(!csv.contains("user_id"))
+    }
+
+    @Test
+    fun `roster export quotes text and neutralizes formula-like usernames`() {
+        val hosts = listOf(
+            AgencyHostRow("=SUM(1,1)", null, null, "Unknown", null, "10%", 0, 0),
+            AgencyHostRow("ali,live", null, null, "Unknown", null, "10%", 0, 0),
+        )
+
+        val csv = hosts.toRosterCsv()
+
+        assertTrue(csv.contains("'=SUM(1,1)"))
+        assertTrue(csv.contains("\"ali,live\""))
+    }
+
 }

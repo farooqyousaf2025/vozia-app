@@ -1,6 +1,7 @@
 package com.voiza.app.data.export
 
 import com.voiza.app.domain.model.AgencyHostAttendanceReport
+import com.voiza.app.domain.model.AgencyHostRow
 
 /**
  * A lossless, spreadsheet-friendly export of the attendance report already returned to this owner.
@@ -33,6 +34,35 @@ fun AgencyHostAttendanceReport.toAttendanceCsv(): String {
         // UTF-8 BOM improves automatic UTF-8 detection in common desktop spreadsheet apps.
         append('\uFEFF')
         (listOf(header) + rows).forEach { row ->
+            append(row.joinToString(",") { it.toCsvField() })
+            append("\r\n")
+        }
+    }
+}
+
+
+/**
+ * Exports only the fields already visible in this agency owner's authorized host roster.
+ * No account identifiers, contact details, avatar URLs, or payout-account data are included.
+ */
+fun List<AgencyHostRow>.toRosterCsv(): String {
+    val header = listOf(
+        "username", "status", "joined_at", "commission_rate",
+        "lifetime_accrued_coins", "last_30_days_coins",
+    )
+    return buildString {
+        append('\uFEFF')
+        append(header.joinToString(",") { it.toCsvField() })
+        append("\r\n")
+        this@toRosterCsv.forEach { host ->
+            val row = listOf(
+                host.username,
+                host.statusLabel,
+                host.joinedAt.orEmpty(),
+                host.commissionLabel,
+                host.accruedCoins.toString(),
+                host.last30dCoins.toString(),
+            )
             append(row.joinToString(",") { it.toCsvField() })
             append("\r\n")
         }
