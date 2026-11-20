@@ -187,7 +187,8 @@ export default function RoomConsolePage() {
           <p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-muted">
             <span>#{view.room.roomNumber}</span>
             <span className="text-faint">·</span>
-            <span className="text-violet-300">{view.room.host.username}</span>
+            <span className={view.room.ownerType === 'SYSTEM' ? "font-semibold text-premium" : "text-violet-300"}>{view.room.ownerType === 'SYSTEM' ? "Vozia Operations" : view.room.host.username}</span>
+            {view.room.ownerType === 'SYSTEM' && <Badge tone="amber">SYSTEM-OWNED</Badge>}
             <span className="text-faint">·</span>
             <span>{view.room.livekitRoomName}</span>
             <span className="text-faint">·</span>
