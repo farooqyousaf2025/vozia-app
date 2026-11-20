@@ -42,7 +42,8 @@
     "webhook:sink": "node scripts/livekit-webhook-sink.cjs",
     "test:social:e2e": "node scripts/social-e2e.cjs",
     "test:gift:e2e": "node scripts/gift-e2e.cjs",
-    "test:bubbles": "node scripts/bubbles-e2e.cjs"
+    "test:bubbles": "node scripts/bubbles-e2e.cjs",
+    "test:agency:announcements": "node scripts/agency-announcements-e2e.cjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
