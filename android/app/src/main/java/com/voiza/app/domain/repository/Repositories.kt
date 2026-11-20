@@ -495,7 +495,7 @@ interface RoleApplicationRepository {
 }
 
 /**
- * The agency's own book (`/api/agency`, migrations 0033 and 0040): what a roster of hosts earned, how
+ * The agency's own book (`/api/agency`, migrations 0033, 0040 and 0058): what a roster of hosts earned, how
  * much of it went to a master, and which payout batches exist.
  *
  * No method takes an agency id. The server reads the signed-in member and answers with the one agency
