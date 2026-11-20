@@ -36,7 +36,7 @@ import { Table, TBody, Td, Th, THead, Tr } from '../components/ui/Table';
 import { ApiError, api, assetUrl } from '../lib/api';
 import { formatCompact, formatDiamonds, formatRCoin, parseSignedInt, parseUnsignedInt, relativeTime, formatDateTime } from '../lib/format';
 import { useAuth } from '../context/AuthContext';
-import type { PromoGrant, PromoPolicyConfig, StoreItemKind, UserListQuery, UserRow, UserSocialSummary, UserStatus, UserType } from '../types';
+import type { AuditEntry, PromoGrant, PromoPolicyConfig, StoreItemKind, UserListQuery, UserRow, UserSocialSummary, UserStatus, UserType } from '../types';
 
 const PAGE_LIMIT = 20;
 
@@ -71,6 +71,7 @@ export default function UsersPage() {
   const [xpTarget, setXpTarget] = useState<UserRow | null>(null);
   const [grantTarget, setGrantTarget] = useState<UserRow | null>(null);
   const [socialTarget, setSocialTarget] = useState<UserRow | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<UserRow | null>(null);
   const [promoTarget, setPromoTarget] = useState<UserRow | null>(null);
 
   const query = useMemo<UserListQuery>(
@@ -197,6 +198,7 @@ export default function UsersPage() {
                 <Th>User</Th>
                 <Th>Phone</Th>
                 <Th>Type</Th>
+                <Th>Agency</Th>
                 <Th>Status</Th>
                 <Th>VIP</Th>
                 <Th>Earned level</Th>
@@ -225,25 +227,27 @@ export default function UsersPage() {
                     </Td>
                     <Td className="tabular-nums">{user.phone}</Td>
                     <Td>
-                      <Badge tone={USER_TYPE_TONES[user.userType] ?? 'slate'}>{user.userType}</Badge>
+                      <div className="space-y-1">
+                        <Badge tone={USER_TYPE_TONES[user.userType] ?? 'slate'}>{user.userType}</Badge>
+                        {user.userType === 'HOST' && <p className="text-[10px] text-faint">Host account</p>}
+                      </div>
+                    </Td>
+                    <Td>
+                      {user.agency ? <span className="text-xs text-ink">{user.agency}</span> : <span className="text-xs text-faint">—</span>}
                     </Td>
                     <Td>
                       <Badge tone={user.status === 'ACTIVE' ? 'green' : 'red'}>{user.status}</Badge>
                     </Td>
                     <Td>
-                      <Select
+                      {can('user:vip') ? <Select
                         aria-label={`VIP level for ${user.username}`}
                         className="w-[76px]"
                         value={user.vipLevel}
                         disabled={vipBusy === user.id}
                         onChange={(e) => void changeVip(user, Number(e.target.value))}
                       >
-                        {VIP_LEVELS.map((level) => (
-                          <option key={level} value={level}>
-                            {level}
-                          </option>
-                        ))}
-                      </Select>
+                        {VIP_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
+                      </Select> : <span className="text-xs tabular-nums text-muted">{user.vipLevel}</span>}
                     </Td>
                     {/* Earned rank, read-only beside the tier an operator sets: a member climbs this
                         one by sending and receiving coins, and only an operator's correction moves it. */}
@@ -289,20 +293,20 @@ export default function UsersPage() {
                     <Td className="whitespace-nowrap">{relativeTime(user.lastSeenAt)}</Td>
                     <Td align="right" className="whitespace-nowrap pr-4">
                       <div className="flex items-center justify-end gap-1.5">
-                        <Button
+                        {can('user:wallet') && <Button
                           size="sm"
                           icon={<IconDiamond className="h-3.5 w-3.5" />}
                           onClick={() => setBalanceTarget(user)}
                         >
                           Balance
-                        </Button>
-                        <Button
+                        </Button>}
+                        {can('user:vip') && <Button
                           size="sm"
                           icon={<IconTrendUp className="h-3.5 w-3.5" />}
                           onClick={() => setXpTarget(user)}
                         >
                           Level
-                        </Button>
+                        </Button>}
                         {can('user:wallet') && (
                           <Button
                             size="sm"
@@ -312,20 +316,21 @@ export default function UsersPage() {
                             Grant
                           </Button>
                         )}
-                        <Button
+                        {can('user:wallet') && <Button
                           size="sm"
                           icon={<IconSpark className="h-3.5 w-3.5" />}
                           onClick={() => setPromoTarget(user)}
                         >
                           Bonus
-                        </Button>
+                        </Button>}
                         <IconButton
                           label={`Social graph for ${user.username}`}
                           onClick={() => setSocialTarget(user)}
                         >
                           <IconEye className="h-4 w-4" />
                         </IconButton>
-                        {user.status === 'ACTIVE' ? (
+                        {can('audit:read') && <Button size="sm" variant="ghost" onClick={() => setHistoryTarget(user)}>History</Button>}
+                        {can('user:moderate') && (user.status === 'ACTIVE' ? (
                           <IconButton label={`Ban ${user.username}`} tone="danger" onClick={() => setBanTarget(user)}>
                             <IconBan className="h-4 w-4" />
                           </IconButton>
@@ -333,7 +338,7 @@ export default function UsersPage() {
                           <IconButton label={`Unban ${user.username}`} onClick={() => setBanTarget(user)}>
                             <IconCheck className="h-4 w-4" />
                           </IconButton>
-                        )}
+                        ))}
                       </div>
                     </Td>
                   </Tr>
@@ -384,6 +389,10 @@ export default function UsersPage() {
 
       {socialTarget !== null && (
         <UserSocialModal user={socialTarget} onClose={() => setSocialTarget(null)} />
+      )}
+
+      {historyTarget !== null && (
+        <UserHistoryModal user={historyTarget} onClose={() => setHistoryTarget(null)} />
       )}
 
       {promoTarget !== null && (
