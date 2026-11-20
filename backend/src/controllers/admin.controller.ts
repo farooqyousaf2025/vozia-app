@@ -14,6 +14,7 @@ import {
   deleteTheme,
   listAdminCatalogue,
   setCategoryEffect,
+  setDefaultRide,
   themeSlugs,
   updateEffect,
   updateFrame,
@@ -972,6 +973,19 @@ export const bubbleHoldersEndpoint = asyncHandler(async (req: Request, res: Resp
 // A ride is sold like a ring and worn like a flourish, but it is the first cosmetic that takes the
 // whole screen from the room, so its row carries the two things a renderer needs: the container the
 // bytes were sniffed as, and the operator's ceiling on how long the cinematic holds the screen.
+
+export const setDefaultRideEndpoint = asyncHandler(async (req: Request, res: Response) => {
+  const key = req.body?.key ?? null;
+  const defaultRideKey = await setDefaultRide(key);
+  await logAction(req, {
+    action: 'DEFAULT_ENTRANCE_RIDE_UPDATE',
+    targetType: 'entrance_ride_settings',
+    targetId: 'singleton',
+    summary: defaultRideKey ? `Set platform default entrance ride to ${defaultRideKey}` : 'Cleared the platform default entrance ride',
+    details: { defaultRideKey },
+  });
+  res.json({ defaultRideKey });
+});
 
 export const createRideEndpoint = asyncHandler(async (req: Request, res: Response) => {
   const ride = await createRide(req.body ?? {});
