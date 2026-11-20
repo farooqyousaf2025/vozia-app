@@ -451,6 +451,8 @@ export async function updateOwnFriendLocation(userId: string, latitude: number, 
   return { updated: true };
 }
 export async function listFriendDistances(userId: string): Promise<FriendLocationDto[]> {
+  // Keep only live samples: stale coordinates are purged whenever the location surface is read.
+  await query(`DELETE FROM friend_live_locations WHERE updated_at <= now() - INTERVAL '5 minutes'`);
   const rows = await many<{ friend_id: string; distance_meters: number | null }>(
     `SELECT f.friend_id,
       CASE WHEN mine.user_id IS NOT NULL AND theirs.user_id IS NOT NULL
