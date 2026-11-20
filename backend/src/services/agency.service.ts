@@ -1632,6 +1632,72 @@ export async function agencySelfHostActivity(agencyId: string, days: number): Pr
 }
 
 
+export type AgencyHostGoalRow = {
+  username: string; avatarUrl: string | null; attendanceDays: number;
+  targetDays: number; progressPercent: number; remainingDays: number; metTarget: boolean;
+};
+export type AgencyHostGoals = {
+  weeklyAttendanceTargetDays: number; windowDays: 7; timezone: 'UTC';
+  activeHostCount: number; hostsMeetingGoal: number; hosts: AgencyHostGoalRow[]; updatedAt: string;
+};
+
+/** Agency-owned attendance target and read-only progress over the last seven UTC calendar days. */
+export async function agencySelfHostGoals(agencyId: string): Promise<AgencyHostGoals> {
+  const agency = await one<{ weekly_attendance_target_days: number; updated_at: Date | string }>(
+    'SELECT weekly_attendance_target_days, updated_at FROM agencies WHERE id = $1 AND status = 'ACTIVE'',
+    [agencyId],
+  );
+  if (!agency) throw ApiError.forbidden('This member does not run an active agency', 'agency_not_found');
+  const targetDays = Math.max(1, Math.min(7, minor(agency.weekly_attendance_target_days)));
+  const rows = await many<{
+    username: string; avatar_url: string | null; attendance_days: string | number;
+  }>(
+    \`WITH bounds AS (
+       SELECT ((now() AT TIME ZONE 'UTC')::date - 6)::timestamp AT TIME ZONE 'UTC' AS start_at,
+              now() AS end_at
+     ), roster AS (
+       SELECT ah.host_user_id, u.username, u.avatar_url
+       FROM agency_hosts ah JOIN agencies a ON a.id = ah.agency_id
+       JOIN users u ON u.id = ah.host_user_id
+       WHERE ah.agency_id = $1 AND ah.status = 'ACTIVE' AND a.status = 'ACTIVE'
+     ), attendance AS (
+       SELECT c.host_user_id,
+              COUNT(DISTINCT (c.checked_in_at AT TIME ZONE 'UTC')::date)::int AS attendance_days
+       FROM room_host_checkins c CROSS JOIN bounds b
+       JOIN roster h ON h.host_user_id = c.host_user_id
+       WHERE c.checked_in_at >= b.start_at AND c.checked_in_at < b.end_at
+       GROUP BY c.host_user_id
+     )
+     SELECT roster.username, roster.avatar_url, COALESCE(attendance.attendance_days, 0)::int AS attendance_days
+     FROM roster LEFT JOIN attendance ON attendance.host_user_id = roster.host_user_id
+     ORDER BY COALESCE(attendance.attendance_days, 0) DESC, roster.username\`,
+    [agencyId],
+  );
+  const hosts = rows.map(row => {
+    const attendanceDays = Math.min(7, minor(row.attendance_days));
+    return {
+      username: row.username, avatarUrl: row.avatar_url, attendanceDays, targetDays,
+      progressPercent: Math.min(100, Math.round((attendanceDays / targetDays) * 100)),
+      remainingDays: Math.max(0, targetDays - attendanceDays), metTarget: attendanceDays >= targetDays,
+    };
+  });
+  return {
+    weeklyAttendanceTargetDays: targetDays, windowDays: 7, timezone: 'UTC',
+    activeHostCount: hosts.length, hostsMeetingGoal: hosts.filter(host => host.metTarget).length,
+    hosts, updatedAt: new Date(agency.updated_at).toISOString(),
+  };
+}
+
+/** Only the authenticated agency owner can change this informational target; it has no payout or status effect. */
+export async function agencySelfUpdateHostGoals(agencyId: string, targetDays: number): Promise<AgencyHostGoals> {
+  const updated = await one<{ id: string }>(
+    'UPDATE agencies SET weekly_attendance_target_days = $2 WHERE id = $1 AND status = 'ACTIVE' RETURNING id',
+    [agencyId, targetDays],
+  );
+  if (!updated) throw ApiError.forbidden('This member does not run an active agency', 'agency_not_found');
+  return agencySelfHostGoals(agencyId);
+}
+
 export type AgencyHostAttendanceDay = { date: string; checkIns: number; hostsCheckedIn: number };
 export type AgencyHostAttendanceRow = {
   username: string; avatarUrl: string | null; checkIns: number; attendanceDays: number; lastCheckInAt: string | null;
