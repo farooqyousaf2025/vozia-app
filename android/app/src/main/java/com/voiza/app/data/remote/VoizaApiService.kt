@@ -704,6 +704,12 @@ interface VoizaApiService {
     @GET("api/agency/attendance")
     suspend fun agencyHostAttendance(@Query("days") days: Int = 7): AgencyHostAttendanceEnvelope
 
+    @GET("api/agency/goals")
+    suspend fun agencyHostGoals(): AgencyHostGoalsEnvelope
+
+    @PUT("api/agency/goals")
+    suspend fun updateAgencyHostGoals(@Body body: AgencyHostGoalsUpdateBody): AgencyHostGoalsEnvelope
+
     @GET("api/agency/hosts")
     suspend fun agencyHosts(@Query("limit") limit: Int? = null): AgencyHostsEnvelope
 
