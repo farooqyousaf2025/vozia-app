@@ -1644,7 +1644,7 @@ export type AgencyHostGoals = {
 /** Agency-owned attendance target and read-only progress over the last seven UTC calendar days. */
 export async function agencySelfHostGoals(agencyId: string): Promise<AgencyHostGoals> {
   const agency = await one<{ weekly_attendance_target_days: number; updated_at: Date | string }>(
-    'SELECT weekly_attendance_target_days, updated_at FROM agencies WHERE id = $1 AND status = 'ACTIVE'',
+    "SELECT weekly_attendance_target_days, updated_at FROM agencies WHERE id = $1 AND status = 'ACTIVE'",
     [agencyId],
   );
   if (!agency) throw ApiError.forbidden('This member does not run an active agency', 'agency_not_found');
@@ -1652,7 +1652,7 @@ export async function agencySelfHostGoals(agencyId: string): Promise<AgencyHostG
   const rows = await many<{
     username: string; avatar_url: string | null; attendance_days: string | number;
   }>(
-    \`WITH bounds AS (
+    `WITH bounds AS (
        SELECT ((now() AT TIME ZONE 'UTC')::date - 6)::timestamp AT TIME ZONE 'UTC' AS start_at,
               now() AS end_at
      ), roster AS (
@@ -1670,7 +1670,7 @@ export async function agencySelfHostGoals(agencyId: string): Promise<AgencyHostG
      )
      SELECT roster.username, roster.avatar_url, COALESCE(attendance.attendance_days, 0)::int AS attendance_days
      FROM roster LEFT JOIN attendance ON attendance.host_user_id = roster.host_user_id
-     ORDER BY COALESCE(attendance.attendance_days, 0) DESC, roster.username\`,
+     ORDER BY COALESCE(attendance.attendance_days, 0) DESC, roster.username`,
     [agencyId],
   );
   const hosts = rows.map(row => {
@@ -1691,7 +1691,7 @@ export async function agencySelfHostGoals(agencyId: string): Promise<AgencyHostG
 /** Only the authenticated agency owner can change this informational target; it has no payout or status effect. */
 export async function agencySelfUpdateHostGoals(agencyId: string, targetDays: number): Promise<AgencyHostGoals> {
   const updated = await one<{ id: string }>(
-    'UPDATE agencies SET weekly_attendance_target_days = $2 WHERE id = $1 AND status = 'ACTIVE' RETURNING id',
+    "UPDATE agencies SET weekly_attendance_target_days = $2 WHERE id = $1 AND status = 'ACTIVE' RETURNING id",
     [agencyId, targetDays],
   );
   if (!updated) throw ApiError.forbidden('This member does not run an active agency', 'agency_not_found');
