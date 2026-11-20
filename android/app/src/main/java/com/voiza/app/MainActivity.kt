@@ -20,6 +20,7 @@ import com.voiza.app.di.ServiceLocator
 import com.voiza.app.ui.components.banner.BannerNavigator
 import com.voiza.app.ui.components.banner.LocalBannerNavigator
 import com.voiza.app.ui.components.banner.LocalBannerStore
+import com.voiza.app.ui.components.announcement.AnnouncementTicker
 import com.voiza.app.ui.components.banner.SplashBannerOverlay
 import com.voiza.app.ui.navigation.VoizaNavHost
 import com.voiza.app.ui.theme.VoizaTheme
@@ -90,6 +91,9 @@ class MainActivity : ComponentActivity() {
                                 navController = navController,
                             )
                         }
+                        // App-wide ticker: top-ups, top rankers and game results, drawn above the
+                        // navigation graph so every screen sees the same line.
+                        AnnouncementTicker()
                         // Above the graph, and only while a SPLASH campaign is live: with nothing to
                         // show the app opens exactly as it did before this overlay existed.
                         SplashBannerOverlay()

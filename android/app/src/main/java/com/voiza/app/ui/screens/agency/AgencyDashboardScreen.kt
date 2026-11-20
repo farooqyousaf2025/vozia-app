@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -445,4 +446,11 @@ private fun batchColor(status: AgencySettlementStatus?): Color = when (status) {
     AgencySettlementStatus.DRAFT -> WarningAmber
     AgencySettlementStatus.VOID -> DangerRed
     null -> OnDarkMedium
+}
+
+
+@Preview(showBackground = true)
+@Composable
+fun AgencyDashboardScreenPreview() {
+    AgencyDashboardScreen(onBack = {})
 }

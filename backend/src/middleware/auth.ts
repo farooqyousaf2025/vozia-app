@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { one } from '../config/db';
 import { findAdminById } from '../services/admin.service';
-import { AdminRow, BusinessAccountRow } from '../types/db';
+import { AdminRow, BusinessAccountKind, BusinessAccountRow } from '../types/db';
 import { BusinessPermission, Permission, adminHasPermission, businessHasPermission } from '../services/rbac.service';
 import { AgencyOwnerRow } from '../services/agency.service';
 import {
@@ -123,14 +123,61 @@ export const requireBusiness = (...permissions: BusinessPermission[]) =>
     const payload = verifyToken(bearer(req));
     if (payload.scope !== 'business') throw ApiError.forbidden('Business account token required');
     req.business = payload;
-    // last_login_at is the only write this guard makes, and it is one indexed UPDATE.
+    // last_login_at is the only write this guard makes, and it is one indexed UPDATE. The parent
+    // join rides along so the desk can name the BD above a seller, exactly as the operator reads do.
     const row = await one<BusinessAccountRow>(
-      'UPDATE business_accounts SET last_login_at = now() WHERE id = $1 RETURNING *',
+      `WITH touched AS (
+         UPDATE business_accounts SET last_login_at = now() WHERE id = $1 RETURNING *
+       )
+       SELECT t.*, p.code AS parent_code, p.display_name AS parent_name
+         FROM touched t LEFT JOIN business_accounts p ON p.id = t.parent_id`,
       [payload.sub],
     );
     if (!row) throw ApiError.unauthorized('Business account no longer exists');
     if (row.status !== 'ACTIVE') {
       throw ApiError.forbidden(`This business account is ${row.status.toLowerCase()}`, 'business_account_inactive');
+    }
+    req.businessRow = row;
+    for (const permission of permissions) {
+      if (!businessHasPermission(row.kind, permission)) {
+        throw ApiError.forbidden(`This account may not perform ${permission}`, 'permission_denied');
+      }
+    }
+  });
+
+/**
+ * The member who runs a seller / BD account, with that account's row (migration 0046).
+ *
+ * The Android desk holds a member session, not the code+password credential `/api/business` signs in
+ * with, so this is `requireAgencyOwner`'s pattern applied to business accounts: `owner_user_id` is
+ * the whole authorisation, the row is re-read on every request (a revoke suspends the account, and a
+ * suspended partner must not keep reading its book), and `kinds` decides which desk the caller may
+ * open — a seller cannot reach the BD roster, a BD cannot create a recharge.
+ *
+ * It sets `businessRow` exactly as `requireBusiness` does, so every controller and service behind
+ * `/api/business` serves this router unchanged: scope still comes from the row, never the request.
+ * There is no `last_login_at` write — that column records partner-credential sign-ins, and a member
+ * opening their own desk is not one.
+ */
+export const requireBusinessOwner = (kinds: BusinessAccountKind[], ...permissions: BusinessPermission[]) =>
+  guard(async (req) => {
+    const payload = verifyToken(bearer(req));
+    if (payload.scope !== 'user') throw ApiError.forbidden('Member token required', 'member_token_required');
+    req.user = payload;
+    const row = await one<BusinessAccountRow>(
+      `SELECT b.*, p.code AS parent_code, p.display_name AS parent_name
+         FROM business_accounts b
+         LEFT JOIN business_accounts p ON p.id = b.parent_id
+        WHERE b.owner_user_id = $1 AND b.status = 'ACTIVE' AND b.kind = ANY($2::business_account_kind[])
+        ORDER BY b.created_at
+        LIMIT 1`,
+      [payload.sub, kinds],
+    );
+    if (!row) {
+      throw ApiError.forbidden(
+        'This member does not run an active partner account of this kind',
+        'partner_account_not_found',
+      );
     }
     req.businessRow = row;
     for (const permission of permissions) {

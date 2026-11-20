@@ -35,13 +35,42 @@ Demo content (agency, hosts, three live rooms) lives in `backend/database/seed.s
 On every boot the backend container runs `scripts/migrate.cjs`, which applies the
 idempotent `schema.sql` baseline and then any file in `database/migrations/` this
 database has not already recorded — so re-deploying onto a volume that has users in it
-brings the schema forward instead of leaving it behind. It loads the seed as well while
-`SEED_DEMO_DATA=1`, which is the compose default. Set it to `0`
-for a clean stack, or apply the seed by hand later:
+brings the schema forward instead of leaving it behind. The compose file defaults
+`SEED_DEMO_DATA` to `0`; the shipped `.env.example` sets it to `1`, so check your local
+`.env` before starting a stack you want clean. The seed can also be applied by hand later:
 
 ```bash
 psql "$DATABASE_URL" -f backend/database/seed.sql
 ```
+
+To apply pending migrations to an already-running stack (for example
+`0049_friends_dm.sql`, which the Friends/DM routes need, and
+`0050_member_receipt_uploader.sql`, which the member coin-seller market needs), use the
+same runner rather than pasting SQL — it records the checksum so a later boot will not
+re-apply the file:
+
+```bash
+docker compose exec backend node /app/scripts/migrate.cjs --status
+docker compose exec backend node /app/scripts/migrate.cjs
+docker compose exec backend node /app/scripts/migrate.cjs --status   # 0049/0050 now recorded
+```
+
+Without Docker, run `npm run db:migrate` from `backend/` with `DATABASE_URL` pointing at
+a reachable Postgres, e.g.:
+
+```powershell
+cd D:\vozia\backend
+$env:DATABASE_URL = 'postgres://voiza:voiza@localhost:5432/voiza'
+node scripts/migrate.cjs --status
+npm run db:migrate
+```
+
+These need the `schema.sql` baseline (`users` and `pgcrypto`) first. 0049 adds
+`friend_requests`, `friend_contact_blocks`, `friendships`, `conversations` and
+`direct_messages`; 0050 adds `payment_receipts.uploaded_by_user_id` so a member, not just
+a business account, can own a proof-of-payment upload. Neither could be applied in the
+CI/dev environment used to write this batch because no Postgres or Docker daemon was
+available; both apply themselves on the next real stack boot.
 
 ### Signing in
 
@@ -273,6 +302,13 @@ Two layers, neither of which needs a third-party account to work:
 `GET /api/agency/sub-agencies` for a master only (migration 0040). There is no agency id in any of these
 paths: the caller's agency is resolved from `agencies.owner_user_id` on every request, so naming another
 agency's uuid reaches nothing, and a sub is refused the sub-agency list rather than shown an empty one
+· the seller / BD desk `/api/partner/*` for the member who runs a coin seller, BD agent or BD manager
+(migrations 0046–0047): the same business controllers the code+password panel uses, reached with an
+ordinary member token because `business_accounts.owner_user_id` is the whole authorisation. The row is
+re-read on every request, so a suspension closes the desk at once, and the account kind decides which
+doors open — a seller creates and claims recharge orders, a BD reads its recursive territory and never
+opens one. Approving an application raises `users.user_type` to the role's marker; the profile shows the
+badge and the desk entry only while the probe finds an active account
 · room community `GET|POST|DELETE /api/rooms/:id/favorite`, `GET /api/rooms/favorites`,
 `POST /api/rooms/:id/announcement`,
 `POST /api/rooms/:id/{transfer,seat/:index/invite}`,
@@ -301,7 +337,8 @@ socket that just joined), `room:seat_update`, `room:listener_count`, `room:user_
 `room:mic_toggle`, `room:hand_raise`, `room:liked`, `room:reaction`, `room:theme_changed`,
 `room:profile_updated`, `room:closed`, `room:kicked` and `room:warning` (private channel), `wallet:update`,
 `withdrawal:update`, `account:status`, `room:error`, plus the community events
-`room:announcement`, `room:speaker_request`, `room:speaker_request_updated`,
+`room:announcement`, `announcement:ticker` (app-wide top-up, top-ranker, game-player and
+game-winner lines), `room:speaker_request`, `room:speaker_request_updated`,
 `room:speaker_decision`, `room:seat_invited`, `room:ownership_transferred`,
 `user:followed` and `user:blocked`. There is no third-party chat or
 live-room service behind any of it — the Android client's ticker, takeover queue,

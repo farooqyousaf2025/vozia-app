@@ -575,6 +575,8 @@ data class WalletResponse(
     @SerializedName("stats") val stats: WalletStatsDto = WalletStatsDto(),
     @SerializedName("withdrawalPolicy") val withdrawalPolicy: WithdrawalPolicyDto? = null,
     @SerializedName("promo") val promo: PromoSnapshotDto? = null,
+    /** Absent on an older backend; the wallet then shows no first-recharge banner. */
+    @SerializedName("firstRecharge") val firstRecharge: FirstRechargeDto? = null,
 )
 
 /**

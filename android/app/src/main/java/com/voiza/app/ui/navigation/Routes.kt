@@ -9,6 +9,10 @@ object Routes {
     const val STORE = "store"
     const val QUESTS = "quests"
 
+    // Friends, requests and DMs. No id in the path: the server resolves the member from the token,
+    // and a conversation is opened by tapping one of the rows it returned.
+    const val FRIENDS = "friends"
+
     // The landing rankings. One route, no arguments: the board, period and window are chosen on
     // the screen and answered by /api/rankings, so nothing about them travels in the path.
     const val RANKINGS = "rankings"
@@ -36,6 +40,16 @@ object Routes {
     // so there is nothing to carry in a path and nothing to forge. A master and a sub read the same
     // route and get the book their own position describes.
     const val AGENCY = "agency"
+
+    // The seller/BD desk. Same shape as the agency desk: `/api/partner/*` resolves the account from
+    // the member's token, so the route carries no id. A seller and a BD read the same route and get
+    // the sections their own kind describes.
+    const val PARTNER_DESK = "partnerDesk"
+
+    // The member's view of the coin-seller market. Distinct from PARTNER_DESK: this is a buyer
+    // browsing approved sellers, not a partner running their own desk. `/api/marketplace` derives
+    // the buyer from the token, so the route carries no id either.
+    const val MARKETPLACE = "marketplace"
 
     // Nested under the room path so opening the desk never pops the room entry, which
     // keeps PartyRoomViewModel (and the LiveKit voice connection it owns) alive.

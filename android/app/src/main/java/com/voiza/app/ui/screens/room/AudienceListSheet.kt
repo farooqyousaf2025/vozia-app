@@ -32,12 +32,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.voiza.app.domain.model.MiniUser
 import com.voiza.app.domain.model.Seat
 import com.voiza.app.domain.model.SeatStatus
 import com.voiza.app.domain.model.SpeakerRequest
+import com.voiza.app.domain.model.SpeakerRequestStatus
 import com.voiza.app.ui.components.Avatar
 import com.voiza.app.ui.components.VoizaSheet
 import com.voiza.app.ui.theme.Cyan
@@ -339,4 +341,42 @@ private fun MiniPill(text: String, background: Color, textColor: Color) {
             Text(text = text, color = textColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
     }
+}
+
+@Preview(showBackground = true, name = "Audience list (host)")
+@Composable
+fun AudienceListSheetPreview() {
+    val host = MiniUser(id = "host-1", username = "Ava", avatarUrl = null)
+    val mira = MiniUser(id = "member-2", username = "Mira", avatarUrl = null)
+    val juno = MiniUser(id = "member-3", username = "Juno", avatarUrl = null)
+    val ravi = MiniUser(id = "member-4", username = "Ravi", avatarUrl = null)
+    AudienceListSheet(
+        visible = true,
+        seats = listOf(
+            Seat(0, SeatStatus.OCCUPIED, isMuted = false, isSpeaker = true, user = host),
+            Seat(1, SeatStatus.OCCUPIED, isMuted = false, isSpeaker = true, user = mira),
+            Seat(2, SeatStatus.LOCKED, isMuted = false, isSpeaker = false, user = null),
+            Seat(3, SeatStatus.EMPTY, isMuted = false, isSpeaker = false, user = null),
+        ),
+        audience = listOf(juno, ravi),
+        handRaises = listOf(juno),
+        speakerQueue = listOf(
+            SpeakerRequest(
+                id = "request-1",
+                roomId = "room-demo",
+                seatIndex = 3,
+                status = SpeakerRequestStatus.PENDING,
+                createdAt = "2026-11-19T10:00:00Z",
+                user = ravi,
+            ),
+        ),
+        hostId = host.id,
+        isHost = true,
+        invitableSeatIndex = 3,
+        onDismiss = {},
+        onApprove = {},
+        onReject = {},
+        onInvite = {},
+        onOpenMember = {},
+    )
 }

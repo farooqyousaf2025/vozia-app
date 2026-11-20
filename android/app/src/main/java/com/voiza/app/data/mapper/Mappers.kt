@@ -471,6 +471,7 @@ fun WalletResponse.toDomain(): WalletSnapshot = WalletSnapshot(
             usableFor = pocket.policy.usableFor,
         )
     },
+    firstRecharge = firstRecharge?.toDomain(),
 )
 
 fun WithdrawalDto.toDomain() = com.voiza.app.domain.model.Withdrawal(

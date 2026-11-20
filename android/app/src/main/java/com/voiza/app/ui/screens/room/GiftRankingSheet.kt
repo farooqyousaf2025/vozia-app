@@ -25,9 +25,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.voiza.app.domain.model.Leaderboard
+import com.voiza.app.domain.model.MiniUser
 import com.voiza.app.domain.model.RankBoard
 import com.voiza.app.domain.model.RankRow
 import com.voiza.app.ui.components.Avatar
@@ -179,4 +181,28 @@ private fun RankTab(text: String, active: Boolean, onClick: () -> Unit) {
     ) {
         Text(text, color = OnDarkHigh, fontSize = 11.sp, fontWeight = if (active) FontWeight.Black else FontWeight.SemiBold)
     }
+}
+
+@Preview(showBackground = true, name = "Gift ranking")
+@Composable
+fun GiftRankingSheetPreview() {
+    GiftRankingSheet(
+        visible = true,
+        board = RankBoard.SENDERS,
+        window = "week",
+        leaderboard = Leaderboard(
+            window = "week",
+            board = RankBoard.SENDERS,
+            rows = listOf(
+                RankRow(MiniUser(id = "member-2", username = "Mira", avatarUrl = null), 12_800),
+                RankRow(MiniUser(id = "member-3", username = "Juno", avatarUrl = null), 8_450),
+                RankRow(MiniUser(id = "member-4", username = "Ravi", avatarUrl = null), 3_200),
+            ),
+        ),
+        loading = false,
+        error = null,
+        onSelectBoard = {},
+        onSelectWindow = {},
+        onDismiss = {},
+    )
 }

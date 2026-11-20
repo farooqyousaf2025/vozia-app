@@ -1,3 +1,4 @@
+import { PoolClient } from 'pg';
 import { many, one, query, withTransaction } from '../config/db';
 import {
   BusinessAccountKind,
@@ -39,6 +40,29 @@ const ALLOWED_TRANSITIONS: Record<BusinessAccountStatus, BusinessAccountStatus[]
   SUSPENDED: ['ACTIVE', 'CLOSED'],
   CLOSED: [],
 };
+
+/**
+ * The member's display marker follows the account they run (migrations 0046/0047).
+ *
+ * Written when the account is ACTIVE and linked, from USER or HOST only — the same rule the
+ * application approval path uses, so an operator-created account and an approved application agree
+ * about what the member reads as. AGENCY_ADMIN is never overwritten, and no privilege is granted
+ * here: the marker is display, the account row is the authority.
+ */
+async function raiseOwnerMarker(client: PoolClient, ownerUserId: string, kind: BusinessAccountKind): Promise<void> {
+  await client.query(
+    `UPDATE users SET user_type = $2::text::user_type, updated_at = now()
+      WHERE id = $1 AND user_type IN ('USER', 'HOST') AND user_type <> $2::text::user_type`,
+    [ownerUserId, kind],
+  );
+}
+
+/** An operator names the member who will run the account; the phone is how they know them. */
+async function resolveOwnerUserId(ownerPhone: string): Promise<string> {
+  const owner = await one<{ id: string }>('SELECT id FROM users WHERE phone = $1', [ownerPhone]);
+  if (!owner) throw ApiError.badRequest('No member account uses that phone number', 'owner_not_found');
+  return owner.id;
+}
 
 export async function getBusinessAccount(id: string): Promise<BusinessAccountRow | null> {
   return one<BusinessAccountRow>(`${ACCOUNT_SELECT} WHERE b.id = $1`, [id]);
@@ -114,6 +138,8 @@ export type CreateBusinessInput = {
   maxOrderDiamonds?: number;
   dailyDiamondLimit?: number;
   dailyOrderLimit?: number;
+  /** Migration 0046: the member who will run this account from the app, named by their phone. */
+  ownerPhone?: string;
 };
 
 export async function createBusinessAccount(adminId: string, input: CreateBusinessInput): Promise<BusinessAccountDto> {
@@ -154,12 +180,14 @@ export async function createBusinessAccount(adminId: string, input: CreateBusine
     }
   }
 
+  const ownerUserId = input.ownerPhone ? await resolveOwnerUserId(input.ownerPhone) : null;
+
   const row = await withTransaction(async (client) => {
     const inserted = await client.query<BusinessAccountRow>(
       `INSERT INTO business_accounts
          (kind, code, display_name, contact_email, contact_phone, market_country, parent_id, password_hash,
-          max_order_diamonds, daily_diamond_limit, daily_order_limit, created_by, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'PENDING')
+          max_order_diamonds, daily_diamond_limit, daily_order_limit, created_by, status, owner_user_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'PENDING',$13)
        RETURNING *`,
       [
         input.kind,
@@ -174,6 +202,7 @@ export async function createBusinessAccount(adminId: string, input: CreateBusine
         input.dailyDiamondLimit ?? 1_000_000,
         input.dailyOrderLimit ?? 200,
         adminId,
+        ownerUserId,
       ],
     );
     await recordAudit(
@@ -183,7 +212,7 @@ export async function createBusinessAccount(adminId: string, input: CreateBusine
         targetType: 'business_account',
         targetId: inserted.rows[0].id,
         summary: `Created ${input.kind} ${code} (${input.displayName})`,
-        details: { kind: input.kind, code, parentId: input.parentId ?? null },
+        details: { kind: input.kind, code, parentId: input.parentId ?? null, ownerUserId },
       },
       client,
     );
@@ -223,6 +252,11 @@ export async function updateBusinessAccount(
   if (patch.dailyDiamondLimit !== undefined) add('daily_diamond_limit', patch.dailyDiamondLimit);
   if (patch.dailyOrderLimit !== undefined) add('daily_order_limit', patch.dailyOrderLimit);
   if (patch.parentId !== undefined) add('parent_id', patch.parentId);
+  if (patch.ownerPhone !== undefined) {
+    // An empty phone unlinks the desk without touching the account; the code+password sign-in keeps
+    // working either way, because ownership is only ever the member-session route's authority.
+    add('owner_user_id', patch.ownerPhone === '' ? null : await resolveOwnerUserId(patch.ownerPhone));
+  }
   if (!columns.length) throw ApiError.badRequest('Nothing to change');
 
   const row = await withTransaction(async (client) => {
@@ -231,6 +265,9 @@ export async function updateBusinessAccount(
       `UPDATE business_accounts SET ${columns.join(', ')} WHERE id = $${params.length} RETURNING *`,
       params,
     );
+    if (result.rows[0].owner_user_id && result.rows[0].status === 'ACTIVE') {
+      await raiseOwnerMarker(client, result.rows[0].owner_user_id, result.rows[0].kind);
+    }
     await recordAudit(
       {
         adminId,
@@ -276,6 +313,11 @@ export async function setBusinessAccountStatus(
         WHERE id = $1 RETURNING *`,
       [accountId, status, adminId, reason ?? null],
     );
+    // Activation is the moment an operator-created account becomes live, so it is also the moment
+    // the member it was handed to starts reading as that partner (migration 0046).
+    if (status === 'ACTIVE' && result.rows[0].owner_user_id) {
+      await raiseOwnerMarker(client, result.rows[0].owner_user_id, result.rows[0].kind);
+    }
     await recordAudit(
       {
         adminId,
@@ -388,7 +430,10 @@ export async function listSellersForBd(bdAccountId: string): Promise<BusinessAcc
        UNION ALL
        SELECT s.id FROM business_accounts s JOIN territory t ON s.parent_id = t.id
      )
-     SELECT b.* FROM business_accounts b WHERE b.id IN (SELECT id FROM territory) AND b.kind = 'COIN_SELLER'
+     SELECT b.*, p.code AS parent_code, p.display_name AS parent_name
+       FROM business_accounts b
+       LEFT JOIN business_accounts p ON p.id = b.parent_id
+      WHERE b.id IN (SELECT id FROM territory) AND b.kind = 'COIN_SELLER'
       ORDER BY b.display_name`,
     [bdAccountId],
   );

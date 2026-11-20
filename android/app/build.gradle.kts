@@ -73,6 +73,14 @@ android {
             "VOIZA_LIVEKIT_URL",
             "\"${prop("VOIZA_LIVEKIT_URL", "ws://10.0.2.2:7880")}\""
         )
+        // Stripe's publishable key is public by design; it still comes from config rather than
+        // source. An empty value keeps the simulated top-up path active for dev stacks that have
+        // no Stripe account (and for CI), so a release does not need a real key just to compile.
+        buildConfigField(
+            "String",
+            "VOIZA_STRIPE_PUBLISHABLE_KEY",
+            "\"${prop("VOIZA_STRIPE_PUBLISHABLE_KEY", "")}\""
+        )
     }
 
     signingConfigs {
@@ -118,6 +126,10 @@ android {
             }
             if (!apiBaseUrl.isNullOrBlank()) buildConfigField("String", "VOIZA_API_BASE_URL", "\"$apiBaseUrl\"")
             if (!livekitUrl.isNullOrBlank()) buildConfigField("String", "VOIZA_LIVEKIT_URL", "\"$livekitUrl\"")
+            val stripePublishableKey = explicitProp("VOIZA_STRIPE_PUBLISHABLE_KEY")
+            if (!stripePublishableKey.isNullOrBlank()) {
+                buildConfigField("String", "VOIZA_STRIPE_PUBLISHABLE_KEY", "\"$stripePublishableKey\"")
+            }
         }
     }
 
@@ -207,6 +219,10 @@ dependencies {
 
     // Socket.IO realtime room events
     implementation("io.socket:socket.io-client:2.1.1")
+
+    // Card checkout. 20.x is the last line built against Kotlin 1.9, which is what this app uses;
+    // newer Stripe releases require Kotlin 2 and cannot compile against our toolchain.
+    implementation("com.stripe:stripe-android:20.40.0")
 
     // Tests
     testImplementation("junit:junit:4.13.2")

@@ -11,6 +11,7 @@ import { lapsePromoGrants } from './services/promo-diamond.service';
 import { expireStaleActivities } from './services/earning.service';
 import { expireInvites, settleDueBattles, setPkBroadcaster } from './services/pk.service';
 import { emitToRoom, emitToUser, initSocket } from './services/socket.service';
+import { setTickerBroadcaster } from './services/announcement.service';
 import { loadRankRegistry } from './services/rank.service';
 import { loadThemeRegistry } from './services/theme.service';
 
@@ -39,6 +40,8 @@ async function main(): Promise<void> {
   const app = createApp();
   const server = http.createServer(app);
   const io = initSocket(server);
+  // The app-wide ticker is emitted to every connected socket, not to a room.
+  setTickerBroadcaster((event, payload) => io.emit(event, payload));
 
   // The engine deliberately does not import the socket layer — that would be a circle,
   // because socket handlers call back into the engine — so the emitter is handed over here.

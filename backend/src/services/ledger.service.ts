@@ -6,6 +6,8 @@ import { rateLimit, redis } from '../config/redis';
 import { GiftBoxOutcomeRow, GiftRow, TransactionRow, UserRow, WithdrawalRow } from '../types/db';
 import { ApiError } from '../utils/http';
 import { accrueAgencyCommission, commissionBpsLabel, commissionMembership, overrideCoinsFor } from './agency.service';
+import { topRankerTicker, topUpTicker } from './announcement.service';
+import { FirstRechargeStatus, firstRechargeStatus } from './diamond-package.service';
 import { readConfig } from './business.service';
 import { FIN_ACCOUNTS, postCoinSpread, postJournal } from './finance-journal.service';
 import { announceBonusChange, earnWithin } from './earning.service';
@@ -538,6 +540,23 @@ export async function sendGift(input: {
   // does. Best effort: a failed push cannot take a committed gift back.
   if (earnedBonusDiamonds) await announceBonusChange([result.sender.id]);
 
+  // A notable gift can put its sender on top of today's board; announce that, not every rose.
+  if (result.totalDiamonds >= 100) {
+    const top = await one<{ id: string; username: string; total: string }>(
+      `SELECT u.id, u.username, SUM(t.amount_diamonds)::text AS total
+         FROM transactions t
+         JOIN users u ON u.id = t.sender_id
+        WHERE t.type = 'GIFT_SENT' AND t.status = 'COMPLETED'
+          AND t.created_at >= date_trunc('day', now())
+        GROUP BY u.id, u.username
+        ORDER BY SUM(t.amount_diamonds) DESC
+        LIMIT 1`,
+    ).catch(() => null);
+    if (top && top.id === result.sender.id) {
+      topRankerTicker(top.username, top.id, Number(top.total));
+    }
+  }
+
   const enriched = await one<TransactionRow>(`${TX_WITH_PARTIES} WHERE t.id = $1`, [result.transaction.id]);
   return {
     transaction: toTransaction(enriched ?? result.transaction),
@@ -584,6 +603,7 @@ export async function recharge(userId: string, amountDiamonds: number): Promise<
   });
 
   const enriched = await one<TransactionRow>(`${TX_WITH_PARTIES} WHERE t.id = $1`, [tx.row.id]);
+  topUpTicker(tx.user.username, tx.user.id, amountDiamonds, 'TOPUP');
   return { transaction: toTransaction(enriched ?? tx.row), user: toUser(tx.user) };
 }
 
@@ -1235,12 +1255,14 @@ export async function getWallet(userId: string, limit = 30): Promise<{
    * until the holder knows 300 of them expire tonight.
    */
   promo: { grants: PromoGrantDto[]; policy: PromoPolicy };
+  /** Whether the account has unlocked diamond spending yet, and when it did. */
+  firstRecharge: FirstRechargeStatus;
 }> {
   await ensureRankRegistry();
   const userRow = await one<UserRow>('SELECT * FROM users WHERE id = $1', [userId]);
   if (!userRow) throw ApiError.notFound('Account not found');
 
-  const [transactions, aggregates, policy, promo] = await Promise.all([
+  const [transactions, aggregates, policy, promo, firstRecharge] = await Promise.all([
     many<TransactionRow>(`${TX_WITH_PARTIES} WHERE t.sender_id = $1 OR t.receiver_id = $1 ORDER BY t.created_at DESC LIMIT $2`, [
       userId,
       limit,
@@ -1257,6 +1279,7 @@ export async function getWallet(userId: string, limit = 30): Promise<{
       grants,
       policy: grantPolicy,
     })),
+    firstRechargeStatus(userId),
   ]);
 
   return {
@@ -1269,6 +1292,7 @@ export async function getWallet(userId: string, limit = 30): Promise<{
     },
     withdrawalPolicy: policy,
     promo: { grants: promo.grants, policy: promo.policy },
+    firstRecharge,
   };
 }
 

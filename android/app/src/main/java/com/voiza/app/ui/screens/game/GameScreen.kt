@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -299,4 +300,11 @@ private fun gameTitle(gameKey: String): String = when (gameKey) {
     "QUIZ_BATTLE" -> "Quiz Battle"
     "LUDO" -> "Ludo"
     else -> gameKey.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
+}
+
+
+@Preview(showBackground = true)
+@Composable
+fun GameScreenPreview() {
+    GameScreen(sessionId = "demo", onBack = {}, onOpenWallet = {})
 }

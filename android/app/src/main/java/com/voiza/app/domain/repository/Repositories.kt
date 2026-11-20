@@ -5,10 +5,30 @@ import com.voiza.app.domain.model.AgencyHostRow
 import com.voiza.app.domain.model.AgencyPosition
 import com.voiza.app.domain.model.AgencySettlementRow
 import com.voiza.app.domain.model.AgencySubRow
+import com.voiza.app.domain.model.PartnerCustomer
+import com.voiza.app.domain.model.PartnerDashboard
+import com.voiza.app.domain.model.PartnerSellerRow
+import com.voiza.app.domain.model.PartnerStatement
+import com.voiza.app.domain.model.PartnerWhoami
+import com.voiza.app.domain.model.RechargeOrder
+import com.voiza.app.domain.model.RechargeOrderPage
+import com.voiza.app.domain.model.RechargePackage
+import com.voiza.app.domain.model.SellerPayoutPage
+import com.voiza.app.domain.model.SellerReport
+import com.voiza.app.domain.model.UploadedReceipt
 import com.voiza.app.domain.model.ApplicationForm
 import com.voiza.app.domain.model.BannerPlacement
 import com.voiza.app.domain.model.ChatMessage
 import com.voiza.app.domain.model.CheckInResult
+import com.voiza.app.domain.model.CheckoutSession
+import com.voiza.app.domain.model.DiamondPackage
+import com.voiza.app.domain.model.Conversation
+import com.voiza.app.domain.model.DirectMessage
+import com.voiza.app.domain.model.FriendPage
+import com.voiza.app.domain.model.FriendRequest
+import com.voiza.app.domain.model.FriendRequestPage
+import com.voiza.app.domain.model.FirstRechargeStatus
+import com.voiza.app.domain.model.MessagePage
 import com.voiza.app.domain.model.EmojiCatalogue
 import com.voiza.app.domain.model.GameDefinition
 import com.voiza.app.domain.model.GameHistoryRow
@@ -207,6 +227,20 @@ data class RoomDetailBundle(
 
 interface WalletRepository {
     suspend fun getWallet(): ApiResult<WalletSnapshot>
+
+    /** The active buyer packs in the order the operator set. */
+    suspend fun packages(): ApiResult<List<DiamondPackage>>
+
+    /** The server's first-recharge gate, read on its own route as well as in the wallet snapshot. */
+    suspend fun firstRecharge(): ApiResult<FirstRechargeStatus>
+
+    /**
+     * Ask the server to create a PaymentIntent. The response is only a hand-off: the balance moves
+     * when Stripe's signed webhook arrives, never when this call returns.
+     */
+    suspend fun checkout(packageId: String? = null, amountDiamonds: Int? = null): ApiResult<CheckoutSession>
+
+    /** Demo-mode credit. Refused once the stack charges for diamonds. */
     suspend fun recharge(amountDiamonds: Int): ApiResult<Transaction>
     suspend fun withdraw(amountRCoins: Int, payoutMethod: String, payoutDetails: Map<String, String>): ApiResult<Withdrawal>
 }
@@ -356,6 +390,41 @@ data class GameLobbyBundle(
  * state. In particular a report is a complaint to staff and not an action: filing one cannot ban,
  * mute or remove anybody, and only an operator's review can change that.
  */
+/**
+ * Friends and one-to-one messages (`/api/friends`, `/api/dm`, migration 0049).
+ *
+ * Every method names the other member by id — or a request by the id the server issued — and none
+ * sends a friendship, a status or an unread count. The server refuses a message between
+ * non-friends, a request past the two-per-pair cap and any contact the addressee switched off, so
+ * the 403 is surfaced as the server's own sentence rather than predicted on this device.
+ */
+interface FriendsRepository {
+    /** Ask a member to be a friend. The server answers 409 if one is already pending. */
+    suspend fun sendFriendRequest(targetUserId: String): ApiResult<FriendRequest>
+
+    suspend fun friends(page: Int = 1, limit: Int = 50): ApiResult<FriendPage>
+
+    /** `incoming` or `outgoing`; the server owns the direction filter and the paging. */
+    suspend fun requests(direction: String = "incoming", page: Int = 1, limit: Int = 20): ApiResult<FriendRequestPage>
+
+    suspend fun acceptRequest(requestId: String): ApiResult<Boolean>
+
+    suspend fun declineRequest(requestId: String): ApiResult<Boolean>
+
+    suspend fun unfriend(userId: String): ApiResult<Boolean>
+
+    /** Persist a "do not contact" flag. Clearing it is the same call with `false`. */
+    suspend fun setDoNotContact(userId: String, value: Boolean): ApiResult<Boolean>
+
+    suspend fun conversations(): ApiResult<List<Conversation>>
+
+    suspend fun messages(userId: String, page: Int = 1, limit: Int = 50): ApiResult<MessagePage>
+
+    suspend fun sendMessage(userId: String, content: String): ApiResult<DirectMessage>
+
+    suspend fun markRead(userId: String): ApiResult<Boolean>
+}
+
 interface SocialRepository {
     /** What the server says about this pair. Read before the card is drawn so the buttons match. */
     suspend fun relationship(targetUserId: String): ApiResult<Relationship>
@@ -436,6 +505,58 @@ interface AgencyBookRepository {
 
     /** The batches raised for this agency, newest first, without the operators behind them. */
     suspend fun settlements(limit: Int = 20): ApiResult<List<AgencySettlementRow>>
+}
+
+/**
+ * The partner desk (`/api/partner`, migration 0046): a coin seller's orders and cash book, a BD's
+ * territory of sellers — the business panel's own surfaces, served against the member's session.
+ *
+ * No method takes an account id except [sellerReport], which names a seller the server then checks
+ * against the caller's territory. The server resolves the account from `business_accounts.owner_user_id`
+ * on every request, so a member who runs no active partner account is refused by all of these, and a
+ * seller's token cannot reach the BD routes. Writes are the same payloads the business panel sends:
+ * an order names a member's phone and a package key — never a price — and proof is bytes, not a claim.
+ */
+interface PartnerDeskRepository {
+    /** The account this member runs, its permissions, and the payment rails the server accepts. */
+    suspend fun whoami(): ApiResult<PartnerWhoami>
+
+    /** The numbers card: recharge counts, commission summary, and — for a BD — its sellers. */
+    suspend fun dashboard(): ApiResult<PartnerDashboard>
+
+    /** The operator's active price list. An order names a key from here; the price stays server-side. */
+    suspend fun packages(): ApiResult<List<RechargePackage>>
+
+    /** Open an order for a member. The server resolves the phone and prices the package itself. */
+    suspend fun createOrder(phone: String, packageKey: String, paymentMethod: String, note: String?): ApiResult<RechargeOrder>
+
+    /** The seller claims the money arrived. Finance still decides; this only moves the order to review. */
+    suspend fun markPaid(orderId: String, paymentRef: String): ApiResult<RechargeOrder>
+
+    /** Withdraw an order before it is credited. */
+    suspend fun cancelOrder(orderId: String, reason: String): ApiResult<RechargeOrder>
+
+    suspend fun orders(page: Int = 1, limit: Int = 25): ApiResult<RechargeOrderPage>
+
+    suspend fun order(orderId: String): ApiResult<RechargeOrder>
+
+    /** A member's recent orders, so a seller can check a phone before opening one. */
+    suspend fun lookupCustomer(phone: String): ApiResult<PartnerCustomer>
+
+    /** Commission lines, settlement batches, and — for a seller — the cash book. */
+    suspend fun statement(page: Int = 1, limit: Int = 25): ApiResult<PartnerStatement>
+
+    /** Members' R-coin sale requests assigned to this seller. Seller only. */
+    suspend fun payouts(page: Int = 1, limit: Int = 25): ApiResult<SellerPayoutPage>
+
+    /** Attach proof bytes to an order or an R-coin sale. Exactly one of the two ids is set. */
+    suspend fun uploadReceipt(orderId: String?, withdrawalId: String?, fileName: String, data: String): ApiResult<UploadedReceipt>
+
+    /** The BD's territory, each seller with its own recharge numbers. BD only. */
+    suspend fun sellers(): ApiResult<List<PartnerSellerRow>>
+
+    /** One seller's whole book. The server refuses a seller outside the caller's territory. */
+    suspend fun sellerReport(sellerId: String): ApiResult<SellerReport>
 }
 
 /**

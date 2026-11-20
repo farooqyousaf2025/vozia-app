@@ -212,3 +212,15 @@ data class SocketReactionDto(
 data class SocketGameEndedDto(
     @SerializedName("sessionId") val sessionId: String,
 )
+
+data class SocketTickerDto(
+    @SerializedName("id") val id: String,
+    @SerializedName("kind") val kind: String,
+    @SerializedName("text") val text: String,
+    @SerializedName("username") val username: String? = null,
+    @SerializedName("userId") val userId: String? = null,
+    @SerializedName("amount") val amount: Int? = null,
+    @SerializedName("roomId") val roomId: String? = null,
+    @SerializedName("region") val region: String? = null,
+    @SerializedName("createdAt") val createdAt: String = "",
+)

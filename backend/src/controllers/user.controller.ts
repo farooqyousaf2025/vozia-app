@@ -14,6 +14,7 @@ import {
   unfollowUser,
   unblockUser,
 } from '../services/social.service';
+import { sendFriendRequest as sendFriendRequestService } from '../services/friends.service';
 import { emitToUser } from '../services/socket.service';
 import { excludeTestSql } from '../services/qa.service';
 import { RoomRow, UserRow } from '../types/db';
@@ -110,6 +111,12 @@ export const unblock = asyncHandler(async (req: Request, res: Response) => {
   const targetId = requireString(req.params.id, 'userId', { min: 36, max: 36 });
   const result = await unblockUser(req.user!.sub, targetId);
   res.json({ blocked: result.blocked, counts: result.counts });
+});
+
+export const sendFriendRequest = asyncHandler(async (req: Request, res: Response) => {
+  const targetId = requireString(req.params.id, 'userId', { min: 36, max: 36 });
+  const request = await sendFriendRequestService(req.user!.sub, targetId);
+  res.status(201).json({ request });
 });
 
 export const report = asyncHandler(async (req: Request, res: Response) => {

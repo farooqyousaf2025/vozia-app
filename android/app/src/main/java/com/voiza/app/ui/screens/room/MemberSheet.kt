@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.voiza.app.domain.model.MiniUser
@@ -311,4 +312,46 @@ private fun ModerationRow(
             )
         }
     }
+}
+
+@Preview(showBackground = true, name = "Member sheet")
+@Composable
+fun MemberSheetPreview() {
+    MemberSheet(
+        member = MiniUser(id = "member-2", username = "Mira", avatarUrl = null),
+        relationship = Relationship(following = true),
+        busy = false,
+        error = null,
+        onDismiss = {},
+        onToggleFollow = {},
+        onOpenReport = {},
+        onToggleBlock = {},
+    )
+}
+
+@Preview(showBackground = true, name = "Member sheet (blocked by me)")
+@Composable
+fun MemberSheetBlockedPreview() {
+    MemberSheet(
+        member = MiniUser(id = "member-3", username = "Juno", avatarUrl = null),
+        relationship = Relationship(blockedByMe = true, interactionBlocked = true),
+        busy = false,
+        error = null,
+        onDismiss = {},
+        onToggleFollow = {},
+        onOpenReport = {},
+        onToggleBlock = {},
+    )
+}
+
+@Preview(showBackground = true, name = "Report dialog")
+@Composable
+fun ReportDialogPreview() {
+    ReportDialog(
+        member = MiniUser(id = "member-2", username = "Mira", avatarUrl = null),
+        busy = false,
+        error = null,
+        onDismiss = {},
+        onSubmit = { _, _ -> },
+    )
 }

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
@@ -61,12 +62,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -76,10 +80,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.voiza.app.domain.model.BannerPlacement
+import com.voiza.app.domain.model.MiniUser
 import com.voiza.app.domain.model.RankingLeader
 import com.voiza.app.domain.model.RankingPeriod
 import com.voiza.app.domain.model.RoomCategory
 import com.voiza.app.domain.model.RoomSort
+import com.voiza.app.domain.model.RoomStatus
 import com.voiza.app.domain.model.RoomSummary
 import com.voiza.app.domain.model.RoomType
 import com.voiza.app.ui.components.Avatar
@@ -102,6 +108,7 @@ import com.voiza.app.ui.theme.VoizaAccentGradient
 import com.voiza.app.ui.theme.VoizaHeroGradient
 import com.voiza.app.ui.theme.VoizaSurface
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
+import com.voiza.app.ui.theme.VoizaTheme
 import com.voiza.app.ui.theme.WarningAmber
 import com.voiza.app.ui.util.label
 import com.voiza.app.viewmodel.HomeViewModel
@@ -136,6 +143,9 @@ fun HomeScreen(
     )
     val previewState by rankingsPreview.state.collectAsStateWithLifecycle()
     var rewardOpen by remember { mutableStateOf(false) }
+    // The lobby opens without a search box; the top-bar icon reveals it. An active query keeps it
+    // open on its own so the member can always see (and clear) what the grid is filtered by.
+    var searchOpen by remember { mutableStateOf(false) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         questsViewModel.refresh()
         rankingsPreview.refresh()
@@ -190,6 +200,7 @@ fun HomeScreen(
                 onWalletClick = onOpenWallet,
                 rewardAvailable = questsState.snapshot?.checkIn?.available == true,
                 onOpenReward = { rewardOpen = true },
+                onOpenSearch = { searchOpen = true },
             )
             if (rewardOpen) {
                 questsState.snapshot?.let { snapshot ->
@@ -239,11 +250,16 @@ fun HomeScreen(
 
             DiscoveryRow(
                 search = state.search,
+                searchOpen = searchOpen || state.search.isNotBlank(),
                 sort = state.sort,
                 showingMyRooms = state.showingMyRooms,
                 quickJoinPending = state.quickJoinPending,
                 quickJoinError = state.quickJoinError,
                 onSearch = viewModel::setSearch,
+                onCloseSearch = {
+                    searchOpen = false
+                    viewModel.setSearch("")
+                },
                 onSelectSort = viewModel::selectSort,
                 onToggleMyRooms = viewModel::toggleMyRooms,
                 onQuickJoin = viewModel::quickJoin,
@@ -341,42 +357,61 @@ fun HomeScreen(
 @Composable
 private fun DiscoveryRow(
     search: String,
+    searchOpen: Boolean,
     sort: RoomSort,
     showingMyRooms: Boolean,
     quickJoinPending: Boolean,
     quickJoinError: String?,
     onSearch: (String) -> Unit,
+    onCloseSearch: () -> Unit,
     onSelectSort: (RoomSort) -> Unit,
     onToggleMyRooms: () -> Unit,
     onQuickJoin: () -> Unit,
 ) {
-    var query by remember { mutableStateOf(search) }
+    var query by remember(search) { mutableStateOf(search) }
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(searchOpen) {
+        if (searchOpen && !showingMyRooms) focusRequester.requestFocus()
+    }
 
     Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+        if (searchOpen && !showingMyRooms) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it.take(60) },
+                placeholder = { Text("Search rooms, hosts\u2026", fontSize = 13.sp) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = OnDarkMedium) },
+                trailingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close search",
+                        tint = OnDarkMedium,
+                        modifier = Modifier.clickable {
+                            query = ""
+                            onCloseSearch()
+                        },
+                    )
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(
+                    onSearch = { onSearch(query.trim()) },
+                ),
+                colors = voizaFieldColors(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester),
+            )
+            Spacer(Modifier.height(8.dp))
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (!showingMyRooms) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it.take(60) },
-                    placeholder = { Text("Search rooms, hosts\u2026", fontSize = 13.sp) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = OnDarkMedium) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(
-                        onSearch = { onSearch(query.trim()) },
-                    ),
-                    colors = voizaFieldColors(),
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(8.dp))
-            }
             FilterChip(
                 selected = showingMyRooms,
                 onClick = onToggleMyRooms,
                 label = { Text("My Room", fontSize = 12.sp) },
                 colors = voizaChipColors(),
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.weight(1f))
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
@@ -520,6 +555,7 @@ private fun HomeTopBar(
     onWalletClick: () -> Unit,
     rewardAvailable: Boolean,
     onOpenReward: () -> Unit,
+    onOpenSearch: () -> Unit,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -549,6 +585,22 @@ private fun HomeTopBar(
                 fontSize = 11.sp,
             )
         }
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(VoizaSurfaceHigh)
+                .clickable(onClick = onOpenSearch),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.Search,
+                contentDescription = "Search rooms",
+                tint = Cyan,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
         Box(
             modifier = Modifier
                 .size(38.dp)
@@ -680,3 +732,151 @@ private fun Modifier.tabIndicatorOffsetCompat(
 )
 
 private val WarningTint = Color(0xFFFFC246)
+
+// ---------------------------------------------------------------------------
+// Android Studio previews. These render in the Design/Split pane with sample
+// data only — no ViewModel, no network — so the look can be edited live.
+// ---------------------------------------------------------------------------
+
+private val previewUser = com.voiza.app.domain.model.User(
+    id = "preview-0001",
+    phone = "",
+    username = "Ayesha",
+    avatarUrl = null,
+    bio = null,
+    gender = null,
+    countryCode = null,
+    diamondBalance = 12500,
+    rCoinBalance = 3400,
+    totalGiftsSent = 0,
+    totalGiftsReceived = 0,
+    userType = "USER",
+    status = "ACTIVE",
+    isVerified = true,
+)
+
+private fun previewRoom(
+    id: String,
+    title: String,
+    type: RoomType,
+    listeners: Int,
+    giftValue: Long,
+) = RoomSummary(
+    id = id,
+    roomNumber = 1001,
+    title = title,
+    description = null,
+    coverUrl = null,
+    category = RoomCategory.PARTY,
+    type = type,
+    seatCapacity = 8,
+    status = RoomStatus.ACTIVE,
+    listenerCount = listeners,
+    totalGiftValue = giftValue,
+    host = MiniUser(id = "host-$id", username = "DJ Spark", avatarUrl = null),
+)
+
+@Preview(name = "Home top bar", showBackground = true)
+@Composable
+private fun HomeTopBarPreview() {
+    VoizaTheme {
+        HomeTopBar(
+            user = previewUser,
+            onWalletClick = {},
+            rewardAvailable = true,
+            onOpenReward = {},
+            onOpenSearch = {},
+        )
+    }
+}
+
+@Preview(name = "Discovery row (lobby)", showBackground = true)
+@Composable
+private fun DiscoveryRowPreview() {
+    VoizaTheme {
+        Box(Modifier.background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
+            DiscoveryRow(
+                search = "",
+                searchOpen = false,
+                sort = RoomSort.DEFAULT,
+                showingMyRooms = false,
+                quickJoinPending = false,
+                quickJoinError = null,
+                onSearch = {},
+                onCloseSearch = {},
+                onSelectSort = {},
+                onToggleMyRooms = {},
+                onQuickJoin = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Discovery row (search open)", showBackground = true)
+@Composable
+private fun DiscoveryRowSearchOpenPreview() {
+    VoizaTheme {
+        Box(Modifier.background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
+            DiscoveryRow(
+                search = "",
+                searchOpen = true,
+                sort = RoomSort.TRENDING,
+                showingMyRooms = false,
+                quickJoinPending = false,
+                quickJoinError = null,
+                onSearch = {},
+                onCloseSearch = {},
+                onSelectSort = {},
+                onToggleMyRooms = {},
+                onQuickJoin = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Rankings entry card", showBackground = true)
+@Composable
+private fun RankingsEntryCardPreview() {
+    VoizaTheme {
+        Box(Modifier.background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
+            RankingsEntryCard(
+                leaders = listOf(
+                    RankingLeader(1, MiniUser("l1", "Noor", null), 90000),
+                    RankingLeader(2, MiniUser("l2", "Zain", null), 70000),
+                    RankingLeader(3, MiniUser("l3", "Mira", null), 50000),
+                ),
+                onClick = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Room cards", showBackground = true)
+@Composable
+private fun RoomCardsPreview() {
+    VoizaTheme {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
+                .padding(12.dp),
+        ) {
+            RoomCard(
+                room = previewRoom("a", "Late Night Beats", RoomType.PUBLIC, 128, 52000),
+                onClick = {},
+                modifier = Modifier.weight(1f),
+            )
+            RoomCard(
+                room = previewRoom("b", "VIP Lounge", RoomType.PRIVATE, 12, 0),
+                onClick = {},
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun HomeScreenPreview() {
+    HomeScreen(onOpenRoom = {}, onCreateRoom = {}, onOpenWallet = {}, onOpenStore = {}, onOpenProfile = {}, onOpenRankings = {})
+}

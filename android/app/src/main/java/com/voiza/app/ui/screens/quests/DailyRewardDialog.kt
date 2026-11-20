@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.voiza.app.domain.model.CheckInState
+import androidx.compose.ui.tooling.preview.Preview
 import com.voiza.app.ui.components.VoizaButton
 import com.voiza.app.ui.components.VoizaCard
 import com.voiza.app.ui.theme.Cyan
@@ -412,4 +413,10 @@ fun DailyRewardEntry(checkIn: CheckInState, onOpen: () -> Unit) {
             )
         }
     }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun DailyRewardDialogPreview() {
+    DailyRewardDialog(checkIn = CheckInState(available = true, done = false, streakDay = 3, xpAwardedToday = 0, nextRewardXp = 50, nextStreakDay = 4, baseXp = 10, streakStepXp = 5, maxStreakDays = 7), resetTimezone = "UTC", claiming = false, onClaim = {}, onDismiss = {})
 }

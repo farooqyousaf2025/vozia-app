@@ -12,7 +12,7 @@ export type UserRow = {
   r_coin_balance: number;
   total_gifts_sent: string | number;
   total_gifts_received: string | number;
-  user_type: 'HOST' | 'USER' | 'AGENCY_ADMIN';
+  user_type: 'HOST' | 'USER' | 'AGENCY_ADMIN' | 'COIN_SELLER' | 'BD_MANAGER' | 'BD_AGENT';
   status: 'ACTIVE' | 'BANNED';
   is_verified: boolean;
   vip_level: number;
@@ -246,12 +246,19 @@ export type WithdrawalRow = {
   receipt_count?: string | null;
 };
 
-/** Migration 0041: a bank slip uploaded by a coin seller for one manual settlement. */
+/**
+ * Migration 0041: a bank slip for one manual settlement.
+ *
+ * 0041 named only a seller as uploader; 0050 lets a member attach their own proof of payment to
+ * their recharge order. Exactly one uploader column is set, so the audit trail always names who
+ * handed the bytes over.
+ */
 export type PaymentReceiptRow = {
   id: string;
   order_id: string | null;
   withdrawal_id: string | null;
-  uploaded_by: string;
+  uploaded_by: string | null;
+  uploaded_by_user_id?: string | null;
   file_name: string;
   stored_name: string;
   content_type: string;
@@ -450,6 +457,8 @@ export type BusinessAccountRow = {
   /** Migration 0039. */
   is_test?: boolean;
   qa_ref?: string | null;
+  /** Migration 0046: the member who runs this account from the app, where one was named. */
+  owner_user_id?: string | null;
 };
 
 export type CommissionRuleKind = 'SELLER_PERCENT' | 'SELLER_FIXED' | 'SELLER_TIER' | 'BD_PERCENT' | 'BD_FIXED';
@@ -586,6 +595,18 @@ export type RechargePackageRow = {
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
+};
+
+/** Migration 0048: the platform's published top-up catalogue, shared by wallet and marketplace. */
+export type DiamondPackageRow = {
+  id: string;
+  code: string;
+  name: string;
+  diamonds: number;
+  bonus_diamonds: number;
+  price_cents: number;
+  currency: string;
+  sort_order: number;
 };
 
 export type MediaAssetRow = {

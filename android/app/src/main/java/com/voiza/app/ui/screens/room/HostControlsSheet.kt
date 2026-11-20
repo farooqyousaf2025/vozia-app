@@ -27,8 +27,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.voiza.app.domain.model.MiniUser
 import com.voiza.app.domain.model.Seat
 import com.voiza.app.domain.model.SeatStatus
 import com.voiza.app.ui.components.Avatar
@@ -171,5 +173,43 @@ private fun ControlRow(
             fontWeight = FontWeight.Bold,
         )
     }
+}
+
+@Preview(showBackground = true, name = "Host controls (occupied seat)")
+@Composable
+fun HostControlsSheetPreview() {
+    HostControlsSheet(
+        seat = Seat(
+            seatIndex = 2,
+            status = SeatStatus.OCCUPIED,
+            isMuted = false,
+            isSpeaker = true,
+            user = MiniUser(id = "member-2", username = "Mira", avatarUrl = null),
+        ),
+        isHost = true,
+        onDismiss = {},
+        onToggleLock = { _, _ -> },
+        onToggleMute = { _, _ -> },
+        onKick = {},
+    )
+}
+
+@Preview(showBackground = true, name = "Host controls (locked seat)")
+@Composable
+fun HostControlsSheetLockedPreview() {
+    HostControlsSheet(
+        seat = Seat(
+            seatIndex = 5,
+            status = SeatStatus.LOCKED,
+            isMuted = false,
+            isSpeaker = false,
+            user = null,
+        ),
+        isHost = true,
+        onDismiss = {},
+        onToggleLock = { _, _ -> },
+        onToggleMute = { _, _ -> },
+        onKick = {},
+    )
 }
 

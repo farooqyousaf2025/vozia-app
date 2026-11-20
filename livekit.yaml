@@ -11,8 +11,8 @@ rtc:
   # WebSocket over TCP on the HTTP port, plus a dedicated TCP port for environments
   # where UDP is blocked (mobile networks, corporate VPNs).
   tcp_port: 7881
-  port_range_start: 50000
-  port_range_end: 60000
+  port_range_start: 40000
+  port_range_end: 40099
   # Set true when the VPS has a stable public IPv4 and you want ICE to advertise it.
   # docker-desktop / NAT without 1:1 mapping should keep this false and rely on TURN(7881).
   use_external_ip: false
@@ -24,7 +24,7 @@ keys:
 # token issuance; room lifecycle is owned by PostgreSQL, so enable the escape
 # hatch that lets a room exist before a participant joins.
 room:
-  empty_timeout: 300            # close a room 5 min after everyone leaves
+  empty_timeout: 2500000            # close a room 5 min after everyone leaves
   departure_timeout: 20         # tolerate brief mobile network handoffs
   max_participants: 1000
   # Hosts mute and unmute seats through RoomService.MutePublishedTrack, which needs

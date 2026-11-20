@@ -17,6 +17,7 @@ router.get('/:id/relationship', requireAuth, users.relationshipStatus);
 
 router.post('/:id/follow', requireAuth, users.follow);
 router.delete('/:id/follow', requireAuth, users.unfollow);
+router.post('/:id/friend-request', requireAuth, users.sendFriendRequest);
 router.post('/:id/block', requireAuth, users.block);
 router.delete('/:id/block', requireAuth, users.unblock);
 router.post('/:id/report', requireAuth, users.report);

@@ -15,19 +15,26 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -132,21 +139,61 @@ fun AuthScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PhoneStep(vm: AuthViewModel, state: AuthViewModel.AuthUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Enter your phone", color = OnDarkHigh, fontSize = 20.sp, fontWeight = FontWeight.Bold)
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedTextField(
-                value = state.countryCode,
-                onValueChange = vm::onCountryCodeChange,
-                label = { Text("Code", fontSize = 12.sp) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                colors = fieldColors(),
-                modifier = Modifier.width(92.dp),
-            )
+            var expanded by remember { mutableStateOf(false) }
+            val countryOptions = remember {
+                listOf(
+                    "1" to "US/Canada (+1)",
+                    "92" to "Pakistan (+92)",
+                    "91" to "India (+91)",
+                    "971" to "Dubai/UAE (+971)",
+                    "968" to "Oman (+968)",
+                    "966" to "Saudi (+966)",
+                    "965" to "Kuwait (+965)",
+                    "974" to "Qatar (+974)",
+                    "880" to "Bangladesh (+880)",
+                    "44" to "UK (+44)",
+                    "86" to "China (+86)",
+                    "96" to "Other (+96)",
+                )
+            }
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded },
+                modifier = Modifier.width(150.dp),
+            ) {
+                OutlinedTextField(
+                    value = state.countryCode,
+                    onValueChange = vm::onCountryCodeChange,
+                    readOnly = false,
+                    label = { Text("Code", fontSize = 12.sp) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    colors = fieldColors(),
+                    modifier = Modifier.menuAnchor(),
+                )
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                ) {
+                    countryOptions.forEach { (code, label) ->
+                        DropdownMenuItem(
+                            text = { Text(label, fontSize = 12.sp) },
+                            onClick = {
+                                vm.onCountryCodeChange(code)
+                                expanded = false
+                            },
+                        )
+                    }
+                }
+            }
             OutlinedTextField(
                 value = state.phone,
                 onValueChange = vm::onPhoneChange,
@@ -261,3 +308,9 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = OnDarkHigh,
     unfocusedTextColor = OnDarkHigh,
 )
+
+@Preview(showBackground = true)
+@Composable
+fun AuthScreenPreview() {
+    AuthScreen(onLoggedIn = {})
+}

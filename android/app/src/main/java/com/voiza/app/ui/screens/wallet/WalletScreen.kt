@@ -34,12 +34,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -49,6 +51,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.stripe.android.paymentsheet.PaymentSheet
+import com.stripe.android.paymentsheet.PaymentSheetResult
+import com.stripe.android.paymentsheet.rememberPaymentSheet
 import com.voiza.app.data.mapper.isoToEpochMs
 import com.voiza.app.domain.model.PromoPocket
 import com.voiza.app.domain.model.Transaction
@@ -75,21 +80,47 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Wallet: diamond hero card + R-coin earnings card, recharge presets
- * (simulated purchase against /api/wallet/recharge), withdrawal sheet, the two
- * partner-role shortcuts, and the colour-coded transaction ledger.
+ * Wallet: diamond hero card + R-coin earnings card, the server's top-up packages
+ * (paid through Stripe when a publishable key is configured), the first-recharge
+ * banner, withdrawal sheet, the two partner-role shortcuts, and the colour-coded
+ * transaction ledger.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WalletScreen(
     onBack: () -> Unit,
     onOpenPartnerApply: (String) -> Unit,
+    onOpenMarketplace: () -> Unit,
     viewModel: WalletViewModel = viewModel(
         factory = voizaViewModelFactory { WalletViewModel() },
     ),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var withdrawOpen by remember { mutableStateOf(false) }
+
+    // Must be called unconditionally: the sheet owns an Activity Result launcher that has to be
+    // registered before the process is killed for payment authentication.
+    val paymentSheet = rememberPaymentSheet { result ->
+        when (result) {
+            is PaymentSheetResult.Completed ->
+                viewModel.onPaymentResult(WalletViewModel.PaymentResult.COMPLETED)
+            is PaymentSheetResult.Canceled ->
+                viewModel.onPaymentResult(WalletViewModel.PaymentResult.CANCELED)
+            is PaymentSheetResult.Failed ->
+                viewModel.onPaymentResult(WalletViewModel.PaymentResult.FAILED, result.error.message)
+        }
+    }
+    val pendingPayment = state.pendingPayment
+    if (pendingPayment != null) {
+        LaunchedEffect(pendingPayment.clientSecret) {
+            paymentSheet.presentWithPaymentIntent(
+                pendingPayment.clientSecret,
+                PaymentSheet.Configuration("Voiza"),
+            )
+            // A client secret is single-use: clear it so a recomposition cannot re-present it.
+            viewModel.paymentPresented()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -133,20 +164,56 @@ fun WalletScreen(
             return@Column
         }
 
-        // Recharge presets row (dev: simulated purchase). Scrolls: five chips never fit a
-        // phone width, and a squeezed chip wraps its label into a vertical column.
+        // The gate explains why a store purchase may still be refused. The server derives it from
+        // completed RECHARGE rows, so this is a message about the ledger, never a local counter.
+        state.firstRecharge?.let { gate ->
+            VoizaCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    text = if (gate.completed) "First recharge complete \u00b7 ${gate.count} top-ups"
+                    else "First recharge unlocks diamond purchases",
+                    color = if (gate.completed) RCoinGreen else DiamondGold,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = if (gate.completed) "Diamond purchases are unlocked."
+                    else "One completed top-up unlocks spending diamonds in the store. " +
+                        "Diamonds are credited after the payment is confirmed.",
+                    color = OnDarkMedium,
+                    fontSize = 11.sp,
+                )
+            }
+        }
+
+        // Chips are the operator's active packs when the server publishes any. An older backend with
+        // no catalogue falls back to the historic presets so the demo wallet still works. A pack tap
+        // creates a PaymentIntent on Stripe-configured builds; a preset keeps the simulated route.
+        val topUps: List<TopUpChoice> = state.packages
+            .map {
+                TopUpChoice(
+                    label = "${it.name} \u00b7 +${it.totalDiamonds} \u2756 \u00b7 ${it.priceLabel()}",
+                    amountDiamonds = it.totalDiamonds,
+                    packageId = it.id,
+                )
+            }
+            .ifEmpty { RECHARGE_PRESETS.map { amount -> TopUpChoice("+$amount \u2756", amount, null) } }
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .horizontalScroll(rememberScrollState()),
         ) {
-            RECHARGE_PRESETS.forEach { amount ->
+            topUps.forEach { choice ->
                 FilterChip(
                     selected = false,
-                    onClick = { viewModel.recharge(amount) },
-                    enabled = state.busyAction != WalletViewModel.WalletUiState.BusyAction.RECHARGE,
-                    label = { Text("+$amount \u2756", fontSize = 12.sp) },
+                    onClick = { viewModel.topUp(choice.packageId, choice.amountDiamonds) },
+                    enabled = state.busyAction == null,
+                    label = { Text(choice.label, fontSize = 12.sp) },
                     colors = FilterChipDefaults.filterChipColors(
                         containerColor = VoizaSurfaceHigh,
                         labelColor = DiamondGold,
@@ -182,6 +249,7 @@ fun WalletScreen(
                     giftsSent = snapshot?.stats?.giftsSent ?: 0,
                 )
             }
+            item { MarketplaceShortcut(onOpenMarketplace) }
             item { PartnerShortcuts(onOpenPartnerApply) }
             item {
                 Text(
@@ -238,7 +306,15 @@ fun WalletScreen(
     }
 }
 
+/** Only used when the backend has no `GET /api/wallet/packages` catalogue yet. */
 private val RECHARGE_PRESETS = listOf(100, 500, 1000, 5000, 10000)
+
+/** A chip is either a real server pack (with an id to check out) or a legacy simulated preset. */
+private data class TopUpChoice(
+    val label: String,
+    val amountDiamonds: Int,
+    val packageId: String?,
+)
 
 @Composable
 private fun HeroBalanceCard(
@@ -400,6 +476,36 @@ private fun StatsCard(diamondsSpent: Long, rCoinsEarned: Long, giftsSent: Long) 
         }
     }
 }
+/**
+ * The member's gateway to the coin-seller market. Distinct from the partner desk below: here the
+ * member is a buyer browsing approved sellers, not running a seller account. The market screen
+ * reads its catalogue and the buyer's own orders from `/api/marketplace`.
+ */
+@Composable
+private fun MarketplaceShortcut(onOpenMarketplace: () -> Unit) {
+    VoizaCard(
+        modifier = Modifier.fillMaxWidth(),
+        backgroundColor = VoizaSurface,
+        contentPadding = 12.dp,
+    ) {
+        Text("Coin-seller market", color = OnDarkHigh, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "Buy diamonds from approved sellers or sell your R-coins. Prices and payment rails " +
+                "come from the seller's approved account; every order is checked by the team.",
+            color = OnDarkMedium,
+            fontSize = 11.sp,
+        )
+        Spacer(Modifier.height(10.dp))
+        VoizaButton(
+            text = "Open market",
+            onClick = onOpenMarketplace,
+            height = 44,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
 /**
  * The two roles this screen's money actually flows through.
  *
@@ -679,4 +785,10 @@ private fun LaunchedMessage(text: String, onConsumed: () -> Unit) {
                 .padding(horizontal = 14.dp, vertical = 8.dp),
         )
     }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun WalletScreenPreview() {
+    WalletScreen(onBack = {}, onOpenPartnerApply = {}, onOpenMarketplace = {})
 }

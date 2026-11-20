@@ -1,12 +1,17 @@
 package com.voiza.app.data.repository
 
 import com.voiza.app.data.mapper.toDomain
+import com.voiza.app.data.mapper.toDomainOrNull
 import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.data.remote.SessionManager
 import com.voiza.app.data.remote.VoizaApiService
 import com.voiza.app.data.remote.apiCall
+import com.voiza.app.data.remote.dto.CheckoutBody
 import com.voiza.app.data.remote.dto.RechargeBody
 import com.voiza.app.data.remote.dto.WithdrawBody
+import com.voiza.app.domain.model.CheckoutSession
+import com.voiza.app.domain.model.DiamondPackage
+import com.voiza.app.domain.model.FirstRechargeStatus
 import com.voiza.app.domain.model.Transaction
 import com.voiza.app.domain.model.WalletSnapshot
 import com.voiza.app.domain.model.Withdrawal
@@ -24,6 +29,17 @@ class WalletRepositoryImpl(
             resp.toDomain()
         }
 
+    override suspend fun packages(): ApiResult<List<DiamondPackage>> =
+        apiCall { api.walletPackages() }.mapSuccess { envelope ->
+            envelope.packages.orEmpty().mapNotNull { it.toDomainOrNull() }
+        }
+
+    override suspend fun firstRecharge(): ApiResult<FirstRechargeStatus> =
+        apiCall { api.firstRecharge() }.mapSuccess { it.toDomain() }
+
+    override suspend fun checkout(packageId: String?, amountDiamonds: Int?): ApiResult<CheckoutSession> =
+        apiCall { api.checkout(CheckoutBody(packageId, amountDiamonds)) }.mapSingle { it.toDomainOrNull() }
+
     override suspend fun recharge(amountDiamonds: Int): ApiResult<Transaction> =
         apiCall { api.recharge(RechargeBody(amountDiamonds)) }.mapSuccess { resp ->
             sessionManager.updateUser(resp.user)
@@ -37,6 +53,14 @@ class WalletRepositoryImpl(
     ): ApiResult<Withdrawal> =
         apiCall { api.withdraw(WithdrawBody(amountRCoins, payoutMethod, payoutDetails)) }
             .mapSuccess { it.withdrawal.toDomain() }
+
+    /** An incomplete intent is a failure, never a sheet that would present an empty amount. */
+    private inline fun <T, R : Any> ApiResult<T>.mapSingle(transform: (T) -> R?): ApiResult<R> =
+        when (this) {
+            is ApiResult.Success -> transform(data)?.let { ApiResult.Success(it) }
+                ?: ApiResult.Failure("The payment intent was incomplete. Please try again.")
+            is ApiResult.Failure -> this
+        }
 
     private inline fun <T, R> ApiResult<T>.mapSuccess(transform: (T) -> R): ApiResult<R> =
         when (this) {

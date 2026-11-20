@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -724,4 +725,11 @@ private fun PkSnack(text: String, onConsumed: () -> Unit) {
                 .padding(horizontal = 14.dp, vertical = 8.dp),
         )
     }
+}
+
+
+@Preview(showBackground = true)
+@Composable
+fun PkScreenPreview() {
+    PkScreen(roomId = "demo", onBack = {})
 }

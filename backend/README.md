@@ -48,9 +48,9 @@ src/
   middleware/  auth (requireAuth / requireAdmin), error (ApiError + pg code mapping)
   utils/       crypto (scrypt, codes, room numbers) · http (validation) · serialize (DTOs)
   types/       db.ts row shapes
-scripts/       e2e-live.cjs · games-e2e.cjs · business-e2e.cjs · partner-e2e.cjs
-               · capture-wire-fixtures.cjs · capture-game-wire.cjs · generate-placeholder-assets.cjs
-               · demo-gift-chat.cjs
+scripts/       e2e-live.cjs · games-e2e.cjs · business-e2e.cjs · partner-e2e.cjs · partner-desk-e2e.cjs
+               · seller-marketplace-e2e.cjs · capture-wire-fixtures.cjs · capture-game-wire.cjs
+               · generate-placeholder-assets.cjs · demo-gift-chat.cjs
 public/        gift icons/animations and demo avatars served at the API origin
 ```
 
@@ -1547,6 +1547,38 @@ commission row behind it that still promises it). A split written by hand, or a 
 kept, is a breach — the hierarchy suite proves both directions by editing one description and putting it
 back.
 
+### The seller / BD desk (`/api/partner`)
+
+The Android app holds a member session, not the code+password credential `/api/business` signs in with,
+so the same desk is offered a second door: `requireBusinessOwner` resolves the caller's account from
+`business_accounts.owner_user_id` (migration 0046) on every request — the agency desk's pattern applied
+to business accounts. The row is re-read each time, so a suspension or a revoke closes the desk at once
+rather than at token expiry, and no path carries an account id, so there is nothing to forge. The kind
+list on each route is the first gate: a seller asking for the BD roster is refused
+`partner_account_not_found` before any permission is consulted, and the permission strings are the same
+ones `/api/business` uses, so the two surfaces cannot disagree about what a kind may do. Scope still
+comes from the row — a seller reads its own orders, a BD its recursive territory — and `markOrderPaid`
+still stops at `AWAITING_VERIFICATION`, never at a balance.
+
+Migration 0047 raises `users.user_type` to `COIN_SELLER` / `BD_MANAGER` / `BD_AGENT` when an account is
+activated (from `USER` or `HOST` only, never over `AGENCY_ADMIN`), which is the badge the profile shows.
+The marker is display, not authorisation: the app gates the desk entry on `GET /api/partner/me`, and
+suspending an account does not lower the marker — the row is the authority, and the probe refuses.
+
+| Route | Who | Notes |
+|---|---|---|
+| `GET /api/partner/me` | any active partner | the probe and identity: account, kind, permissions, manual rails, the BD above it |
+| `GET /api/partner/packages` · `POST /orders` · `POST /orders/:id/{mark-paid,cancel}` · `GET /customers/lookup` | seller | the cash-moving doors; mark-paid needs evidence when `business.recharge.manualEvidenceRequired` (default true) — an attached receipt counts |
+| `GET /api/partner/{dashboard,orders,orders/:id,statement}` | both | each within its own scope; a BD statement has no cash book |
+| `POST /api/partner/receipts` · `GET /receipts/:id/raw` · `GET /payouts[/:id]` | seller | migration 0041's proof and cash handovers |
+| `GET /api/partner/sellers` · `GET /sellers/:id/report` | BD | the recursive territory roster and one seller's whole book; a foreign BD's report answers 404 |
+
+`node scripts/partner-desk-e2e.cjs` (75) walks the whole boundary against a running backend: the plain
+member's refusals, PENDING vs ACTIVE, the marker raise, credential separation (a business token is
+refused `member_token_required` here), the seller flow from package to receipt to claim to cancel, the
+BD doors and territory, suspension, unlink/relink via `ownerPhone: ''`, and the application-approval
+path that switches the applicant's `user_type`.
+
 ### Tests
 
 `npm run test:agency:hierarchy` (65) drives a running backend over HTTP and reads the book back through the
@@ -2119,6 +2151,62 @@ concurrent claiming, exact bonus/journal deltas, replay, QA exclusion and payout
 holes. A separate forced exception proved cleanup. The account and business-finance
 reconcilers were checked before and after these runs. Historical unmarked script
 identities remain a separate demo-data cleanup task (#148).
+
+### The member coin-seller marketplace (`/api/marketplace`)
+
+The seller desk in `/partner` is for a member who *runs* a partner account. This router is the other
+side of the same relationship: a member who wants to buy diamonds from an approved coin seller. All
+five routes require a user token; a partner or operator credential is refused at the door. Buyer
+identity comes only from `req.user.sub`, so no path or body field can name somebody else's order.
+
+| Route | Body / query | Answer |
+| --- | --- | --- |
+| `GET /sellers` | — | `{ sellers }`, approved active sellers with their offered packages |
+| `POST /orders` | `sellerId` or `sellerCode`; `packageKey` or `packageCode`; `paymentMethod`; optional `note` | `{ order }`, created `AWAITING_PAYMENT` |
+| `GET /orders` | optional `status`, `page`, `limit` | `{ orders, total, page, limit }` for this buyer only |
+| `GET /orders/:id` | — | `{ order }` for this buyer only; a foreign id answers 404 |
+| `POST /orders/:id/receipt` | `fileName`, base64 `data` | `{ receiptId, duplicate, createdAt }` |
+
+A seller appears only when its `business_accounts` row is `COIN_SELLER`, `ACTIVE` and approved
+(`approved_by` and `approved_at` set). The catalogue is an allowlisted projection: `id`, `code`,
+`displayName`, `marketCountry`, `paymentRails` and `packages` (`key`, `label`, `diamonds`,
+`amountCents`, `currency`, `unitPriceCents`). Contact details, owner links, approval metadata,
+limits, commission rates and credentials never leave this router.
+
+```bash
+curl -H "Authorization: Bearer $MEMBER_TOKEN" \
+  http://localhost:4000/api/marketplace/sellers
+
+curl -X POST -H "Authorization: Bearer $MEMBER_TOKEN" -H 'content-type: application/json' \
+  -d '{"sellerCode":"SLR-4821","packageKey":"pk_1000","paymentMethod":"JAZZCASH"}' \
+  http://localhost:4000/api/marketplace/orders
+```
+
+The server resolves the seller and package rows itself. Diamonds, price and currency come from the
+package row; the rail must be one of `CASH`, `BANK`, `EASYPAISA` or `JAZZCASH`. Unknown or
+unapproved sellers, unoffered packages and non-manual rails are refused before `createRechargeOrder`
+runs. Creation delegates to that service and therefore stops at `AWAITING_PAYMENT`: **no route on
+this router credits diamonds**. Finance still approves the order through `/admin/business`; the
+seller's mark-paid and cancellation routes remain on `/business` and `/partner`.
+
+Order reads return named columns only: reference, status, seller identity, package key, amounts,
+rail, a trimmed payment reference and the created/updated/verified/expiry timestamps. The seller's
+`evidence` blob, rule snapshot, BD attribution, ledger transaction id and internal notes are not
+part of the member DTO. List and detail queries both filter on `user_id = req.user.sub`, so a
+guessed id is indistinguishable from no row.
+
+`POST /orders/:id/receipt` reuses `saveReceipt`'s byte sniffing, format/size budgets, 8-document
+cap and `(order_id, sha256)` duplicate rule. The buyer must own an order still in
+`AWAITING_PAYMENT` or `AWAITING_VERIFICATION`; replaying identical bytes answers `200` with the
+first `receiptId` instead of storing a second document. Migration **0050** adds
+`payment_receipts.uploaded_by_user_id` so a member upload is attributed to the member rather than
+forged into the seller foreign key; `npm run db:migrate` applies it. The document stays evidence —
+it is never a URL, never a credit and never exposed on the member order DTO.
+
+Run `node scripts/seller-marketplace-e2e.cjs` from this directory against a live API after applying
+0050. In the style of `partner-desk-e2e.cjs`, it creates its own BD, approved and unapproved sellers,
+package and buyers through product routes, proves the scope and no-credit rules, then restores the
+`business.bd` switch, retires the package and closes its accounts.
 
 ## Conventions
 

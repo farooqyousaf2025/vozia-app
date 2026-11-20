@@ -38,6 +38,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -65,6 +66,7 @@ import com.voiza.app.ui.theme.RCoinGreen
 import com.voiza.app.ui.theme.VoizaSurfaceHigh
 import com.voiza.app.viewmodel.AgencyAccessViewModel
 import com.voiza.app.viewmodel.AuthViewModel
+import com.voiza.app.viewmodel.PartnerAccessViewModel
 import com.voiza.app.viewmodel.voizaViewModelFactory
 
 /**
@@ -77,10 +79,12 @@ import com.voiza.app.viewmodel.voizaViewModelFactory
 fun ProfileScreen(
     onBack: () -> Unit,
     onOpenWallet: () -> Unit,
+    onOpenFriends: () -> Unit,
     onOpenStore: () -> Unit,
     onOpenQuests: () -> Unit,
     onOpenPartner: () -> Unit,
     onOpenAgency: () -> Unit,
+    onOpenPartnerDesk: () -> Unit,
     onLoggedOut: () -> Unit,
     viewModel: AuthViewModel = viewModel(
         factory = voizaViewModelFactory { AuthViewModel() },
@@ -88,14 +92,20 @@ fun ProfileScreen(
     agencyViewModel: AgencyAccessViewModel = viewModel(
         factory = voizaViewModelFactory { AgencyAccessViewModel() },
     ),
+    partnerViewModel: PartnerAccessViewModel = viewModel(
+        factory = voizaViewModelFactory { PartnerAccessViewModel() },
+    ),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val user = state.loggedInUser
     val runsAgency by agencyViewModel.runsAgency.collectAsStateWithLifecycle()
+    val runsPartnerAccount by partnerViewModel.runsPartnerAccount.collectAsStateWithLifecycle()
 
     // The server answers whether this member runs an agency, and it answers again every time the tab is
     // opened: a grant, a revoke or a suspension all change the entry without a reinstall.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { agencyViewModel.check() }
+    // Same for the seller/BD desk: the account's ACTIVE status is re-read on every probe.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { partnerViewModel.check() }
 
     var editOpen by remember { mutableStateOf(false) }
     var logoutOpen by remember { mutableStateOf(false) }
@@ -218,6 +228,15 @@ fun ProfileScreen(
         )
         Spacer(Modifier.height(8.dp))
         VoizaButton(
+            text = "Friends & messages",
+            onClick = onOpenFriends,
+            gradient = Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670))),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+        )
+        Spacer(Modifier.height(8.dp))
+        VoizaButton(
             text = "Become a Partner",
             onClick = onOpenPartner,
             gradient = Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670))),
@@ -238,6 +257,20 @@ fun ProfileScreen(
             VoizaButton(
                 text = "Agency desk",
                 onClick = onOpenAgency,
+                gradient = Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670))),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+            )
+        }
+        // The seller/BD desk, gated the same way and for the same reason: the server re-reads
+        // `business_accounts.owner_user_id` and the ACTIVE status on every `/api/partner` request,
+        // so a suspension or a revoke takes the entry away on the next resume without a reinstall.
+        if (runsPartnerAccount == true) {
+            Spacer(Modifier.height(8.dp))
+            VoizaButton(
+                text = "Partner desk",
+                onClick = onOpenPartnerDesk,
                 gradient = Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670))),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -297,6 +330,9 @@ private fun RoleBadge(user: User) {
     val (label, brush) = when (user.userType.uppercase()) {
         "HOST" -> "HOST" to Brush.horizontalGradient(listOf(Color(0xFFE040FB), Color(0xFF7C4DFF)))
         "AGENCY_ADMIN" -> "AGENCY" to Brush.horizontalGradient(listOf(Color(0xFFFFC246), Color(0xFFFF6EC7)))
+        "COIN_SELLER" -> "SELLER" to Brush.horizontalGradient(listOf(Color(0xFF00E5A0), Color(0xFF00B8D4)))
+        "BD_MANAGER" -> "BD MANAGER" to Brush.horizontalGradient(listOf(Color(0xFFFFC246), Color(0xFFFF8A00)))
+        "BD_AGENT" -> "BD AGENT" to Brush.horizontalGradient(listOf(Color(0xFF64B5F6), Color(0xFF7C4DFF)))
         else -> "MEMBER" to Brush.horizontalGradient(listOf(Color(0xFF2A2459), Color(0xFF3D3670)))
     }
     Box(
@@ -412,3 +448,9 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = OnDarkHigh,
     unfocusedTextColor = OnDarkHigh,
 )
+
+@Preview(showBackground = true)
+@Composable
+fun ProfileScreenPreview() {
+    ProfileScreen(onBack = {}, onOpenWallet = {}, onOpenFriends = {}, onOpenStore = {}, onOpenQuests = {}, onOpenPartner = {}, onOpenAgency = {}, onOpenPartnerDesk = {}, onLoggedOut = {})
+}

@@ -20,6 +20,13 @@ export type PaymentIntent = {
   status: string;
 };
 
+export type CheckoutSession = {
+  id: string;
+  url: string;
+  amountCents: number;
+  currency: string;
+};
+
 const STRIPE_API = 'https://api.stripe.com/v1';
 /** Replay window for webhook signatures; Stripe's own docs suggest 5 minutes. */
 const SIGNATURE_TOLERANCE_SECONDS = 300;
@@ -46,8 +53,12 @@ export async function createPaymentIntent(
     throw ApiError.badGateway('Payments are not configured on this server', 'payments_not_configured');
   }
 
-  const form = new URLSearchParams({ amount: String(amountCents), currency: env.payments.stripeCurrency });
-  for (const [key, value] of Object.entries(metadata)) form.append(`metadata[${key}]`, value);
+  const currency = (metadata as Record<string, string>).currency || env.payments.stripeCurrency;
+  const form = new URLSearchParams({ amount: String(amountCents), currency });
+  for (const [key, value] of Object.entries(metadata)) {
+    if (key === 'currency') continue;
+    form.append(`metadata[${key}]`, value);
+  }
 
   const res = await fetch(`${STRIPE_API}/payment_intents`, {
     method: 'POST',
@@ -143,6 +154,10 @@ export type StripeEvent = {
   intentId?: string;
   userId?: string;
   diamonds?: number;
+  /** The amount actually charged, signed into the intent's metadata at checkout. */
+  amountCents?: number;
+  currency?: string;
+  packageId?: string;
   status?: string;
 };
 
@@ -160,12 +175,16 @@ export function parseEvent(body: unknown): StripeEvent {
   const object = event.data?.object ?? {};
   const metadata = object.metadata ?? {};
   const diamonds = Number.parseInt(metadata.diamonds ?? '', 10);
+  const amountCents = Number.parseInt(metadata.amountCents ?? '', 10);
   return {
     id: event.id ?? '',
     type: event.type ?? '',
     intentId: object.id,
     userId: metadata.voizaUserId,
     diamonds: Number.isFinite(diamonds) ? diamonds : undefined,
+    amountCents: Number.isFinite(amountCents) && amountCents > 0 ? amountCents : undefined,
+    currency: metadata.currency?.toLowerCase(),
+    packageId: metadata.packageId,
     status: object.status,
   };
 }

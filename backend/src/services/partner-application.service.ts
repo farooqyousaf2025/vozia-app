@@ -725,18 +725,30 @@ async function lockApplication(client: PoolClient, id: string): Promise<LockedRo
 }
 
 /**
- * Give the approved applicant the app-level marker their role implies.
+ * Give the approved applicant the app-level marker their role implies (migration 0046).
  *
- * Raised, never lowered: 'HOST' has been written by `room.service.ts` for anyone who opened a room,
- * so an operator withdrawing a grant cannot conclude anything from that column about what it said
- * before. The authoritative state is the application row, which the gate and the API both read.
+ * The marker names the approved role — a seller reads as a seller, not as the HOST every non-agency
+ * approval used to raise. It is still display only: no gate reads it as proof of a privilege, and
+ * the authoritative state is the application row plus the account it created.
+ *
+ * Written from USER or HOST, never over AGENCY_ADMIN. HOST is not evidence of a host grant —
+ * `room.service.ts` raises it for anybody who opened a room — so a live partner grant outranks it,
+ * while an agency admin who also hosts keeps the marker of the role that runs a roster.
  */
+const USER_TYPE_MARKER: Record<PartnerRole, string> = {
+  HOST: 'HOST',
+  AGENCY: 'AGENCY_ADMIN',
+  COIN_SELLER: 'COIN_SELLER',
+  BD_MANAGER: 'BD_MANAGER',
+};
+
 async function raiseUserTypeMarker(client: PoolClient, userId: string, role: PartnerRole): Promise<void> {
-  const marker = role === 'AGENCY' ? 'AGENCY_ADMIN' : 'HOST';
-  await client.query("UPDATE users SET user_type = $2::user_type, updated_at = now() WHERE id = $1 AND user_type = 'USER'", [
-    userId,
-    marker,
-  ]);
+  const marker = USER_TYPE_MARKER[role];
+  await client.query(
+    `UPDATE users SET user_type = $2::user_type, updated_at = now()
+      WHERE id = $1 AND user_type IN ('USER', 'HOST') AND user_type <> $2::user_type`,
+    [userId, marker],
+  );
 }
 
 /**
@@ -822,8 +834,9 @@ async function activateRole(
   const inserted = await client.query<{ id: string }>(
     `INSERT INTO business_accounts
        (kind, code, display_name, contact_email, contact_phone, market_country, parent_id, status,
-        max_order_diamonds, daily_diamond_limit, daily_order_limit, created_by, approved_by, approved_at)
-     VALUES ($1::business_account_kind,$2,$3,$4,$5,$6,$7,'ACTIVE',$8,$9,$10,$11,$11,now())
+        max_order_diamonds, daily_diamond_limit, daily_order_limit, created_by, approved_by, approved_at,
+        owner_user_id)
+     VALUES ($1::business_account_kind,$2,$3,$4,$5,$6,$7,'ACTIVE',$8,$9,$10,$11,$11,now(),$12)
      RETURNING id`,
     [
       kind,
@@ -837,6 +850,7 @@ async function activateRole(
       limits.dailyDiamondLimit,
       limits.dailyOrderLimit,
       adminId,
+      row.user_id,
     ],
   );
   const businessAccountId = inserted.rows[0].id;

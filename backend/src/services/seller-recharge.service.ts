@@ -11,6 +11,7 @@ import { ApiError, normalizePhone } from '../utils/http';
 import { shortCode } from '../utils/ids';
 import { RechargeOrderDto, toRechargeOrder } from '../utils/serialize';
 import { recordAudit } from './audit.service';
+import { topUpTicker } from './announcement.service';
 import { emitToUser } from './socket.service';
 import { postLedgerMoves, settlePaymentOnClient } from './ledger.service';
 import { countReceiptsForOrder } from './receipt.service';
@@ -234,11 +235,37 @@ export async function setSellerPackages(
  * "1000 diamonds for 100 paisa" is not a price the platform will honour, and this is the only
  * place an order's money values are decided.
  */
+export type CreateRechargeOrderInput = {
+  /** Seller desk: the seller names the customer's phone. */
+  phone?: string;
+  /**
+   * Member marketplace: the buyer is the token subject, passed straight through from `req.user.sub`.
+   * Exactly one of `phone` and `userId` is required, so a member can never recharge somebody else
+   * by editing the body.
+   */
+  userId?: string;
+  packageKey: string;
+  paymentMethod: string;
+  note?: string;
+};
+
+const samePhone = (left: string | null | undefined, right: string | null | undefined): boolean => {
+  if (!left || !right) return false;
+  try {
+    return normalizePhone(left) === normalizePhone(right);
+  } catch {
+    return left === right;
+  }
+};
+
 export async function createRechargeOrder(
   seller: BusinessAccountRow,
-  input: { phone: string; packageKey: string; paymentMethod: string; note?: string },
+  input: CreateRechargeOrderInput,
 ): Promise<RechargeOrderDto> {
   if (seller.kind !== 'COIN_SELLER') throw ApiError.forbidden('Only coin sellers may open recharge orders', 'not_a_seller');
+  if (Boolean(input.phone) === Boolean(input.userId)) {
+    throw ApiError.badRequest('An order needs exactly one buyer — a phone or a member id', 'buyer_required');
+  }
 
   const paymentMethod = input.paymentMethod.trim().toUpperCase();
   if (!MANUAL_RAILS.includes(paymentMethod as (typeof MANUAL_RAILS)[number])) {
@@ -249,8 +276,10 @@ export async function createRechargeOrder(
   }
 
   const config = await rechargeConfig();
-  const phone = normalizePhone(input.phone);
-  if (phone === seller.contact_phone) throw ApiError.badRequest('A seller cannot recharge their own contact number', 'self_recharge');
+  const phone = input.phone ? normalizePhone(input.phone) : null;
+  if (phone && samePhone(phone, seller.contact_phone)) {
+    throw ApiError.badRequest('A seller cannot recharge their own contact number', 'self_recharge');
+  }
 
   const packageRow = await one<RechargePackageRow>(
     `SELECT * FROM recharge_packages WHERE key = $1 AND is_active`,
@@ -267,13 +296,20 @@ export async function createRechargeOrder(
   const feeCents = Math.floor((amountCents * packageRow.fee_bps) / 10_000);
 
   const order = await withTransaction(async (client) => {
-    const customer = await client.query<UserRow>(
-      'SELECT * FROM users WHERE phone = $1 FOR UPDATE',
-      [phone],
-    );
+    const customer = input.userId
+      ? await client.query<UserRow>('SELECT * FROM users WHERE id = $1 FOR UPDATE', [input.userId])
+      : await client.query<UserRow>('SELECT * FROM users WHERE phone = $1 FOR UPDATE', [phone]);
     const user = customer.rows[0];
-    if (!user) throw ApiError.notFound('No account with that phone number', 'customer_not_found');
+    if (!user) {
+      throw ApiError.notFound(
+        input.userId ? 'Member account not found' : 'No account with that phone number',
+        input.userId ? 'member_not_found' : 'customer_not_found',
+      );
+    }
     if (user.status === 'BANNED') throw ApiError.forbidden('That account is banned', 'account_banned');
+    if (samePhone(user.phone, seller.contact_phone)) {
+      throw ApiError.badRequest('A seller cannot recharge their own contact number', 'self_recharge');
+    }
 
     // §22's per-seller limits, read as of this moment and enforced before anything is written.
     if (packageRow.diamonds > seller.max_order_diamonds) {
@@ -328,7 +364,7 @@ export async function createRechargeOrder(
         paymentMethod,
         feeCents,
         String(config.orderValidityMinutes),
-        JSON.stringify({ note: input.note ?? null, submittedPhone: phone }),
+        JSON.stringify({ note: input.note ?? null, submittedPhone: user.phone }),
       ],
     ).catch((err: { message?: string }) => {
       // The trigger is the authority when two requests race: it locks the seller row and counts
@@ -679,6 +715,12 @@ function notify(outcome: { order: RechargeOrderRow; credited: boolean; diamondBa
     reference: outcome.order.reference,
   });
   emitToUser(outcome.order.user_id, 'wallet:recharge_status', { reference: outcome.order.reference, status: 'CREDITED' });
+  // A seller credit is a top-up too, and the ticker names the member who received it.
+  void one<{ username: string }>('SELECT username FROM users WHERE id = $1', [outcome.order.user_id])
+    .then((user) => {
+      if (user) topUpTicker(user.username, outcome.order.user_id, Number(outcome.order.diamonds), 'RECHARGE');
+    })
+    .catch(() => undefined);
 }
 
 /**

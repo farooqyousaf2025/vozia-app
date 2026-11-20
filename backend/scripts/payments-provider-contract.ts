@@ -78,7 +78,7 @@ async function main() {
 
   // Signature + parsing behave the same in both modes, and `simulated` is the mode
   // the e2e suite runs in, so assert them once here rather than twice.
-  const body = JSON.stringify({ id: 'evt_1', type: 'payment_intent.succeeded', data: { object: { id: 'pi_1', status: 'succeeded', metadata: { voizaUserId: 'u9', diamonds: '250' } } } });
+  const body = JSON.stringify({ id: 'evt_1', type: 'payment_intent.succeeded', data: { object: { id: 'pi_1', status: 'succeeded', metadata: { voizaUserId: 'u9', diamonds: '250', amountCents: '1999', currency: 'usd', packageId: 'pkg_1' } } } });
 
   let verified = true;
   try {
@@ -105,6 +105,11 @@ async function main() {
 
   const event = stripe.parseEvent(JSON.parse(body));
   check('parse: the credit reference comes out of metadata', event.userId === 'u9' && event.diamonds === 250 && event.intentId === 'pi_1', event);
+  check(
+    'parse: the charged amount and package survive for settlement',
+    event.amountCents === 1999 && event.currency === 'usd' && event.packageId === 'pkg_1',
+    event,
+  );
 
   const ping = stripe.parseEvent({ id: 'evt_ping', type: 'customer.created', data: { object: { id: 'cus_1' } } });
   check('parse: an unknown event type still reports its type', ping.type === 'customer.created' && ping.userId === undefined, ping);

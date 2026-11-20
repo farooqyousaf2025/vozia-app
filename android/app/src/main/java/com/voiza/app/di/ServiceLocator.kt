@@ -1,6 +1,8 @@
 package com.voiza.app.di
 
 import android.content.Context
+import com.stripe.android.PaymentConfiguration
+import com.voiza.app.BuildConfig
 import com.voiza.app.data.livekit.LiveKitRoomManager
 import com.voiza.app.data.notifications.VoizaNotifier
 import com.voiza.app.data.remote.NetworkModule
@@ -9,8 +11,11 @@ import com.voiza.app.data.remote.VoizaApiService
 import com.voiza.app.data.repository.AgencyBookRepositoryImpl
 import com.voiza.app.data.repository.AuthRepositoryImpl
 import com.voiza.app.data.repository.BannerRepositoryImpl
+import com.voiza.app.data.repository.FriendsRepositoryImpl
 import com.voiza.app.data.repository.GameRepositoryImpl
 import com.voiza.app.data.repository.GiftRepositoryImpl
+import com.voiza.app.data.repository.MarketplaceRepositoryImpl
+import com.voiza.app.data.repository.PartnerDeskRepositoryImpl
 import com.voiza.app.data.repository.PkRepositoryImpl
 import com.voiza.app.data.repository.QuestRepositoryImpl
 import com.voiza.app.data.repository.RankingsRepositoryImpl
@@ -23,8 +28,11 @@ import com.voiza.app.data.socket.VoizaSocketClient
 import com.voiza.app.domain.repository.AgencyBookRepository
 import com.voiza.app.domain.repository.AuthRepository
 import com.voiza.app.domain.repository.BannerRepository
+import com.voiza.app.domain.repository.FriendsRepository
 import com.voiza.app.domain.repository.GiftRepository
 import com.voiza.app.domain.repository.GameRepository
+import com.voiza.app.domain.repository.MarketplaceRepository
+import com.voiza.app.domain.repository.PartnerDeskRepository
 import com.voiza.app.domain.repository.PkRepository
 import com.voiza.app.domain.repository.QuestRepository
 import com.voiza.app.domain.repository.RankingsRepository
@@ -87,8 +95,20 @@ object ServiceLocator {
     lateinit var agencyBookRepository: AgencyBookRepository
         private set
 
+    /** The seller/BD desk of the partner account this member runs, if any: orders, cash book, territory. */
+    lateinit var partnerDeskRepository: PartnerDeskRepository
+        private set
+
+    /** The member's view of the coin-seller market: approved sellers, own orders, own receipts. */
+    lateinit var marketplaceRepository: MarketplaceRepository
+        private set
+
     /** Follows, blocks and reports between members — the card opened from a roster row or a chat line. */
     lateinit var socialRepository: SocialRepository
+        private set
+
+    /** Friends, requests and one-to-one messages (migration 0049). */
+    lateinit var friendsRepository: FriendsRepository
         private set
 
     /** The landing rankings: three boards over the ledger, and the podium reward a member collects. */
@@ -112,12 +132,25 @@ object ServiceLocator {
     lateinit var notifier: VoizaNotifier
         private set
 
+    /**
+     * Whether a real Stripe publishable key was supplied at build time. When false the wallet
+     * keeps the simulated top-up path and never asks the server for a PaymentIntent.
+     */
+    var stripeConfigured: Boolean = false
+        private set
+
     fun init(context: Context) {
         if (initialized) return
         synchronized(this) {
             if (initialized) return
 
             val appContext = context.applicationContext
+
+            // PaymentSheet reads this global configuration when it is created. A blank key means
+            // this stack has no Stripe account, so the wallet stays on the simulated top-up path.
+            val publishableKey = BuildConfig.VOIZA_STRIPE_PUBLISHABLE_KEY.trim()
+            stripeConfigured = publishableKey.startsWith("pk_")
+            if (stripeConfigured) PaymentConfiguration.init(appContext, publishableKey)
 
             sessionManager = SessionManager(appContext)
             apiService = NetworkModule.buildRetrofit(
@@ -140,7 +173,10 @@ object ServiceLocator {
             pkRepository = PkRepositoryImpl(apiService)
             roleApplicationRepository = RoleApplicationRepositoryImpl(apiService)
             agencyBookRepository = AgencyBookRepositoryImpl(apiService)
+            partnerDeskRepository = PartnerDeskRepositoryImpl(apiService)
+            marketplaceRepository = MarketplaceRepositoryImpl(apiService)
             socialRepository = SocialRepositoryImpl(apiService)
+            friendsRepository = FriendsRepositoryImpl(apiService)
             rankingsRepository = RankingsRepositoryImpl(apiService)
 
             joinRoomUseCase = JoinRoomUseCase(roomRepository) { roomId ->

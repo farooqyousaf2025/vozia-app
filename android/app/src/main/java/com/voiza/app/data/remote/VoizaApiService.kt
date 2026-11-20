@@ -12,12 +12,26 @@ import com.voiza.app.data.remote.dto.BannerTrackBody
 import com.voiza.app.data.remote.dto.BannersResponse
 import com.voiza.app.data.remote.dto.BlockBody
 import com.voiza.app.data.remote.dto.BlockResponse
+import com.voiza.app.data.remote.dto.CancelOrderBody
 import com.voiza.app.data.remote.dto.CheckInResponseDto
+import com.voiza.app.data.remote.dto.CheckoutBody
+import com.voiza.app.data.remote.dto.CheckoutResponse
+import com.voiza.app.data.remote.dto.ConversationsEnvelope
+import com.voiza.app.data.remote.dto.DiamondPackagesEnvelope
+import com.voiza.app.data.remote.dto.FirstRechargeDto
 import com.voiza.app.data.remote.dto.CreateGameBody
+import com.voiza.app.data.remote.dto.CreateRechargeOrderBody
 import com.voiza.app.data.remote.dto.CreateRoomBody
+import com.voiza.app.data.remote.dto.CustomerLookupEnvelope
+import com.voiza.app.data.remote.dto.DoNotContactBody
+import com.voiza.app.data.remote.dto.DoNotContactEnvelope
 import com.voiza.app.data.remote.dto.EmojiCatalogueDto
 import com.voiza.app.data.remote.dto.EmptyRequestBody
 import com.voiza.app.data.remote.dto.FollowResponse
+import com.voiza.app.data.remote.dto.FriendDecisionEnvelope
+import com.voiza.app.data.remote.dto.FriendRequestEnvelope
+import com.voiza.app.data.remote.dto.FriendRequestsEnvelope
+import com.voiza.app.data.remote.dto.FriendsEnvelope
 import com.voiza.app.data.remote.dto.GameActionBody
 import com.voiza.app.data.remote.dto.GameCatalogResponse
 import com.voiza.app.data.remote.dto.GameDisputeEnvelope
@@ -34,16 +48,34 @@ import com.voiza.app.data.remote.dto.RankingBoardResponse
 import com.voiza.app.data.remote.dto.RankingClaimBody
 import com.voiza.app.data.remote.dto.RankingClaimResponse
 import com.voiza.app.data.remote.dto.LiveKitTokenDto
+import com.voiza.app.data.remote.dto.CreateMarketplaceOrderBody
+import com.voiza.app.data.remote.dto.MarketplaceOrderEnvelope
+import com.voiza.app.data.remote.dto.MarketplaceOrdersEnvelope
+import com.voiza.app.data.remote.dto.MarketplaceReceiptBody
+import com.voiza.app.data.remote.dto.MarketplaceReceiptDto
+import com.voiza.app.data.remote.dto.MarketplaceSellersEnvelope
+import com.voiza.app.data.remote.dto.MarkOrderPaidBody
+import com.voiza.app.data.remote.dto.MarkReadEnvelope
+import com.voiza.app.data.remote.dto.MessageEnvelope
+import com.voiza.app.data.remote.dto.MessagesEnvelope
 import com.voiza.app.data.remote.dto.MyApplicationsDto
 import com.voiza.app.data.remote.dto.OtpRequestBody
 import com.voiza.app.data.remote.dto.OtpResponse
 import com.voiza.app.data.remote.dto.OkResponse
+import com.voiza.app.data.remote.dto.PartnerDashboardEnvelope
+import com.voiza.app.data.remote.dto.PartnerSellersEnvelope
+import com.voiza.app.data.remote.dto.PartnerStatementEnvelope
+import com.voiza.app.data.remote.dto.PartnerWhoamiEnvelope
 import com.voiza.app.data.remote.dto.PkBattleEnvelope
 import com.voiza.app.data.remote.dto.PkHistoryResponse
 import com.voiza.app.data.remote.dto.PkInviteBody
 import com.voiza.app.data.remote.dto.PkSettingsEnvelope
 import com.voiza.app.data.remote.dto.QuestsTodayDto
+import com.voiza.app.data.remote.dto.ReceiptUploadEnvelope
 import com.voiza.app.data.remote.dto.RechargeBody
+import com.voiza.app.data.remote.dto.RechargeOrderEnvelope
+import com.voiza.app.data.remote.dto.RechargeOrdersEnvelope
+import com.voiza.app.data.remote.dto.RechargePackagesEnvelope
 import com.voiza.app.data.remote.dto.RechargeResponse
 import com.voiza.app.data.remote.dto.RoleApplicationEnvelope
 import com.voiza.app.data.remote.dto.RoleCatalogueDto
@@ -59,11 +91,14 @@ import com.voiza.app.data.remote.dto.SeatMuteBody
 import com.voiza.app.data.remote.dto.SeatPolicyResponse
 import com.voiza.app.data.remote.dto.SeatStatusBody
 import com.voiza.app.data.remote.dto.SeatsResponse
+import com.voiza.app.data.remote.dto.SellerPayoutsEnvelope
+import com.voiza.app.data.remote.dto.SellerReportEnvelope
 import com.voiza.app.data.remote.dto.SpeakerCancelResponse
 import com.voiza.app.data.remote.dto.SpeakerRequestsResponse
 import com.voiza.app.data.remote.dto.SetRoomThemeBody
 import com.voiza.app.data.remote.dto.SendGiftBody
 import com.voiza.app.data.remote.dto.SendGiftResponse
+import com.voiza.app.data.remote.dto.SendMessageBody
 import com.voiza.app.data.remote.dto.StoreItemBody
 import com.voiza.app.data.remote.dto.SubmitApplicationBody
 import com.voiza.app.data.remote.dto.SupplementApplicationBody
@@ -71,8 +106,10 @@ import com.voiza.app.data.remote.dto.StorePurchaseResponse
 import com.voiza.app.data.remote.dto.StoreResponse
 import com.voiza.app.data.remote.dto.TakeSeatResponse
 import com.voiza.app.data.remote.dto.ThemeCatalogueDto
+import com.voiza.app.data.remote.dto.UnfriendEnvelope
 import com.voiza.app.data.remote.dto.UpdateProfileBody
 import com.voiza.app.data.remote.dto.UpdateRoomBody
+import com.voiza.app.data.remote.dto.UploadReceiptBody
 import com.voiza.app.data.remote.dto.UserEnvelope
 import com.voiza.app.data.remote.dto.VerifyOtpBody
 import com.voiza.app.data.remote.dto.WalletResponse
@@ -111,11 +148,47 @@ interface VoizaApiService {
     @GET("api/wallet")
     suspend fun wallet(): WalletResponse
 
+    /** The active buyer packs in the operator's order; no price is computed on the device. */
+    @GET("api/wallet/packages")
+    suspend fun walletPackages(): DiamondPackagesEnvelope
+
+    /** The first-recharge gate, derived by the server from completed RECHARGE rows. */
+    @GET("api/wallet/first-recharge")
+    suspend fun firstRecharge(): FirstRechargeDto
+
+    /**
+     * Paid top-up. The server refuses this route in demo mode; with a configured publishable key
+     * the wallet uses it for server packs and presents the returned client secret in PaymentSheet.
+     */
+    @POST("api/wallet/recharge/checkout")
+    suspend fun checkout(@Body body: CheckoutBody): CheckoutResponse
+
     @POST("api/wallet/recharge")
     suspend fun recharge(@Body body: RechargeBody): RechargeResponse
 
     @POST("api/wallet/withdraw")
     suspend fun withdraw(@Body body: WithdrawBody): WithdrawResponse
+
+    // ---- Member coin-seller marketplace ------------------------------------
+    // Buyer-scoped projections: the seller's contact details, owner and commission rules are not
+    // part of these answers. The member's own id is never a body field; the server reads the token.
+
+    /** Approved active sellers and the packages each may sell, with server-owned prices. */
+    @GET("api/marketplace/sellers")
+    suspend fun marketplaceSellers(): MarketplaceSellersEnvelope
+
+    @GET("api/marketplace/orders")
+    suspend fun marketplaceOrders(): MarketplaceOrdersEnvelope
+
+    @POST("api/marketplace/orders")
+    suspend fun marketplaceCreateOrder(@Body body: CreateMarketplaceOrderBody): MarketplaceOrderEnvelope
+
+    /** `data` is a base64 (or data-URL) image/pdf; the returned document is proof, not credit. */
+    @POST("api/marketplace/orders/{id}/receipt")
+    suspend fun marketplaceUploadReceipt(
+        @Path("id") orderId: String,
+        @Body body: MarketplaceReceiptBody,
+    ): MarketplaceReceiptDto
 
     // ---- Rooms -------------------------------------------------------------
 
@@ -346,6 +419,70 @@ interface VoizaApiService {
     @POST("api/users/{id}/report")
     suspend fun reportUser(@Path("id") userId: String, @Body body: ReportBody): ReportResponse
 
+    // ---- Friends and direct messages ----------------------------------------
+
+    /**
+     * Ask a member to be a friend. The body is deliberately empty: the requester comes from the
+     * token, and the target is the path — a client cannot send somebody else's id in a field.
+     */
+    @POST("api/users/{id}/friend-request")
+    suspend fun sendFriendRequest(@Path("id") userId: String): FriendRequestEnvelope
+
+    @GET("api/friends")
+    suspend fun friends(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 50,
+    ): FriendsEnvelope
+
+    /** `incoming` or `outgoing`; the server also filters to pending requests only. */
+    @GET("api/friends/requests")
+    suspend fun friendRequests(
+        @Query("direction") direction: String = "incoming",
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 20,
+    ): FriendRequestsEnvelope
+
+    /** Only the addressee may accept, and only while the row is still pending. */
+    @POST("api/friends/requests/{id}/accept")
+    suspend fun acceptFriendRequest(@Path("id") requestId: String): FriendDecisionEnvelope
+
+    @POST("api/friends/requests/{id}/decline")
+    suspend fun declineFriendRequest(@Path("id") requestId: String): FriendDecisionEnvelope
+
+    @DELETE("api/friends/{userId}")
+    suspend fun unfriend(@Path("userId") userId: String): UnfriendEnvelope
+
+    /**
+     * Set the caller's own "do not contact" flag. Clearing it sends `value = false` on the same
+     * route; the server ignores anything else in the body.
+     */
+    @POST("api/friends/{userId}/do-not-contact")
+    suspend fun setDoNotContact(
+        @Path("userId") userId: String,
+        @Body body: DoNotContactBody,
+    ): DoNotContactEnvelope
+
+    /** Conversations are keyed by the pair on the server; the route names the other member. */
+    @GET("api/dm/conversations")
+    suspend fun conversations(): ConversationsEnvelope
+
+    @GET("api/dm/conversations/{userId}/messages")
+    suspend fun messages(
+        @Path("userId") userId: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 50,
+    ): MessagesEnvelope
+
+    /** The server trims and caps the text (2000 characters) and refuses non-friends with 403. */
+    @POST("api/dm/conversations/{userId}/messages")
+    suspend fun sendMessage(
+        @Path("userId") userId: String,
+        @Body body: SendMessageBody,
+    ): MessageEnvelope
+
+    @POST("api/dm/conversations/{userId}/read")
+    suspend fun markRead(@Path("userId") userId: String): MarkReadEnvelope
+
     // ---- Store -------------------------------------------------------------
 
     /**
@@ -527,4 +664,72 @@ interface VoizaApiService {
 
     @GET("api/agency/settlements")
     suspend fun agencySettlements(@Query("limit") limit: Int? = null): AgencySettlementsEnvelope
+
+    // ---- The partner desk (seller / BD) ---------------------------------------
+
+    /**
+     * The business panel's surfaces, served against the member's own session.
+     *
+     * `requireBusinessOwner` resolves the account from `business_accounts.owner_user_id` on every
+     * request and re-checks its kind and status, so no call here carries an account id and a member
+     * who runs no active partner account is refused by all of them. The writes are the same payloads
+     * the business panel sends: an order names a phone and a package key — the server prices it — and
+     * marking paid only claims the money arrived; crediting stays with finance.
+     */
+    @GET("api/partner/me")
+    suspend fun partnerWhoami(): PartnerWhoamiEnvelope
+
+    @GET("api/partner/dashboard")
+    suspend fun partnerDashboard(): PartnerDashboardEnvelope
+
+    @GET("api/partner/packages")
+    suspend fun partnerPackages(): RechargePackagesEnvelope
+
+    @POST("api/partner/orders")
+    suspend fun partnerCreateOrder(@Body body: CreateRechargeOrderBody): RechargeOrderEnvelope
+
+    @POST("api/partner/orders/{id}/mark-paid")
+    suspend fun partnerMarkOrderPaid(
+        @Path("id") orderId: String,
+        @Body body: MarkOrderPaidBody,
+    ): RechargeOrderEnvelope
+
+    @POST("api/partner/orders/{id}/cancel")
+    suspend fun partnerCancelOrder(
+        @Path("id") orderId: String,
+        @Body body: CancelOrderBody,
+    ): RechargeOrderEnvelope
+
+    @GET("api/partner/orders")
+    suspend fun partnerOrders(
+        @Query("page") page: Int? = null,
+        @Query("limit") limit: Int? = null,
+    ): RechargeOrdersEnvelope
+
+    @GET("api/partner/orders/{id}")
+    suspend fun partnerOrder(@Path("id") orderId: String): RechargeOrderEnvelope
+
+    @GET("api/partner/customers/lookup")
+    suspend fun partnerLookupCustomer(@Query("phone") phone: String): CustomerLookupEnvelope
+
+    @GET("api/partner/statement")
+    suspend fun partnerStatement(
+        @Query("page") page: Int? = null,
+        @Query("limit") limit: Int? = null,
+    ): PartnerStatementEnvelope
+
+    @GET("api/partner/payouts")
+    suspend fun partnerPayouts(
+        @Query("page") page: Int? = null,
+        @Query("limit") limit: Int? = null,
+    ): SellerPayoutsEnvelope
+
+    @POST("api/partner/receipts")
+    suspend fun partnerUploadReceipt(@Body body: UploadReceiptBody): ReceiptUploadEnvelope
+
+    @GET("api/partner/sellers")
+    suspend fun partnerSellers(): PartnerSellersEnvelope
+
+    @GET("api/partner/sellers/{id}/report")
+    suspend fun partnerSellerReport(@Path("id") sellerId: String): SellerReportEnvelope
 }

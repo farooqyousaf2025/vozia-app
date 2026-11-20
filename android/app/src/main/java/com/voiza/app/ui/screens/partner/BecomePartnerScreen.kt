@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
@@ -194,4 +195,11 @@ private fun RoleCard(entry: PartnerRoleEntry, onOpenRole: (String) -> Unit) {
             )
         }
     }
+}
+
+
+@Preview(showBackground = true)
+@Composable
+fun BecomePartnerScreenPreview() {
+    BecomePartnerScreen(onBack = {}, onOpenRole = {}, onOpenMyApplications = {})
 }

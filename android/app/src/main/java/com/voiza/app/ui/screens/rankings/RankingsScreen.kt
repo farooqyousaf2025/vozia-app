@@ -42,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -584,4 +585,10 @@ private fun SelfRow(
             Icon(Icons.Default.EmojiEvents, contentDescription = null, tint = theme.accent.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
         }
     }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun RankingsScreenPreview() {
+    RankingsScreen(onBack = {})
 }

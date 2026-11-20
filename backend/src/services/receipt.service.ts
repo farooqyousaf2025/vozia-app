@@ -31,8 +31,9 @@ import { Format, formatMeta, sniff } from './media.service';
  * field in the DTO because there is no URL to return. Reading one goes through a route that has
  * already checked a permission.
  *
- * Third, a receipt belongs to exactly one money record and to the seller who is supposed to have
- * paid it. Uploading proof of somebody else's settlement is refused rather than filed.
+ * Third, a receipt belongs to exactly one money record and to one named uploader: the seller who
+ * moved the cash, or — from the member marketplace (0050) — the buyer who paid it. Uploading proof
+ * of somebody else's settlement is refused rather than filed.
  */
 
 export const RECEIPTS_DIR = path.resolve(__dirname, '..', '..', 'receipts');
@@ -57,7 +58,10 @@ export type PaymentReceiptDto = {
   fileName: string;
   contentType: string;
   byteSize: number;
-  uploadedBy: string;
+  /** Set on seller uploads (the original 0041 writer). */
+  uploadedBy: string | null;
+  /** Set on member uploads from the seller marketplace (0050). */
+  uploadedByUserId: string | null;
   createdAt: string;
 };
 
@@ -67,34 +71,46 @@ function toDto(row: PaymentReceiptRow): PaymentReceiptDto {
     fileName: row.file_name,
     contentType: row.content_type,
     byteSize: row.byte_size,
-    uploadedBy: row.uploaded_by,
+    uploadedBy: row.uploaded_by ?? null,
+    uploadedByUserId: row.uploaded_by_user_id ?? null,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : '',
   };
 }
 
 /**
- * Which money record an upload is aimed at, and whether this seller may write to it.
+ * Which money record an upload is aimed at, and whether this caller may write to it.
  *
- * The order path re-reads the order by id and compares its `seller_id` to the caller's account,
- * so a guessed id belonging to another partner answers 404 rather than confirming it exists. A
- * payout is the mirror image: the member named the seller on the request, and that row — not
- * anything in the upload — decides whose receipt is expected.
+ * The order path re-reads the order by id and compares it to the caller: a seller must own the
+ * order's `seller_id`, a member must own its `user_id`. A guessed id belonging to somebody else
+ * therefore answers 404 rather than confirming it exists. A payout is the seller's mirror image:
+ * the member named the seller on the request, and that row — not anything in the upload — decides
+ * whose receipt is expected. Members have no payout door on the marketplace router.
  */
-async function assertTarget(seller: BusinessAccountRow, target: { orderId?: string; withdrawalId?: string }) {
+type ReceiptActor =
+  | { kind: 'seller'; seller: BusinessAccountRow }
+  | { kind: 'member'; memberUserId: string };
+
+async function assertTarget(actor: ReceiptActor, target: { orderId?: string; withdrawalId?: string }) {
   if (target.orderId) {
     const order = await one<RechargeOrderRow>('SELECT * FROM recharge_orders WHERE id = $1', [target.orderId]);
-    if (!order || order.seller_id !== seller.id) throw ApiError.notFound('Recharge order not found');
+    if (!order) throw ApiError.notFound('Recharge order not found');
+    if (actor.kind === 'seller') {
+      if (order.seller_id !== actor.seller.id) throw ApiError.notFound('Recharge order not found');
+    } else if (order.user_id !== actor.memberUserId) {
+      throw ApiError.notFound('Recharge order not found');
+    }
     if (!OPEN_ORDER_STATES.includes(order.status)) {
       throw ApiError.conflict(`Order ${order.reference} is already ${order.status.toLowerCase()}`, 'receipt_target_closed');
     }
     return { kind: 'order' as const, id: order.id, reference: order.reference };
   }
   if (target.withdrawalId) {
+    if (actor.kind !== 'seller') throw ApiError.notFound('Payout not found');
     const withdrawal = await one<WithdrawalRow>('SELECT * FROM withdrawal_requests WHERE id = $1', [target.withdrawalId]);
     if (!withdrawal) throw ApiError.notFound('Payout not found');
     // The seller on the row is the only one who can attach anything to it, and on every other rail
     // that column is NULL — so an ordinary bank withdrawal is unreachable from a partner credential.
-    if (withdrawal.seller_id !== seller.id) throw ApiError.notFound('Payout not assigned to this account');
+    if (withdrawal.seller_id !== actor.seller.id) throw ApiError.notFound('Payout not assigned to this account');
     if (!OPEN_PAYOUT_STATES.includes(withdrawal.status)) {
       throw ApiError.conflict(`This payout is already ${withdrawal.status.toLowerCase()}`, 'receipt_target_closed');
     }
@@ -104,13 +120,22 @@ async function assertTarget(seller: BusinessAccountRow, target: { orderId?: stri
 }
 
 export async function saveReceipt(input: {
-  seller: BusinessAccountRow;
+  /** Original 0041 writer: a partner proving a handover it made. */
+  seller?: BusinessAccountRow;
+  /** 0050 writer: a member proving the payment it made to a seller on its own order. */
+  memberUserId?: string;
   orderId?: string;
   withdrawalId?: string;
   fileName: string;
   buffer: Buffer;
 }): Promise<{ receipt: PaymentReceiptDto; duplicate: boolean }> {
-  const target = await assertTarget(input.seller, { orderId: input.orderId, withdrawalId: input.withdrawalId });
+  if (Boolean(input.seller) === Boolean(input.memberUserId)) {
+    throw ApiError.badRequest('A receipt has exactly one uploader — a seller or a member', 'receipt_uploader_required');
+  }
+  const actor: ReceiptActor = input.seller
+    ? { kind: 'seller', seller: input.seller }
+    : { kind: 'member', memberUserId: input.memberUserId! };
+  const target = await assertTarget(actor, { orderId: input.orderId, withdrawalId: input.withdrawalId });
 
   const fileName = input.fileName.trim();
   if (!fileName) throw ApiError.badRequest('fileName is required');
@@ -148,14 +173,17 @@ export async function saveReceipt(input: {
   // 0600, not the 0644 the media library uses: nothing but this process ever reads these bytes.
   await fs.writeFile(path.join(RECEIPTS_DIR, storedName), input.buffer, { mode: 0o600 });
 
+  const sellerId = input.seller?.id ?? null;
+  const memberId = input.memberUserId ?? null;
   const params = [target.kind === 'order' ? target.id : null, target.kind === 'withdrawal' ? target.id : null];
   try {
     const row = await one<PaymentReceiptRow>(
-      `INSERT INTO payment_receipts (order_id, withdrawal_id, uploaded_by, file_name, stored_name, content_type, byte_size, sha256)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `INSERT INTO payment_receipts (order_id, withdrawal_id, uploaded_by, uploaded_by_user_id,
+                                     file_name, stored_name, content_type, byte_size, sha256)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT DO NOTHING
        RETURNING *`,
-      [...params, input.seller.id, fileName, storedName, contentType, input.buffer.length, sha256],
+      [...params, sellerId, memberId, fileName, storedName, contentType, input.buffer.length, sha256],
     );
     if (!row) {
       // The same document on the same record twice: the partial unique index says so, and the
@@ -170,12 +198,15 @@ export async function saveReceipt(input: {
     }
     await recordAudit({
       adminId: null,
-      businessId: input.seller.id,
+      businessId: sellerId,
+      actorSystem: memberId ? 'member' : null,
       action: 'RECEIPT_UPLOADED',
       targetType: target.kind === 'order' ? 'recharge_order' : 'withdrawal',
       targetId: target.id,
-      summary: `${input.seller.code} uploaded ${fileName} for ${target.reference}`,
-      details: { receiptId: row.id, contentType, byteSize: row.byte_size },
+      summary: input.seller
+        ? `${input.seller.code} uploaded ${fileName} for ${target.reference}`
+        : `Member ${memberId} uploaded ${fileName} for ${target.reference}`,
+      details: { receiptId: row.id, contentType, byteSize: row.byte_size, memberUserId: memberId },
     });
     return { receipt: toDto(row), duplicate: false };
   } catch (err) {

@@ -36,6 +36,16 @@ cd android
 `local.properties` (git ignored) must point at the SDK: `sdk.dir=/path/to/Android/SDK`.
 Or open `android/` in Android Studio (Hedgehog+), which writes it for you.
 
+### Editing the look in Android Studio
+
+Compose tooling is already wired (`ui-tooling-preview` in `implementation`, `ui-tooling` in
+`debugImplementation`), so any `@Preview` composable renders in the Design/Split pane with no
+device attached. `ui/screens/home/HomeScreen.kt` carries the first set — top bar, discovery row
+(closed and search-open), rankings entry card and room cards — drawn from sample data in
+`VoizaTheme`, no ViewModel and no network. To preview another screen, add a `@Preview` function
+that calls its stateless composables with sample models the same way; screens whose whole body
+is a `viewModel()` call cannot render statically because their state arrives from the API.
+
 ### Release signing
 
 Copy `keystore.properties.example` → `android/keystore.properties` and point it at
@@ -65,6 +75,21 @@ guess.** `assembleRelease` (or `assemble` / `build`) fails at configuration time
 both properties are supplied — `-PVOIZA_API_BASE_URL=… -PVOIZA_LIVEKIT_URL=…` — because a
 signed APK that quietly dials `10.0.2.2` ships as a working-looking app that reaches
 nothing. `assembleDebug` still needs no flags, so the emulator walk is unaffected.
+
+### Card payments
+
+`VOIZA_STRIPE_PUBLISHABLE_KEY` is a third BuildConfig field with the same
+property → environment → default precedence (the default is empty). A `pk_…` value makes
+the wallet's pack chips create a PaymentIntent and open Stripe PaymentSheet; an empty
+value keeps them on the simulated `POST /api/wallet/recharge` path so a dev stack without
+a Stripe account still works. The publishable key is public by design; the **secret** key
+stays on the backend. The backend must also run `PAYMENTS_PROVIDER=stripe` with a real
+`STRIPE_SECRET_KEY`, otherwise checkout answers `403 payments_provider_not_stripe` and
+the wallet shows that reason. Diamonds are never credited from the client — the signed
+webhook settles them, and PaymentSheet completion only triggers a ledger re-read.
+
+`stripe-android` is pinned to 20.40.0: it is the last release compiled against Kotlin 1.9,
+which this app uses. Newer Stripe releases need Kotlin 2 and will not compile here.
 
 ### The code that comes back from `/request-otp`
 
@@ -372,9 +397,12 @@ valid cert, or `adb reverse` for local testing).
   empty account instead of signing into the first, and the OTP screen confirmed it by
   printing the number without its `+`. The same `e164()` is what the "Sent to" line shows,
   so the string on screen is the string the server received.
-- `ui/screens/home` — top bar (avatar/username/diamond chip), Popular/Party/
-  Music tabs → `GET /api/rooms?category=`, a discovery row above the grid (search box and
-  the `default|popular|trending|recent` chips are query parameters, never a client-side
+- `ui/screens/home` — top bar (avatar/username, search and daily-reward icons, diamond chip),
+  Popular/Party/Music tabs → `GET /api/rooms?category=`, a discovery row above the grid (the
+  search field is collapsed behind the top bar's search icon: tapping it opens a focused field,
+  the field's X clears the query and closes it again, and an active query keeps the field open
+  on its own so the filter is never invisible; the `default|popular|trending|recent` chips are
+  query parameters, never a client-side
   re-sort of the rows already on screen; **My Room** switches to `GET /api/rooms/mine` and
   hides the sort chips because that endpoint has its own fixed order; **Quick Join** takes
   `GET /api/rooms/quick-join`'s id and navigates, so "the busiest room I can enter" is the
@@ -529,12 +557,24 @@ valid cert, or `adb reverse` for local testing).
   `-150000 ◉` because that is what left the wallet (gross — the escrow takes the whole
   request and the fee is only kept at payout), while a credit still reads `+`. It showed `+`
   for every R-coin row before, so three cash-outs looked like three earnings.
-  The recharge sheet still calls `POST /api/wallet/recharge`, the simulated path: it
-  works only while the backend runs `PAYMENTS_PROVIDER=simulated` and starts answering
-  `403 payments_provider_is_stripe` the moment the stack charges for real. Shipping
-  money means replacing that one call with `POST /api/wallet/recharge/checkout` plus a
-  card sheet (Stripe PaymentSheet, `com.stripe:stripe-android`); the server side and the
-  `wallet:update` refresh are already in place, so no polling is needed.
+  Recharge chips are the operator's `GET /api/wallet/packages` rows. With
+  `VOIZA_STRIPE_PUBLISHABLE_KEY` set, tapping one calls
+  `POST /api/wallet/recharge/checkout` and presents Stripe PaymentSheet with the returned
+  client secret; a completed sheet re-reads the ledger rather than minting anything locally.
+  With no key (or on an older backend with no catalogue), the legacy presets keep calling
+  `POST /api/wallet/recharge`, which only works while the backend runs
+  `PAYMENTS_PROVIDER=simulated`. The server side and the `wallet:update` refresh are in
+  place, so no polling is needed. The wallet's **Coin-seller market** card opens `MarketplaceScreen`.
+- `ui/screens/marketplace` — the member's view of the coin-seller market, separate from the
+  seller/BD desk in `ui/screens/partner`. `MarketplaceViewModel` reads the allowlisted
+  `GET /api/marketplace/sellers` catalogue and the buyer's own `GET /api/marketplace/orders`.
+  A buy tap only names a seller and a package key — the server prices the order from its own
+  recharge-package row and binds the buyer from the token, so no rate or buyer id is invented here.
+  An order stops at `AWAITING_PAYMENT`/`AWAITING_VERIFICATION`; **Attach proof of payment** sends a
+  base64 image/PDF to `POST /api/marketplace/orders/{id}/receipt` as evidence for finance, never as a
+  way to mint diamonds. The **Sell R-coins** tab reuses the booked `POST /api/wallet/withdraw` path
+  with rail `SELLER` and the chosen seller id. Needs backend migrations 0046–0050 (in particular
+  0050 for member receipt uploads); an unapproved seller simply never appears in the catalogue.
 - `ui/screens/partner` — Become a Partner, from the applicant's side, in three screens over one
   repository (`RoleApplicationRepository`) and three view models (`PartnerViewModel`,
   `PartnerApplyViewModel`, `MyApplicationsViewModel`). The hub draws one card per role straight out of
@@ -585,7 +625,22 @@ valid cert, or `adb reverse` for local testing).
   hid the desk from three real agency owners during the device walk while showing it to a member who ran
   nothing. A call that never reached the API (no network) leaves the last answer alone rather than
   guessing.
+- `ui/screens/partner/PartnerDeskScreen` — the seller / BD desk, one screen over
+  `PartnerDeskRepository` and `PartnerDeskViewModel`, reached with the member's own session through
+  `/api/partner` (the server resolves the account from `owner_user_id`, so the app never sends an
+  account id). `PartnerAccessViewModel` probes `me()` on resume and the profile shows **Partner desk**
+  only when that call succeeded — the same rule as the agency desk, and for the same reason: the
+  `user_type` marker is display, the row is the authority. The whoami answer decides the sections: a
+  seller gets Overview / Orders / R-coin sales / Statement with the create-order dialog (member lookup,
+  package and rail picked from the server's own lists), a receipt attached through the system file
+  picker (`OpenDocument`, read to Base64 on IO), *Mark paid* that claims the cash and stops at
+  "Payment claimed, in review", and cancel with a reason; a BD gets Overview / Orders / Sellers /
+  Statement, read-only, and tapping a seller opens that seller's whole book with a *Back to your
+  sellers*. Each section loads and fails on its own, every refusal is the server's sentence, and no
+  money arithmetic happens on the client — totals, commission and the cash book are drawn exactly as
+  the statement answers them.
 - `ui/screens/profile` — identity header with HOST/AGENCY badges plus a gold
   `VIP n` pill whenever the spend tier is above 0, lifetime
   stats, edit-profile dialog (`PATCH /api/auth/me`), wallet link, logout, and — for the member the
-  server says runs an active agency — **Agency desk**.
+  server says runs an active agency — **Agency desk**, or an active seller / BD account —
+  **Partner desk** (with the SELLER / BD MANAGER / BD AGENT badge the approval raised).

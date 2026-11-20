@@ -508,6 +508,8 @@ data class WalletSnapshot(
     val withdrawalPolicy: WithdrawalPolicy? = null,
     /** Null on a backend with no bonus pocket; the wallet then shows one balance instead of two. */
     val promo: PromoPocket? = null,
+    /** Null on an older backend; the wallet then omits the first-recharge banner. */
+    val firstRecharge: FirstRechargeStatus? = null,
 )
 
 /**

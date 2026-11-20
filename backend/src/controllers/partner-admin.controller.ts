@@ -150,6 +150,7 @@ export const createAccount = asyncHandler(async (req: Request, res: Response) =>
     maxOrderDiamonds: optionalInt(req.body?.maxOrderDiamonds, 'maxOrderDiamonds', { min: 1, max: 10_000_000 }),
     dailyDiamondLimit: optionalInt(req.body?.dailyDiamondLimit, 'dailyDiamondLimit', { min: 1, max: 100_000_000 }),
     dailyOrderLimit: optionalInt(req.body?.dailyOrderLimit, 'dailyOrderLimit', { min: 1, max: 100_000 }),
+    ownerPhone: optionalString(req.body?.ownerPhone, 'ownerPhone', 24),
   });
   res.status(201).json({ account });
 });
@@ -164,6 +165,8 @@ export const updateAccount = asyncHandler(async (req: Request, res: Response) =>
     maxOrderDiamonds: optionalInt(req.body?.maxOrderDiamonds, 'maxOrderDiamonds', { min: 1, max: 10_000_000 }),
     dailyDiamondLimit: optionalInt(req.body?.dailyDiamondLimit, 'dailyDiamondLimit', { min: 1, max: 100_000_000 }),
     dailyOrderLimit: optionalInt(req.body?.dailyOrderLimit, 'dailyOrderLimit', { min: 1, max: 100_000 }),
+    // '' is the service's documented unlink; optionalString would fold it into "no change".
+    ownerPhone: req.body?.ownerPhone === '' ? '' : optionalString(req.body?.ownerPhone, 'ownerPhone', 24),
   });
   res.json({ account });
 });

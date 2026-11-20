@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -256,4 +257,11 @@ private fun grantSummary(grant: ApplicationGrant): String? {
         grant.label?.takeIf { it.isNotBlank() },
         grant.status?.takeIf { it.isNotBlank() },
     ).joinToString(" · ")
+}
+
+
+@Preview(showBackground = true)
+@Composable
+fun MyApplicationsScreenPreview() {
+    MyApplicationsScreen(onBack = {}, onOpenRole = {})
 }

@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -39,7 +40,11 @@ import com.voiza.app.domain.model.BannerPlacement
 import com.voiza.app.domain.model.Gift
 import com.voiza.app.domain.model.GiftCategoryOption
 import com.voiza.app.domain.model.MiniUser
+import com.voiza.app.domain.model.Seat
+import com.voiza.app.domain.model.SeatStatus
+import com.voiza.app.domain.model.User
 import com.voiza.app.domain.usecase.RoomEffects
+import com.voiza.app.viewmodel.PartyRoomViewModel.PartyRoomUiState
 import com.voiza.app.ui.components.Avatar
 import com.voiza.app.ui.components.asAssetUrl
 import com.voiza.app.ui.components.DiamondChip
@@ -595,4 +600,114 @@ private fun SelectedGiftBar(gift: Gift, quantity: Int, receiver: MiniUser?) {
             }
         }
     }
+}
+
+private val previewGiftMe = User(
+    id = "me",
+    phone = "+10000000000",
+    username = "Ava",
+    avatarUrl = null,
+    bio = null,
+    gender = null,
+    countryCode = "US",
+    diamondBalance = 5_000,
+    rCoinBalance = 0,
+    totalGiftsSent = 0,
+    totalGiftsReceived = 0,
+    userType = "USER",
+    status = "ACTIVE",
+    isVerified = true,
+    vipLevel = 1,
+)
+
+private val previewGiftHost = MiniUser(id = "host-1", username = "Ava", avatarUrl = null)
+private val previewGiftMember = MiniUser(id = "member-2", username = "Mira", avatarUrl = null)
+
+private val previewGiftCatalogue = listOf(
+    Gift(
+        id = "gift-rose",
+        name = "Rose",
+        iconUrl = "",
+        animationUrl = null,
+        diamondPrice = 10,
+        rCoinValue = 90,
+        category = "popular",
+        sortOrder = 1,
+    ),
+    Gift(
+        id = "gift-heart",
+        name = "Heart",
+        iconUrl = "",
+        animationUrl = null,
+        diamondPrice = 30,
+        rCoinValue = 270,
+        category = "popular",
+        sortOrder = 2,
+    ),
+    Gift(
+        id = "gift-crown",
+        name = "Crown",
+        iconUrl = "",
+        animationUrl = null,
+        diamondPrice = 500,
+        rCoinValue = 4_500,
+        category = "luxury",
+        minVipLevel = 2,
+        sortOrder = 3,
+    ),
+    Gift(
+        id = "gift-rocket",
+        name = "Rocket",
+        iconUrl = "",
+        animationUrl = null,
+        diamondPrice = 200,
+        rCoinValue = 1_800,
+        category = "luxury",
+        sortOrder = 4,
+    ),
+    Gift(
+        id = "gift-box",
+        name = "Lucky Box",
+        iconUrl = "",
+        animationUrl = null,
+        diamondPrice = 100,
+        rCoinValue = 900,
+        category = "special",
+        sortOrder = 5,
+        isLuckyBox = true,
+    ),
+)
+
+@Preview(showBackground = true, name = "Gift dialog")
+@Composable
+fun GiftDialogPreview() {
+    GiftDialog(
+        state = PartyRoomUiState(
+            loading = false,
+            joined = true,
+            user = previewGiftMe,
+            seats = listOf(
+                Seat(0, SeatStatus.OCCUPIED, isMuted = false, isSpeaker = true, user = previewGiftHost),
+                Seat(1, SeatStatus.OCCUPIED, isMuted = false, isSpeaker = true, user = previewGiftMember),
+            ),
+            giftCatalog = previewGiftCatalogue,
+            giftShelves = listOf(
+                GiftCategoryOption(key = "popular", name = "Popular", sortOrder = 0),
+                GiftCategoryOption(key = "luxury", name = "Luxury", sortOrder = 1),
+                GiftCategoryOption(key = "special", name = "Special", sortOrder = 2),
+            ),
+            giftDialogVisible = true,
+            giftCategory = null,
+            selectedGift = previewGiftCatalogue[1],
+            selectedReceiverId = previewGiftHost.id,
+            giftQuantity = 2,
+        ),
+        onTapGift = {},
+        onSelectCategory = {},
+        onSelectReceiver = {},
+        onQuantitySet = {},
+        onSend = {},
+        onOpenRanking = {},
+        onDismiss = {},
+    )
 }

@@ -6,9 +6,18 @@ import { toWithdrawal } from '../utils/serialize';
 import { resolvePayoutSeller } from '../services/payout.service';
 import { getWallet, recharge, requestWithdrawal } from '../services/ledger.service';
 import { simulatedRechargeAllowed } from '../services/stripe.service';
+import { listDiamondPackages, firstRechargeStatus } from '../services/diamond-package.service';
 
 export const wallet = asyncHandler(async (req: Request, res: Response) => {
   res.json(await getWallet(req.user!.sub));
+});
+
+export const packages = asyncHandler(async (_req: Request, res: Response) => {
+  res.json({ packages: await listDiamondPackages() });
+});
+
+export const firstRecharge = asyncHandler(async (req: Request, res: Response) => {
+  res.json(await firstRechargeStatus(req.user!.sub));
 });
 
 /**

@@ -1,8 +1,9 @@
 import { Request, Response } from 'express';
 import { env } from '../config/env';
-import { asyncHandler, ApiError, requireInt } from '../utils/http';
+import { asyncHandler, ApiError, requireInt, requireString } from '../utils/http';
 import { emitToUser } from '../services/socket.service';
 import { settlePayment } from '../services/ledger.service';
+import { resolveDiamondPackage } from '../services/diamond-package.service';
 import {
   createPaymentIntent,
   parseEvent,
@@ -24,8 +25,24 @@ export const checkout = asyncHandler(async (req: Request, res: Response) => {
     );
   }
 
-  const diamonds = requireInt(req.body?.amountDiamonds, 'amountDiamonds', { min: 1, max: 1_000_000 });
-  const amountCents = diamonds * env.payments.centsPerDiamond;
+  // A package id wins over a free-form amount: the price and the diamond count come from the
+  // server's catalogue, so a client cannot invent either. `amountDiamonds` is kept for the older
+  // APKs that predate server-driven packages.
+  let diamonds: number;
+  let amountCents: number;
+  let currency: string = env.payments.stripeCurrency;
+  let packageId: string | null = null;
+  if (req.body?.packageId) {
+    const pkg = await resolveDiamondPackage(requireString(req.body.packageId, 'packageId', { min: 36, max: 36 }));
+    diamonds = pkg.totalDiamonds;
+    amountCents = pkg.priceCents;
+    currency = pkg.currency.toLowerCase();
+    packageId = pkg.id;
+  } else {
+    diamonds = requireInt(req.body?.amountDiamonds, 'amountDiamonds', { min: 1, max: 1_000_000 });
+    amountCents = diamonds * env.payments.centsPerDiamond;
+  }
+
   // Stripe refuses an amount below its minimum; say so before the API round trip.
   if (amountCents < 50) {
     throw ApiError.badRequest(
@@ -34,10 +51,14 @@ export const checkout = asyncHandler(async (req: Request, res: Response) => {
     );
   }
 
+  // The webhook trusts these signed values, not a rate recomputed from the diamond count: a pack
+  // can carry a bonus or a promo price, so the charged amount is the only amount we may book.
   const intent = await createPaymentIntent(amountCents, {
     voizaUserId: req.user!.sub,
     diamonds: String(diamonds),
-    currency: env.payments.stripeCurrency,
+    amountCents: String(amountCents),
+    currency,
+    ...(packageId ? { packageId } : {}),
   });
 
   res.status(201).json({
@@ -46,6 +67,7 @@ export const checkout = asyncHandler(async (req: Request, res: Response) => {
     amountCents: intent.amountCents,
     currency: intent.currency,
     amountDiamonds: diamonds,
+    ...(packageId ? { packageId } : {}),
     publishableKeyHint: 'pk_test_',
   });
 });
@@ -81,8 +103,9 @@ export const stripeWebhook = asyncHandler(async (req: Request, res: Response) =>
         diamonds: event.diamonds,
         provider: 'stripe',
         externalId: event.intentId,
-        amountCents: event.diamonds * env.payments.centsPerDiamond,
-        currency: env.payments.stripeCurrency,
+        // Old intents predate the amount metadata; only those fall back to the configured rate.
+        amountCents: event.amountCents ?? event.diamonds * env.payments.centsPerDiamond,
+        currency: event.currency ?? env.payments.stripeCurrency,
       });
       if (outcome.credited && outcome.user) {
         emitToUser(event.userId, 'wallet:update', { diamondBalance: outcome.user.diamondBalance });

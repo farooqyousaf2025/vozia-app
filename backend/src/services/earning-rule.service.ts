@@ -50,8 +50,8 @@ export type EarningReset = (typeof EARNING_RESETS)[number];
 export const REWARD_CURRENCIES = ['XP', 'BONUS_DIAMOND'] as const;
 export type RewardCurrency = (typeof REWARD_CURRENCIES)[number];
 
-/** The account types a rule may name, copied from `users.user_type`. */
-export const ELIGIBLE_USER_TYPES = ['HOST', 'USER', 'AGENCY_ADMIN'] as const;
+/** The account types a rule may name, copied from `users.user_type` (widened by migration 0046). */
+export const ELIGIBLE_USER_TYPES = ['HOST', 'USER', 'AGENCY_ADMIN', 'COIN_SELLER', 'BD_MANAGER', 'BD_AGENT'] as const;
 
 /** Matches the CHECK on both `key` columns; validated here so the refusal names the field. */
 const KEY_PATTERN = /^[a-z0-9][a-z0-9-]{1,38}$/;

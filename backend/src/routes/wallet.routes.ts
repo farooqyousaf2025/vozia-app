@@ -7,6 +7,8 @@ const router = Router();
 
 router.use(requireAuth);
 router.get('/', wallet.wallet);
+router.get('/packages', wallet.packages);
+router.get('/first-recharge', wallet.firstRecharge);
 router.post('/recharge', wallet.rechargeEndpoint);
 // Real money: creates a Stripe PaymentIntent and hands back the client secret.
 // The balance only moves later, from the webhook.

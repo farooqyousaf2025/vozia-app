@@ -15,6 +15,7 @@ import {
 import { driverFor } from '../games/registry';
 import { DriverContext, GameAction, GamePlayer } from '../games/types';
 import { announceBonusChange, earnWithin } from './earning.service';
+import { gamePlayerTicker, gameWinnerTicker } from './announcement.service';
 import { pinRules, refundFees, settleSession } from './game-settlement.service';
 import { postGameMoves } from './ledger.service';
 import { loadRoom } from './room.service';
@@ -180,6 +181,43 @@ async function broadcast(session: GameSessionRow, participants: GameParticipantR
   const dto = toGameSession(session, participants, publicState(session.game_key, session.state));
   emit(session.room_id, 'game:update', { ...dto, ...extra });
   if (session.status === 'COMPLETED' || session.status === 'CANCELLED') emit(session.room_id, 'game:ended', { sessionId: session.id });
+
+  // The app-wide ticker is decoration around the game, never part of it: a failed lookup here
+  // must not turn a settled match into an error response.
+  const title = gameTitle(session.game_key);
+  if (extra.phase === 'playing') {
+    const player = participants.find((p) => p.username) ?? participants[0];
+    if (player?.username) {
+      void roomRegion(session.room_id).then((region) =>
+        gamePlayerTicker(player.username!, player.user_id, title, session.room_id, region),
+      ).catch(() => undefined);
+    }
+  }
+  if (session.status === 'COMPLETED') {
+    const winner = [...participants]
+      .filter((p) => p.rank != null || p.score > 0)
+      .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99) || b.score - a.score)[0];
+    if (winner?.username) {
+      void roomRegion(session.room_id).then((region) =>
+        gameWinnerTicker(winner.username!, winner.user_id, title, session.room_id, region, winner.prize_diamonds),
+      ).catch(() => undefined);
+    }
+  }
+}
+
+function gameTitle(gameKey: string): string {
+  switch (gameKey) {
+    case 'TIC_TAC_TOE': return 'Tic-Tac-Toe';
+    case 'QUIZ_BATTLE': return 'Quiz Battle';
+    case 'LUDO': return 'Ludo';
+    default: return gameKey.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+}
+
+async function roomRegion(roomId: string | null): Promise<string | null> {
+  if (!roomId) return null;
+  const row = await one<{ region: string | null }>('SELECT region FROM rooms WHERE id = $1', [roomId]).catch(() => null);
+  return row?.region ?? null;
 }
 
 /** Host-only gate: the room's owner, or an operator acting through the back office. */

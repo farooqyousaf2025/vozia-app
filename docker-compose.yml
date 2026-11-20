@@ -22,7 +22,7 @@ x-app-env: &app-env
   ADMIN_PASSWORD: ${ADMIN_PASSWORD:-voiza-admin}
   # Read by backend/docker-entrypoint.sh, not by the Node app itself: when set to
   # 1 the container also applies database/seed.sql on boot. Set 0 for a clean stack.
-  SEED_DEMO_DATA: ${SEED_DEMO_DATA:-1}
+  SEED_DEMO_DATA: ${SEED_DEMO_DATA:-0}
   # Push is optional. Left empty, the backend stores device tokens and logs sends
   # instead of calling Google. To enable it, mount the Firebase service-account
   # key read-only into the backend container and point FCM_SERVICE_ACCOUNT_FILE
@@ -112,7 +112,7 @@ services:
     ports:
       - "7880:7880"       # HTTP API + WebSocket signalling
       - "7881:7881"       # RTC over TCP / TURN
-      - "50000-60000:50000-60000/udp"  # WebRTC media (audio)
+      - "40000-40099:40000-40099/udp" # WebRTC media (audio)
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:7880/ || exit 1"]
       interval: 10s
@@ -140,6 +140,10 @@ services:
       # Art, sounds and badges uploaded from the panel's Media library. Back this up
       # alongside postgres_data: the database rows point at these bytes.
       - uploads_data:/app/uploads
+      # Cash-handover slips sellers upload from the partner desk (migration 0041).
+      # Same reasoning as uploads: payment_receipts rows point at these bytes, so a
+      # container recreate must not take the evidence with it.
+      - receipts_data:/app/receipts
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 15s
@@ -164,3 +168,4 @@ volumes:
   postgres_data:
   redis_data:
   uploads_data:
+  receipts_data:

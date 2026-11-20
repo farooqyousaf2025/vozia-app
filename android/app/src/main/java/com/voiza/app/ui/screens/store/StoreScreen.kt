@@ -41,6 +41,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -830,4 +831,11 @@ private fun StoreItemKind.kindLabel(): String = when (this) {
     StoreItemKind.EFFECT -> "Entry flourish"
     StoreItemKind.RIDE -> "Entrance ride"
     StoreItemKind.BUBBLE -> "Chat bubble"
+}
+
+
+@Preview(showBackground = true)
+@Composable
+fun StoreScreenPreview() {
+    StoreScreen(onBack = {}, onOpenWallet = {})
 }

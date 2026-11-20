@@ -3,6 +3,8 @@ package com.voiza.app.data.socket
 import com.google.gson.Gson
 import com.voiza.app.data.remote.NetworkModule
 import com.voiza.app.data.remote.SessionManager
+import com.voiza.app.data.remote.dto.FriendRequestEnvelope
+import com.voiza.app.data.remote.dto.MessageEnvelope
 import com.voiza.app.data.remote.dto.SocketChatDto
 import com.voiza.app.data.remote.dto.SocketGameEndedDto
 import com.voiza.app.data.remote.dto.GameSessionDto
@@ -23,12 +25,15 @@ import com.voiza.app.data.remote.dto.SocketSeatUpdateDto
 import com.voiza.app.data.remote.dto.SocketSpeakerDecisionDto
 import com.voiza.app.data.remote.dto.SocketSpeakerRequestChangedDto
 import com.voiza.app.data.remote.dto.SocketThemeChangedDto
+import com.voiza.app.data.remote.dto.SocketTickerDto
 import com.voiza.app.data.remote.dto.SocketUserJoinedDto
 import com.voiza.app.data.remote.dto.SocketUserLeftDto
 import com.voiza.app.data.remote.dto.SocketWalletUpdateDto
 import com.voiza.app.data.remote.dto.SocketWarningDto
 import com.voiza.app.data.mapper.toDomain
 import com.voiza.app.data.mapper.toDomainOrNull
+import com.voiza.app.domain.model.DirectMessage
+import com.voiza.app.domain.model.FriendRequest
 import com.voiza.app.domain.model.GiftAnimatedEvent
 import com.voiza.app.domain.model.GameSession
 import com.voiza.app.domain.model.HostWarningEvent
@@ -46,6 +51,7 @@ import com.voiza.app.domain.model.SeatInviteEvent
 import com.voiza.app.domain.model.SeatUpdateEvent
 import com.voiza.app.domain.model.SpeakerDecisionEvent
 import com.voiza.app.domain.model.ThemeChangedEvent
+import com.voiza.app.domain.model.TickerEvent
 import com.voiza.app.domain.model.UserJoinedEvent
 import com.voiza.app.domain.model.UserLeftEvent
 import io.socket.client.IO
@@ -196,6 +202,24 @@ class VoizaSocketClient(
     val hostWarnings: SharedFlow<HostWarningEvent> = _hostWarnings.asSharedFlow()
 
     /**
+     * `friend:request`: a new incoming request on this account's private channel. The row is the
+     * server's, so a refresh re-reads the same list rather than appending a locally guessed one.
+     */
+    private val _friendRequests = MutableSharedFlow<FriendRequest>(
+        replay = 0, extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val friendRequests: SharedFlow<FriendRequest> = _friendRequests.asSharedFlow()
+
+    /**
+     * `dm:message`: a row stored by the partner, delivered only to this account. The sender has the
+     * same row back from the POST, so no client has to fabricate a second copy.
+     */
+    private val _directMessages = MutableSharedFlow<DirectMessage>(
+        replay = 0, extraBufferCapacity = 32, onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val directMessages: SharedFlow<DirectMessage> = _directMessages.asSharedFlow()
+
+    /**
      * `game:update`: the whole session as the engine just wrote it, broadcast to the room.
      * A full board per change is deliberate — a diff would let a client that missed one
      * emit keep a board the server no longer has, and the board is what players trust.
@@ -236,6 +260,16 @@ class VoizaSocketClient(
         replay = 0, extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     val announcements: SharedFlow<RoomAnnouncementEvent> = _announcements.asSharedFlow()
+
+    /**
+     * `announcement:ticker`: an app-wide line (top-up, top ranker, game start, game winner).
+     * Unlike `room:announcement` this is not tied to the room a socket joined; it is emitted to
+     * every connected account and drawn by [com.voiza.app.ui.components.announcement.AnnouncementTicker].
+     */
+    private val _tickers = MutableSharedFlow<TickerEvent>(
+        replay = 0, extraBufferCapacity = 32, onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val tickers: SharedFlow<TickerEvent> = _tickers.asSharedFlow()
 
     /** Private `room:seat_invited`: the host already seated us; this is the token that says so. */
     private val _seatInvites = MutableSharedFlow<SeatInviteEvent>(
@@ -359,6 +393,23 @@ class VoizaSocketClient(
         bindHandler(newSocket, EVENT_ANNOUNCEMENT) { args ->
             parse<SocketAnnouncementDto>(args)?.let { _announcements.tryEmit(it.toDomain()) }
         }
+        bindHandler(newSocket, EVENT_TICKER) { args ->
+            parse<SocketTickerDto>(args)?.let {
+                _tickers.tryEmit(
+                    TickerEvent(
+                        id = it.id,
+                        kind = it.kind,
+                        text = it.text,
+                        username = it.username,
+                        userId = it.userId,
+                        amount = it.amount,
+                        roomId = it.roomId,
+                        region = it.region,
+                        createdAt = it.createdAt,
+                    ),
+                )
+            }
+        }
         bindHandler(newSocket, EVENT_SEAT_INVITED) { args ->
             parse<SocketSeatInvitedDto>(args)?.let { _seatInvites.tryEmit(it.toDomain()) }
         }
@@ -396,6 +447,12 @@ class VoizaSocketClient(
             parse<SocketWalletUpdateDto>(args)?.let { update ->
                 sessionManager.applyWalletUpdate(update.diamondBalance, update.rCoinBalance, update.promoDiamondBalance)
             }
+        }
+        bindHandler(newSocket, EVENT_FRIEND_REQUEST) { args ->
+            parse<FriendRequestEnvelope>(args)?.request?.toDomainOrNull()?.let { _friendRequests.tryEmit(it) }
+        }
+        bindHandler(newSocket, EVENT_DIRECT_MESSAGE) { args ->
+            parse<MessageEnvelope>(args)?.message?.toDomainOrNull()?.let { _directMessages.tryEmit(it) }
         }
 
         dialledToken = token
@@ -489,6 +546,7 @@ class VoizaSocketClient(
         const val EVENT_THEME_CHANGED = "room:theme_changed"
         const val EVENT_PROFILE_UPDATED = "room:profile_updated"
         const val EVENT_ANNOUNCEMENT = "room:announcement"
+        const val EVENT_TICKER = "announcement:ticker"
         const val EVENT_SEAT_INVITED = "room:seat_invited"
         const val EVENT_SPEAKER_DECISION = "room:speaker_decision"
         // A request filed and a request decided: two events, one meaning for a client that re-reads
@@ -498,6 +556,8 @@ class VoizaSocketClient(
         const val EVENT_KICKED = "room:kicked"
         const val EVENT_WARNING = "room:warning"
         const val EVENT_WALLET = "wallet:update"
+        const val EVENT_FRIEND_REQUEST = "friend:request"
+        const val EVENT_DIRECT_MESSAGE = "dm:message"
         const val EVENT_GAME_UPDATE = "game:update"
         const val EVENT_GAME_ENDED = "game:ended"
         const val EVENT_PK_STATE = "pk:state"

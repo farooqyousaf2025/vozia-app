@@ -6,11 +6,15 @@ import businessRoutes from './business.routes';
 import agencyOwnerRoutes from './agency-owner.routes';
 import earningRoutes from './earning.routes';
 import emojiRoutes from './emoji.routes';
+import friendsRoutes from './friends.routes';
+import dmRoutes from './dm.routes';
 import gameRoutes from './game.routes';
 import giftRoutes from './gift.routes';
 import livekitRoutes from './livekit.routes';
+import marketplaceRoutes from './marketplace.routes';
 import paymentsRoutes from './payments.routes';
 import partnerApplicationRoutes from './partner-application.routes';
+import partnerRoutes from './partner.routes';
 import pkRoutes from './pk.routes';
 import questRoutes from './quest.routes';
 import rankRoutes from './rank.routes';
@@ -47,7 +51,12 @@ router.use('/earnings', earningRoutes);
 router.use('/pk', pkRoutes);
 router.use('/games', gameRoutes);
 router.use('/wallet', walletRoutes);
+// The member side of the seller market: a buyer browses approved sellers and tracks only their own
+// manual recharge orders. Partner and finance workflows keep their own prefixes.
+router.use('/marketplace', marketplaceRoutes);
 router.use('/users', userRoutes);
+router.use('/friends', friendsRoutes);
+router.use('/dm', dmRoutes);
 // The cosmetic store. Its own prefix rather than a branch of /users, because buying is a money
 // path like /gifts and /wallet — the catalogue and the ownership rows live behind it.
 router.use('/store', storeRoutes);
@@ -58,6 +67,9 @@ router.use('/admin', adminRoutes);
 // Partner panel: BD representatives and coin sellers. Its own prefix, because a partner
 // credential must never be able to reach an operator route.
 router.use('/business', businessRoutes);
+// The same seller/BD desk behind a member session: the app proves ownership through
+// `business_accounts.owner_user_id` (0046) instead of holding a partner credential.
+router.use('/partner', partnerRoutes);
 // An agency's own book, read by the member who runs it. Separate from `/business` because an agency
 // is not a business account: it owns a roster of hosts, and its credential is an ordinary member token.
 router.use('/agency', agencyOwnerRoutes);

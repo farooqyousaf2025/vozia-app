@@ -5,6 +5,7 @@ import { ChatBubbleRow, FrameTier, ProfileFrameRow, ProfileRideRow, RoomThemeRow
 import { ApiError, requireEnum, requireInt, requireString } from '../utils/http';
 import { toTransaction, toUser, TransactionDto, UserDto } from '../utils/serialize';
 import { announceBonusChange, earnWithin } from './earning.service';
+import { assertFirstRechargeDone } from './diamond-package.service';
 import { postedTransaction, postLedgerMoves } from './ledger.service';
 import { awardXp, ensureRankRegistry, xpForSpend } from './rank.service';
 import { bubbleArt, BubbleArt, RideFormat } from './theme.service';
@@ -512,6 +513,11 @@ export function readItemKey(value: unknown): string {
 export async function purchaseItem(input: { userId: string; kind: ItemKind; key: string }): Promise<PurchaseResult> {
   // The wallet DTO resolves a rank, and a rank needs the ladder — see `ensureRankRegistry`.
   await ensureRankRegistry();
+
+  // The first-recharge gate: a fresh account must complete one top-up before diamond spending
+  // unlocks. Refusing here — before the row lock and the debit — keeps the answer honest: the
+  // member is told what unlocks the store, not that their balance is short.
+  await assertFirstRechargeDone(input.userId);
 
   const remaining = await rateLimit(`store:${input.userId}`, PURCHASES_PER_MINUTE, 60);
   if (remaining === -1) throw ApiError.tooManyRequests('Too many store purchases in one minute');

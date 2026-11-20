@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -337,4 +338,11 @@ private fun NoticeCard(text: String, color: Color) {
     VoizaCard(backgroundColor = VoizaSurface, modifier = Modifier.fillMaxWidth()) {
         Text(text, color = color, fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
+}
+
+
+@Preview(showBackground = true)
+@Composable
+fun PartnerApplyScreenPreview() {
+    PartnerApplyScreen(role = "host", onBack = {})
 }

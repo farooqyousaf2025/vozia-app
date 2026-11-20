@@ -11,12 +11,15 @@ import com.voiza.app.ui.screens.agency.AgencyDashboardScreen
 import com.voiza.app.ui.screens.auth.AuthScreen
 import com.voiza.app.ui.screens.game.GameLobbyScreen
 import com.voiza.app.ui.screens.game.GameScreen
+import com.voiza.app.ui.screens.friends.FriendsScreen
 import com.voiza.app.ui.screens.home.CreateRoomScreen
 import com.voiza.app.ui.screens.home.HomeScreen
+import com.voiza.app.ui.screens.marketplace.MarketplaceScreen
 import com.voiza.app.ui.screens.pk.PkScreen
 import com.voiza.app.ui.screens.partner.BecomePartnerScreen
 import com.voiza.app.ui.screens.partner.MyApplicationsScreen
 import com.voiza.app.ui.screens.partner.PartnerApplyScreen
+import com.voiza.app.ui.screens.partner.PartnerDeskScreen
 import com.voiza.app.ui.screens.profile.ProfileScreen
 import com.voiza.app.ui.screens.quests.QuestsScreen
 import com.voiza.app.ui.screens.rankings.RankingsScreen
@@ -139,7 +142,12 @@ fun VoizaNavHost(
             WalletScreen(
                 onBack = { navController.popBackStack() },
                 onOpenPartnerApply = { role -> navController.navigate(Routes.partnerApply(role)) },
+                onOpenMarketplace = { navController.navigate(Routes.MARKETPLACE) },
             )
+        }
+
+        composable(Routes.MARKETPLACE) {
+            MarketplaceScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.PARTNER) {
@@ -174,6 +182,12 @@ fun VoizaNavHost(
             AgencyDashboardScreen(onBack = { navController.popBackStack() })
         }
 
+        // The seller/BD desk. Seller and BD are the same route: the server's whoami answer decides
+        // which sections exist, and a member who runs no active account is shown the server's refusal.
+        composable(Routes.PARTNER_DESK) {
+            PartnerDeskScreen(onBack = { navController.popBackStack() })
+        }
+
         composable(Routes.STORE) {
             StoreScreen(
                 onBack = { navController.popBackStack() },
@@ -185,6 +199,10 @@ fun VoizaNavHost(
             QuestsScreen(onBack = { navController.popBackStack() })
         }
 
+        composable(Routes.FRIENDS) {
+            FriendsScreen(onBack = { navController.popBackStack() })
+        }
+
         composable(Routes.RANKINGS) {
             RankingsScreen(onBack = { navController.popBackStack() })
         }
@@ -193,10 +211,12 @@ fun VoizaNavHost(
             ProfileScreen(
                 onBack = { navController.popBackStack() },
                 onOpenWallet = { navController.navigate(Routes.WALLET) },
+                onOpenFriends = { navController.navigate(Routes.FRIENDS) },
                 onOpenStore = { navController.navigate(Routes.STORE) },
                 onOpenQuests = { navController.navigate(Routes.QUESTS) },
                 onOpenPartner = { navController.navigate(Routes.PARTNER) },
                 onOpenAgency = { navController.navigate(Routes.AGENCY) },
+                onOpenPartnerDesk = { navController.navigate(Routes.PARTNER_DESK) },
                 onLoggedOut = {
                     navController.navigate(Routes.AUTH) {
                         popUpTo(0) { inclusive = true }
