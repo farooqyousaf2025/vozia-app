@@ -80,11 +80,18 @@ export async function agencyBanRoomMember(actorUserId: string, roomId: string, t
   await assertTarget(scope, targetUserId);
   const expiresAt = minutes ? new Date(Date.now() + minutes * 60_000) : null;
   await withTransaction(async (client) => {
+    const existingBan = await client.query<{ banned_by: string | null; banned_by_agency_user_id: string | null }>(
+      'SELECT banned_by, banned_by_agency_user_id FROM room_bans WHERE room_id = $1 AND user_id = $2 FOR UPDATE',
+      [roomId, targetUserId],
+    );
+    if (existingBan.rows[0]?.banned_by) {
+      throw ApiError.forbidden('An operator-issued room ban cannot be replaced by an agency moderator', 'operator_ban_protected');
+    }
     await client.query(
       `INSERT INTO room_bans (room_id, user_id, banned_by, banned_by_agency_user_id, reason, expires_at)
        VALUES ($1,$2,NULL,$3,$4,$5)
        ON CONFLICT (room_id, user_id) DO UPDATE
-         SET banned_by = NULL, banned_by_agency_user_id = EXCLUDED.banned_by_agency_user_id,
+         SET banned_by_agency_user_id = EXCLUDED.banned_by_agency_user_id,
              reason = EXCLUDED.reason, expires_at = EXCLUDED.expires_at, created_at = now()`,
       [roomId, targetUserId, actorUserId, reason ?? null, expiresAt],
     );
@@ -104,8 +111,8 @@ export async function agencyUnbanRoomMember(actorUserId: string, roomId: string,
   if (targetUserId === scope.host_user_id) throw ApiError.forbidden('Agency moderators cannot act on the room owner', 'agency_host_protected');
   return withTransaction(async (client) => {
     const deleted = await client.query(
-      'DELETE FROM room_bans WHERE room_id = $1 AND user_id = $2 AND banned_by_agency_user_id = $3',
-      [roomId, targetUserId, actorUserId],
+      'DELETE FROM room_bans WHERE room_id = $1 AND user_id = $2 AND banned_by_agency_user_id IS NOT NULL',
+      [roomId, targetUserId],
     );
     if (deleted.rowCount) {
       await client.query(
