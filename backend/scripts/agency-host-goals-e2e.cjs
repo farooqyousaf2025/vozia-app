@@ -31,7 +31,7 @@ async function api(method, route, options) {
 async function memberToken(phone, username) {
   const challenge = await api('POST', '/api/auth/request-otp', { body: { phone } });
   if (challenge.status !== 200) throw new Error('OTP request failed: ' + JSON.stringify(challenge.json));
-  const verified = await api('POST', '/api/auth/verify-otp', { body: { phone, code: '123456', username } });
+  const verified = await api('POST', '/api/auth/verify-otp', { body: { phone, code: challenge.json.devCode || '123456', username } });
   if (verified.status !== 200) throw new Error('OTP verify failed: ' + JSON.stringify(verified.json));
   const wallet = await api('GET', '/api/wallet', { token: verified.json.token });
   return { token: verified.json.token, id: wallet.json.user.id };
