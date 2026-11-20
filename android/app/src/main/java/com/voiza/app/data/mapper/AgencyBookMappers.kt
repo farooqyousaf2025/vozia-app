@@ -6,6 +6,7 @@ import com.voiza.app.data.remote.dto.AgencyHostDto
 import com.voiza.app.data.remote.dto.AgencyHostActivityEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostAttendanceEnvelope
 import com.voiza.app.data.remote.dto.AgencyHostGoalsEnvelope
+import com.voiza.app.data.remote.dto.AgencyHostRecognitionEnvelope
 import com.voiza.app.domain.model.AgencyHostActivityWeek
 import com.voiza.app.domain.model.AgencyHostAttendanceReport
 import com.voiza.app.domain.model.AgencyHostAttendanceTotals
@@ -13,6 +14,9 @@ import com.voiza.app.domain.model.AgencyHostAttendanceDay
 import com.voiza.app.domain.model.AgencyHostAttendanceRow
 import com.voiza.app.domain.model.AgencyHostGoals
 import com.voiza.app.domain.model.AgencyHostGoalRow
+import com.voiza.app.domain.model.AgencyHostMilestone
+import com.voiza.app.domain.model.AgencyHostRecognition
+import com.voiza.app.domain.model.AgencyHostRecognitionRow
 import com.voiza.app.domain.model.AgencyHostActivityReport
 import com.voiza.app.domain.model.AgencyHostActivityTotals
 import com.voiza.app.domain.model.AgencyHostActivityDay
@@ -161,6 +165,29 @@ fun AgencyHostGoalsEnvelope.toGoalsDomain(): AgencyHostGoals? {
         timezone = goals.timezone ?: "UTC", activeHostCount = goals.activeHostCount ?: hosts.size,
         hostsMeetingGoal = goals.hostsMeetingGoal ?: hosts.count { it.metTarget },
         hosts = hosts, updatedAt = goals.updatedAt.orEmpty(),
+    )
+}
+
+fun AgencyHostRecognitionEnvelope.toRecognitionDomain(): AgencyHostRecognition? {
+    val recognition = recognition ?: return null
+    val hosts = recognition.hosts.orEmpty().filterNotNull().mapNotNull { row ->
+        val username = row.username?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val milestones = row.milestones.orEmpty().filterNotNull().mapNotNull { item ->
+            val code = item.code?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val title = item.title?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            AgencyHostMilestone(
+                code = code, title = title, description = item.description.orEmpty(),
+                attendanceDaysRequired = (item.attendanceDaysRequired ?: 0).coerceAtLeast(0),
+                unlockedAt = item.unlockedAt,
+            )
+        }
+        AgencyHostRecognitionRow(username, row.avatarUrl, (row.attendanceDays ?: 0).coerceAtLeast(0), milestones)
+    }
+    return AgencyHostRecognition(
+        timezone = recognition.timezone ?: "UTC",
+        activeHostCount = recognition.activeHostCount ?: hosts.size,
+        hostsWithAchievements = recognition.hostsWithAchievements ?: hosts.count { host -> host.milestones.any { it.unlockedAt != null } },
+        hosts = hosts,
     )
 }
 
