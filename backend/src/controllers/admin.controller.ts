@@ -417,6 +417,7 @@ export const warnHost = asyncHandler(async (req: Request, res: Response) => {
   const id = requireString(req.params.id, 'roomId', { min: 36, max: 36 });
   const message = requireString(req.body?.message, 'message', { min: 1, max: 300 });
   const room = await loadRoom(id);
+  if (!room.host_id) throw ApiError.conflict('System-owned rooms do not have a member host to warn', 'system_room_no_host');
   const host = await fetchMiniUser(room.host_id);
   // Private to the host: a warning is a nudge, not a public shaming.
   emitToUser(room.host_id, 'room:warning', {
