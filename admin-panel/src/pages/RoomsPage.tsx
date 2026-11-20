@@ -171,6 +171,7 @@ export default function RoomsPage() {
                       <p className="truncate font-semibold text-ink">{room.title}</p>
                       <p className="text-xs text-faint">
                         #{room.roomNumber} · <span className="uppercase">{room.type}</span>
+                        {room.ownerType === 'SYSTEM' && <span className="ml-2 text-violet-300">SYSTEM-OWNED</span>}
                       </p>
                     </div>
                   </Td>
@@ -489,7 +490,7 @@ function RoomDrawer({ room, onClose, onDisconnected }: RoomDrawerProps) {
           <div className="min-w-0">
             <h2 className="truncate text-base font-bold text-ink">{room.title}</h2>
             <p className="mt-0.5 text-xs text-muted">
-              #{room.roomNumber} · host{' '}
+              #{room.roomNumber} · {room.ownerType === 'SYSTEM' ? 'owner' : 'host'}{' '}
               <span className="text-violet-300">{room.host.username}</span> ·{' '}
               {room.description ?? 'no description'}
             </p>
