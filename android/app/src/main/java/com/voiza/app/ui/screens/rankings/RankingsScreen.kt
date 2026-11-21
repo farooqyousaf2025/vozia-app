@@ -101,6 +101,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun RankingsScreen(
     onBack: () -> Unit,
+    onOpenRoom: (String) -> Unit = {},
     viewModel: RankingsViewModel = viewModel(factory = voizaViewModelFactory { RankingsViewModel() }),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -227,6 +228,7 @@ fun RankingsScreen(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
                             .background(VoizaSurfaceHigh)
+                            .clickable(enabled = state.discoveryKind == DiscoveryRankingKind.ROOMS) { onOpenRoom(leader.id) }
                             .padding(horizontal = 9.dp, vertical = 7.dp),
                     ) {
                         Text("#${leader.position}", color = WarningAmber, fontSize = 12.sp, fontWeight = FontWeight.Bold)
