@@ -322,24 +322,45 @@ export async function getRoomDetail(roomId: string): Promise<
  */
 export type RoomSort = 'popular' | 'trending' | 'recent';
 
-/** Gifts sent into a room in the last 24 hours; the trending signal. */
-const TRENDING_JOIN = `
+/** The lobby only lists rooms with a real, currently-present audience. */
+const ROOM_ACTIVITY_JOINS = `
   LEFT JOIN LATERAL (
-    SELECT COALESCE(SUM(t.amount_diamonds), 0)::bigint AS recent_gift_value
-      FROM transactions t
-     WHERE t.room_id = r.id
-       AND t.type = 'GIFT_SENT'
-       AND t.created_at > now() - INTERVAL '24 hours'
-  ) recent ON TRUE`;
+    SELECT
+      COUNT(DISTINCT rp.user_id) FILTER (
+        WHERE member.status = 'ACTIVE' AND NOT member.is_test
+      )::int AS present_count,
+      COUNT(DISTINCT rp.user_id) FILTER (
+        WHERE rp.role IN ('HOST', 'SPEAKER')
+          AND member.status = 'ACTIVE' AND NOT member.is_test
+      )::int AS speaker_count
+    FROM room_participants rp
+    JOIN users member ON member.id = rp.user_id
+    WHERE rp.room_id = r.id AND rp.left_at IS NULL
+  ) live ON TRUE
+  LEFT JOIN LATERAL (
+    SELECT COALESCE(SUM(t.amount_diamonds), 0)::bigint AS gift_diamonds
+    FROM transactions t
+    WHERE t.room_id = r.id
+      AND t.type = 'GIFT_SENT'
+      AND t.created_at >= now() - INTERVAL '24 hours'
+  ) activity_gifts ON TRUE
+`;
+
+const activityScore = `(
+  COALESCE(live.present_count, 0) * 100
+  + COALESCE(live.speaker_count, 0) * 25
+  + LEAST(COALESCE(activity_gifts.gift_diamonds, 0), 5000) / 50
+  + LEAST(COALESCE(r.like_count, 0), 1000) / 20
+)`;
 
 const discoveryOrder = (sort: RoomSort | undefined, category: string | undefined): string => {
-  if (sort === 'trending') return 'recent.recent_gift_value DESC, r.listener_count DESC, r.created_at DESC';
-  if (sort === 'recent') return 'r.created_at DESC';
-  if (sort === 'popular') return 'r.total_gift_value DESC, r.listener_count DESC, r.created_at DESC';
-  // No explicit sort: keep what each tab always did, so an old client is unaffected.
-  return category === 'POPULAR'
-    ? 'r.total_gift_value DESC, r.listener_count DESC, r.created_at DESC'
-    : 'r.listener_count DESC, r.created_at DESC';
+  // Every ordering starts with current room health. Gifts/likes only break ties between rooms
+  // that are actually live; historical popularity can never resurrect an empty room.
+  if (sort === 'recent') return `live.present_count DESC, live.speaker_count DESC, r.created_at DESC`;
+  if (sort === 'trending' || sort === 'popular' || category === 'POPULAR') {
+    return `${activityScore} DESC, live.present_count DESC, live.speaker_count DESC, r.created_at DESC`;
+  }
+  return `live.present_count DESC, live.speaker_count DESC, ${activityScore} DESC, r.created_at DESC`;
 };
 
 export async function listRooms(opts: {
@@ -354,12 +375,19 @@ export async function listRooms(opts: {
   const where: string[] = [];
   const params: unknown[] = [];
 
-  where.push(`r.status = $${params.push(opts.status ?? 'ACTIVE')}`);
+  where.push(`r.status = ${params.push(opts.status ?? 'ACTIVE')}`);
+  // The Home/Discover lobby is a public directory, not a directory of private rooms.
+  where.push(`r.type = 'PUBLIC'`);
+  // User-owned rooms require an active, non-test host. Operator-owned rooms have no member host.
+  where.push(`(r.owner_type = 'SYSTEM' OR (u.id IS NOT NULL AND u.status = 'ACTIVE' AND NOT u.is_test))`);
+  // Empty rooms are not discoverable. This is based on current participant rows, never the
+  // historical listener_count counter, so a room cannot stay popular after everybody leaves.
+  where.push(`COALESCE(live.present_count, 0) > 0`);
   if (opts.category && opts.category !== 'POPULAR') {
     where.push(`r.category = $${params.push(opts.category)}`);
   }
   if (opts.language) where.push(`r.language = $${params.push(opts.language)}`);
-  if (opts.region) where.push(`r.region = $${params.push(opts.region)}`);
+  if (opts.region) where.push(`COALESCE(r.region, u.country_code) = ${params.push(opts.region)}`);
   if (opts.search) {
     params.push(`%${opts.search}%`);
     where.push(`(r.title ILIKE $${params.length} OR CAST(r.room_number AS TEXT) LIKE $${params.length})`);
@@ -368,10 +396,12 @@ export async function listRooms(opts: {
   const limitParam = params.length;
 
   const order = discoveryOrder(opts.sort, opts.category);
-  const from = opts.sort === 'trending' ? `${ROOM_SELECT}${TRENDING_JOIN}` : ROOM_SELECT;
-
   const rooms = await many<RoomRow>(
-    `${from} WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT $${limitParam}`,
+    `${ROOM_SELECT}
+      ${ROOM_ACTIVITY_JOINS}
+      WHERE ${where.join(' AND ')}
+      ORDER BY ${order}
+      LIMIT ${limitParam}`,
     params,
   );
   return rooms.map(toRoom);
