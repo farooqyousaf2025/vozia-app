@@ -49,7 +49,7 @@ export async function platformOperationsSnapshot(access: {
         : Promise.resolve(null),
       access.applications
         ? one<{ applications: string }>(
-            `SELECT COUNT(*)::text AS applications FROM role_applications WHERE status IN ('PENDING','UNDER_REVIEW','INFO_REQUESTED')`,
+            `SELECT COUNT(*)::text AS applications FROM role_applications WHERE status IN ('PENDING','INFO_REQUESTED')`,
           ).catch(() => null)
         : Promise.resolve(null),
     ]);
