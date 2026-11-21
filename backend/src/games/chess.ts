@@ -74,7 +74,7 @@ function finish(s:ChessState,ctx:DriverContext):ChessState{
 }
 export const chessDriver:GameDriver={
  key:'CHESS',
- initialState(ctx:DriverContext):ChessState{return {board:START.split(''),turn:'w',turnPosition:ctx.players[0]?.position??0,winnerPosition:null,draw:false,check:false,checkmate:false,stalemate:false,castling:'KQkq',enPassant:null,halfmove:0,fullmove:1,moveCount:0,timeoutPosition:null,lastMove:null};},
+ initialState(ctx:DriverContext):ChessState{return {board:START.split('').map(piece => piece === '.' ? null : piece),turn:'w',turnPosition:ctx.players[0]?.position??0,winnerPosition:null,draw:false,check:false,checkmate:false,stalemate:false,castling:'KQkq',enPassant:null,halfmove:0,fullmove:1,moveCount:0,timeoutPosition:null,lastMove:null};},
  turnOwner(state:unknown,ctx:DriverContext){const s=state as ChessState;if(s.winnerPosition!==null||s.draw)return null;const p=ctx.players.find(x=>x.position===s.turnPosition);return {userId:p?.userId??null,seconds:ctx.rules.turnTimeoutSeconds};},
  applyAction(state:unknown,ctx:DriverContext,actorId:string,action:GameAction):DriverResult{
   const s=state as ChessState;if(action.type!=='MOVE')return {ok:false,code:'unknown_action',message:'Chess only accepts MOVE'};
