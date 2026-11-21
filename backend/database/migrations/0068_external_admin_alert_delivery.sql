@@ -10,7 +10,10 @@ ALTER TABLE platform_alert_notifications
 ALTER TABLE platform_alert_notifications
   ADD COLUMN IF NOT EXISTS delivery_status text NOT NULL DEFAULT 'PENDING',
   ADD COLUMN IF NOT EXISTS attempt_count integer NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS claimed_at timestamptz;
+  ADD COLUMN IF NOT EXISTS claimed_at timestamptz,
+  ADD COLUMN IF NOT EXISTS next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS delivered_at timestamptz,
+  ADD COLUMN IF NOT EXISTS last_error varchar(1000);
 
 ALTER TABLE platform_alert_notifications
   DROP CONSTRAINT IF EXISTS platform_alert_notifications_delivery_status_check;
@@ -18,14 +21,10 @@ ALTER TABLE platform_alert_notifications
   ADD CONSTRAINT platform_alert_notifications_delivery_status_check
     CHECK (delivery_status IN ('PENDING','SENDING','DELIVERED','RETRY','FAILED','SKIPPED'));
 
-  ADD COLUMN IF NOT EXISTS next_attempt_at timestamptz NOT NULL DEFAULT now(),
-  ADD COLUMN IF NOT EXISTS delivered_at timestamptz,
-  ADD COLUMN IF NOT EXISTS last_error varchar(1000);
-
 UPDATE platform_alert_notifications
    SET delivery_status = 'DELIVERED', delivered_at = COALESCE(delivered_at, created_at)
  WHERE channel = 'IN_APP' AND delivery_status = 'PENDING';
 
 CREATE INDEX IF NOT EXISTS platform_alert_notifications_delivery_queue
   ON platform_alert_notifications (next_attempt_at, created_at)
-  WHERE channel <> 'IN_APP' AND delivery_status IN ('PENDING','RETRY');
+  WHERE channel <> 'IN_APP' AND delivery_status IN ('PENDING','RETRY','SENDING');
