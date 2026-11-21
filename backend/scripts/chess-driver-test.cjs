@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { chessDriver, chessLegalMovesForDiagnostics } = require('../dist/games/chess.js');
+const { chessDriver } = require('../dist/games/chess.js');
 
 const ctx = {
   sessionId: 'chess-test', roomId: null, nowMs: Date.now(),
@@ -30,7 +30,6 @@ move('black', 'e7', 'e5');
 move('white', 'g2', 'g4');
 move('black', 'd8', 'h4');
 assert.equal(state.check, true);
-console.log('CHESS_DIAGNOSTIC', JSON.stringify({turn:state.turn, board:state.board, legalMoves:chessLegalMovesForDiagnostics(state)}));
 assert.equal(state.checkmate, true);
 assert.equal(state.winnerPosition, 1);
 assert.equal(chessDriver.isFinished(state, ctx), true);
