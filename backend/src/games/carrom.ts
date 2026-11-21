@@ -42,7 +42,7 @@ function makeCoins(players: DriverContext['players']): Coin[] {
 function simulate(coinsIn:Coin[], strikerIn:CarromState['striker']): {coins:Coin[];striker:CarromState['striker'];pocketed:number[];strikerPocketed:boolean} {
   const coins=coinsIn.map(c=>({...c})), striker={...strikerIn}, pocketed:number[]=[];
   const bodies=[...coins.filter(c=>!c.pocketed),striker];
-  const isStriker=(b:Coin|CarromState['striker']):b is CarromState['striker']=>b===striker;
+  const isStriker=(b:Coin|CarromState['striker']):boolean=>b===striker;
   // Fixed-step, bounded server simulation. Clients submit aim/power, never positions or outcomes.
   for(let step=0;step<2400;step++){
     for(const b of bodies){
@@ -52,7 +52,7 @@ function simulate(coinsIn:Coin[], strikerIn:CarromState['striker']): {coins:Coin
       if(Math.abs(b.vx)+Math.abs(b.vy)<1.4){b.vx=0;b.vy=0;}
       if(POCKETS.some(([x,y])=>distance2(b,{x,y})<54**2)){
         b.pocketed=true;b.vx=0;b.vy=0;
-        if(!isStriker(b))pocketed.push(b.id);
+        if('id' in b)pocketed.push(b.id);
         continue;
       }
       const radius=isStriker(b)?STRIKER_RADIUS:RADIUS;
