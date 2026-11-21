@@ -325,19 +325,6 @@ export type RoomSort = 'popular' | 'trending' | 'recent';
 /** The lobby only lists rooms with a real, currently-present audience. */
 const ROOM_ACTIVITY_JOINS = `
   LEFT JOIN LATERAL (
-    SELECT
-      COUNT(DISTINCT rp.user_id) FILTER (
-        WHERE member.status = 'ACTIVE' AND NOT member.is_test
-      )::int AS present_count,
-      COUNT(DISTINCT rp.user_id) FILTER (
-        WHERE rp.role IN ('HOST', 'SPEAKER')
-          AND member.status = 'ACTIVE' AND NOT member.is_test
-      )::int AS speaker_count
-    FROM room_participants rp
-    JOIN users member ON member.id = rp.user_id
-    WHERE rp.room_id = r.id AND rp.left_at IS NULL
-  ) live ON TRUE
-  LEFT JOIN LATERAL (
     SELECT COALESCE(SUM(t.amount_diamonds), 0)::bigint AS gift_diamonds
     FROM transactions t
     WHERE t.room_id = r.id
@@ -347,21 +334,49 @@ const ROOM_ACTIVITY_JOINS = `
 `;
 
 const activityScore = `(
-  COALESCE(live.present_count, 0) * 100
-  + COALESCE(live.speaker_count, 0) * 25
+  ap.live_count * 100
   + LEAST(COALESCE(activity_gifts.gift_diamonds, 0), 5000) / 50
   + LEAST(COALESCE(r.like_count, 0), 1000) / 20
 )`;
 
 const discoveryOrder = (sort: RoomSort | undefined, category: string | undefined): string => {
-  // Every ordering starts with current room health. Gifts/likes only break ties between rooms
-  // that are actually live; historical popularity can never resurrect an empty room.
-  if (sort === 'recent') return `live.present_count DESC, live.speaker_count DESC, r.created_at DESC`;
+  // Connected listeners are always the primary signal; historical popularity cannot revive a dead room.
+  if (sort === 'recent') return 'ap.live_count DESC, r.created_at DESC';
   if (sort === 'trending' || sort === 'popular' || category === 'POPULAR') {
-    return `${activityScore} DESC, live.present_count DESC, live.speaker_count DESC, r.created_at DESC`;
+    return `${activityScore} DESC, ap.live_count DESC, r.created_at DESC`;
   }
-  return `live.present_count DESC, live.speaker_count DESC, ${activityScore} DESC, r.created_at DESC`;
+  return `ap.live_count DESC, ${activityScore} DESC, r.created_at DESC`;
 };
+
+/** Read the live room index and reconcile expired socket heartbeats before serving the lobby. */
+async function activeRoomPresence(): Promise<{ roomIds: string[]; counts: number[] }> {
+  try {
+    const roomIds = await redis.zrevrange(presenceKeys.activeRooms, 0, -1);
+    if (roomIds.length === 0) return { roomIds: [], counts: [] };
+    const countPipeline = redis.pipeline();
+    roomIds.forEach((roomId) => countPipeline.scard(presenceKeys.roomUsers(roomId)));
+    const countResults = await countPipeline.exec();
+    const activeIds: string[] = [];
+    const activeCounts: number[] = [];
+    const reconcile = redis.pipeline();
+    roomIds.forEach((roomId, index) => {
+      const count = Number(countResults?.[index]?.[1] ?? 0);
+      if (count > 0) {
+        activeIds.push(roomId);
+        activeCounts.push(count);
+        reconcile.zadd(presenceKeys.activeRooms, count, roomId);
+      } else {
+        reconcile.zrem(presenceKeys.activeRooms, roomId);
+      }
+    });
+    await reconcile.exec();
+    return { roomIds: activeIds, counts: activeCounts };
+  } catch (err) {
+    // Fail closed: without authoritative socket presence, do not advertise a possibly-dead room.
+    console.warn('[rooms] live discovery presence unavailable', (err as Error).message);
+    return { roomIds: [], counts: [] };
+  }
+}
 
 export async function listRooms(opts: {
   category?: string;
@@ -372,22 +387,19 @@ export async function listRooms(opts: {
   language?: string | null;
   region?: string | null;
 }): Promise<RoomDto[]> {
-  const where: string[] = [];
-  const params: unknown[] = [];
+  const presence = await activeRoomPresence();
+  if (presence.roomIds.length === 0) return [];
 
-  where.push(`r.status = ${params.push(opts.status ?? 'ACTIVE')}`);
-  // The Home/Discover lobby is a public directory, not a directory of private rooms.
-  where.push(`r.type = 'PUBLIC'`);
-  // User-owned rooms require an active, non-test host. Operator-owned rooms have no member host.
-  where.push(`(r.owner_type = 'SYSTEM' OR (u.id IS NOT NULL AND u.status = 'ACTIVE' AND NOT u.is_test))`);
-  // Empty rooms are not discoverable. This is based on current participant rows, never the
-  // historical listener_count counter, so a room cannot stay popular after everybody leaves.
-  where.push(`COALESCE(live.present_count, 0) > 0`);
+  const params: unknown[] = [presence.roomIds, presence.counts];
+  const where: string[] = [];
+  where.push('r.status = $' + params.push(opts.status ?? 'ACTIVE'));
+  where.push("r.type = 'PUBLIC'");
+  where.push("(r.owner_type = 'SYSTEM' OR (u.id IS NOT NULL AND u.status = 'ACTIVE' AND NOT u.is_test))");
   if (opts.category && opts.category !== 'POPULAR') {
-    where.push(`r.category = $${params.push(opts.category)}`);
+    where.push('r.category = $' + params.push(opts.category));
   }
-  if (opts.language) where.push(`r.language = $${params.push(opts.language)}`);
-  if (opts.region) where.push(`COALESCE(r.region, u.country_code) = ${params.push(opts.region)}`);
+  if (opts.language) where.push('r.language = $' + params.push(opts.language));
+  if (opts.region) where.push('COALESCE(r.region, u.country_code) = $' + params.push(opts.region));
   if (opts.search) {
     params.push(`%${opts.search}%`);
     where.push(`(r.title ILIKE $${params.length} OR CAST(r.room_number AS TEXT) LIKE $${params.length})`);
@@ -395,13 +407,19 @@ export async function listRooms(opts: {
   params.push(opts.limit);
   const limitParam = params.length;
 
-  const order = discoveryOrder(opts.sort, opts.category);
+  const select = ROOM_SELECT
+    .replace('SELECT r.*,', 'SELECT r.*, ap.live_count::int AS listener_count,')
+    .replace('FROM rooms r', 'FROM rooms r JOIN active_presence ap ON ap.room_id = r.id');
   const rooms = await many<RoomRow>(
-    `${ROOM_SELECT.replace('SELECT r.*,', 'SELECT r.*, COALESCE(live.present_count, 0)::int AS listener_count,')}
-      ${ROOM_ACTIVITY_JOINS}
-      WHERE ${where.join(' AND ')}
-      ORDER BY ${order}
-      LIMIT ${limitParam}`,
+    `WITH active_presence AS (
+       SELECT room_id, live_count
+         FROM unnest($1::uuid[], $2::int[]) AS p(room_id, live_count)
+     )
+     ${select}
+     ${ROOM_ACTIVITY_JOINS}
+     WHERE ${where.join(' AND ')}
+     ORDER BY ${discoveryOrder(opts.sort, opts.category)}
+     LIMIT $${limitParam}`,
     params,
   );
   return rooms.map(toRoom);
@@ -414,18 +432,28 @@ export async function listRooms(opts: {
  * password-protected room can never be selected (and never bypassed) by this shortcut.
  */
 export async function quickJoinRoom(userId: string): Promise<RoomDto> {
+  const presence = await activeRoomPresence();
+  if (presence.roomIds.length === 0) {
+    throw ApiError.notFound('No public room is open right now', 'nothing_to_join');
+  }
+  const select = ROOM_SELECT
+    .replace('SELECT r.*,', 'SELECT r.*, ap.live_count::int AS listener_count,')
+    .replace('FROM rooms r', 'FROM rooms r JOIN active_presence ap ON ap.room_id = r.id');
   const row = await one<RoomRow>(
-    `${ROOM_SELECT.replace('SELECT r.*,', 'SELECT r.*, COALESCE(live.present_count, 0)::int AS listener_count,')}
-      ${ROOM_ACTIVITY_JOINS}
-      WHERE r.status = 'ACTIVE' AND r.type = 'PUBLIC' AND r.host_id IS DISTINCT FROM $1
-        AND (r.owner_type = 'SYSTEM' OR (u.id IS NOT NULL AND u.status = 'ACTIVE' AND NOT u.is_test))
-        AND COALESCE(live.present_count, 0) > 0
-        AND NOT EXISTS (SELECT 1 FROM room_bans b WHERE b.room_id = r.id AND b.user_id = $1)
-        AND NOT EXISTS (SELECT 1 FROM room_participants p
-                         WHERE p.room_id = r.id AND p.user_id = $1 AND p.left_at IS NULL)
-      ORDER BY live.present_count DESC, live.speaker_count DESC, ${activityScore} DESC, r.created_at DESC
-      LIMIT 1`,
-    [userId],
+    `WITH active_presence AS (
+       SELECT room_id, live_count
+         FROM unnest($1::uuid[], $2::int[]) AS p(room_id, live_count)
+     )
+     ${select}
+     ${ROOM_ACTIVITY_JOINS}
+     WHERE r.status = 'ACTIVE' AND r.type = 'PUBLIC' AND r.host_id IS DISTINCT FROM $3
+       AND (r.owner_type = 'SYSTEM' OR (u.id IS NOT NULL AND u.status = 'ACTIVE' AND NOT u.is_test))
+       AND NOT EXISTS (SELECT 1 FROM room_bans b WHERE b.room_id = r.id AND b.user_id = $3)
+       AND NOT EXISTS (SELECT 1 FROM room_participants p
+                        WHERE p.room_id = r.id AND p.user_id = $3 AND p.left_at IS NULL)
+     ORDER BY ap.live_count DESC, ${activityScore} DESC, r.created_at DESC
+     LIMIT 1`,
+    [presence.roomIds, presence.counts, userId],
   );
   if (!row) throw ApiError.notFound('No public room is open right now', 'nothing_to_join');
   return toRoom(row);
