@@ -465,7 +465,9 @@ private fun rewardWindowName(windowKey: String?, period: RankingPeriod?): String
 
 private data class BoardTheme(val accent: Color, val wash: Color, val watermark: ImageVector)
 
-private val VioletDiscovery = Color(0xFFB69CFF)\n\nprivate fun boardTheme(kind: RankingBoardKind): BoardTheme = when (kind) {
+private val VioletDiscovery = Color(0xFFB69CFF)
+
+private fun boardTheme(kind: RankingBoardKind): BoardTheme = when (kind) {
     RankingBoardKind.HOST -> BoardTheme(WarningAmber, Color(0xFF2E2410), Icons.Default.EmojiEvents)
     RankingBoardKind.RICH -> BoardTheme(RCoinGreen, Color(0xFF0E2E22), Icons.Default.Diamond)
     RankingBoardKind.GIFTER -> BoardTheme(GiftPink, Color(0xFF33122B), Icons.Default.CardGiftcard)
