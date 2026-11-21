@@ -125,6 +125,7 @@ import type {
   TrialBalance,
   UserListQuery,
   UserListResult,
+  UserRow,
   UserMutationResult,
   UserSocialSummary,
   VisualEffect,
