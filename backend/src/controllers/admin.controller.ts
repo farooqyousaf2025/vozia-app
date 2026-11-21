@@ -303,7 +303,11 @@ export const updateOperationalAlertNotificationSettings = asyncHandler(async (re
     summary: 'Updated platform alert notification settings',
     details: settings,
   });
-  res.json(settings);
+  res.json({
+    ...settings,
+    emailConfigured: Boolean(env.alertDelivery.resendApiKey && env.alertDelivery.emailFrom),
+    webhookConfigured: Boolean(env.alertDelivery.webhookUrl && env.alertDelivery.webhookSecret),
+  });
 });
 
 export const readOperationalAlertNotification = asyncHandler(async (req: Request, res: Response) => {
