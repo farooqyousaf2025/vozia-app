@@ -82,6 +82,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/recharges', label: 'Recharges', icon: <IconRecharge className="h-5 w-5" />, permission: 'finance:read' },
       { to: '/commissions', label: 'Commission', icon: <IconCommission className="h-5 w-5" />, permission: 'finance:read' },
       { to: '/agencies', label: 'Agencies', icon: <IconPartners className="h-5 w-5" />, permission: 'finance:read' },
+      { to: '/agency-operations', label: 'Agency operations', icon: <IconTrendUp className="h-5 w-5" />, permission: 'finance:read' },
       { to: '/finance', label: 'Finance book', icon: <IconBook className="h-5 w-5" />, permission: 'finance:read' },
       { to: '/accounts', label: 'Purpose accounts', icon: <IconScales className="h-5 w-5" />, permission: 'account:read' },
     ],
