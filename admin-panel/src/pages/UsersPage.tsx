@@ -141,7 +141,7 @@ export default function UsersPage() {
           <h1 className="text-xl font-bold text-ink">Users</h1>
           <p className="mt-0.5 text-sm text-muted">Create phone-verified member profiles, edit account details and control access.</p>
         </div>
-        {can('user:moderate') && <Button variant="primary" onClick={() => setCreateUserOpen(true)}>Create user</Button>}
+        {can('account:create') && <Button variant="primary" onClick={() => setCreateUserOpen(true)}>Create user</Button>}
       </div>
 
       <Card bodyClassName="p-4">
@@ -301,7 +301,7 @@ export default function UsersPage() {
                     <Td align="right" className="whitespace-nowrap pr-4">
                       <div className="flex items-center justify-end gap-1.5">
                         {can('user:moderate') && <Button size="sm" variant="secondary" onClick={() => setEditTarget(user)}>Edit</Button>}
-                        {can('application:review') && <Button size="sm" variant="secondary" onClick={() => setRoleTarget(user)}>Grant role</Button>}
+                        {can('account:create') && <Button size="sm" variant="secondary" onClick={() => setRoleTarget(user)}>Grant role</Button>}
                         {can('user:moderate') && user.status === 'ACTIVE' && <Button size="sm" variant="danger" onClick={() => setArchiveTarget(user)}>Archive</Button>}
                         {can('user:wallet') && <Button
                           size="sm"
