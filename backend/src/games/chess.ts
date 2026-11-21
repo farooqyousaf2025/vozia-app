@@ -66,6 +66,7 @@ function legal(s:ChessState,from:number,to:number,promotion:string):boolean{
  return !inCheck(apply(s,from,to,promotion).board,s.turn);
 }
 function legalMoves(s:ChessState):Array<[number,number]>{const a:Array<[number,number]>=[];for(let i=0;i<64;i++)if(color(s.board[i])===s.turn)for(const to of pseudo(s,i))if(legal(s,i,to,'q'))a.push([i,to]);return a;}
+export function chessLegalMovesForDiagnostics(s: ChessState): string[] { return legalMoves(s).map(([from,to]) => algebraic(from)+'-'+algebraic(to)); }
 function finish(s:ChessState,ctx:DriverContext):ChessState{
  const check=inCheck(s.board,s.turn), moves=legalMoves(s), mate=check&&moves.length===0, stale=!check&&moves.length===0;
  if(mate){const winner=ctx.players.find(p=>p.position!==s.turnPosition);return {...s,check:true,checkmate:true,winnerPosition:winner?.position??null};}
