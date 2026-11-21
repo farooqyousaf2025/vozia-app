@@ -23,16 +23,19 @@ const clamp = (n:number,lo:number,hi:number) => Math.max(lo,Math.min(hi,n));
 const distance2 = (a:{x:number;y:number},b:{x:number;y:number}) => (a.x-b.x)**2+(a.y-b.y)**2;
 function makeCoins(players: DriverContext['players']): Coin[] {
   const coins: Coin[] = [];
-  // A compact, symmetric opening rack: nine coins per side and a central queen.
-  for (let i=0;i<9;i++) {
-    const angle = (Math.PI*2*i)/8;
-    const ring = i===8 ? 76 : 42;
-    coins.push({id:i,owner:players[0]?.position??0,kind:'coin',x:CENTER+Math.cos(angle)*ring,y:CENTER+Math.sin(angle)*ring,vx:0,vy:0,pocketed:false});
-  }
-  for (let i=0;i<9;i++) {
-    const angle = (Math.PI*2*i)/8 + Math.PI/8;
-    const ring = i===8 ? 116 : 82;
-    coins.push({id:i+9,owner:players[1]?.position??1,kind:'coin',x:CENTER+Math.cos(angle)*ring,y:CENTER+Math.sin(angle)*ring,vx:0,vy:0,pocketed:false});
+  // Six inner and twelve outer coins form a symmetric, non-overlapping rack.
+  // Ownership alternates around the rack so both colors are represented on both rings.
+  for (let i=0;i<18;i++) {
+    const inner = i < 6;
+    const ringIndex = inner ? i : i - 6;
+    const count = inner ? 6 : 12;
+    const angle = (Math.PI*2*ringIndex)/count + (inner ? 0 : Math.PI/12);
+    const ring = inner ? 40 : 80;
+    coins.push({
+      id:i, owner:players[i%2]?.position??(i%2), kind:'coin',
+      x:CENTER+Math.cos(angle)*ring, y:CENTER+Math.sin(angle)*ring,
+      vx:0,vy:0,pocketed:false,
+    });
   }
   coins.push({id:18,owner:null,kind:'queen',x:CENTER,y:CENTER,vx:0,vy:0,pocketed:false});
   return coins;
@@ -104,25 +107,33 @@ export const carromDriver:GameDriver={
   const sim=simulate(coins,{x:strikerX,y:baselineY,vx:Math.cos(radians)*power*1900,vy:Math.sin(radians)*power*1900*(seatIndex===0?-1:1),pocketed:false});
   const events:DriverEvent[]=[];
   const scores={...s.scores},pocketedBy={...s.pocketedBy},foulCount={...s.foulCount};
-  const own=sim.pocketed.map(id=>sim.coins.find(c=>c.id===id)!).filter(c=>c.kind==='coin'&&c.owner===actor.position);
+  const newlyPocketed=sim.pocketed.map(id=>sim.coins.find(c=>c.id===id)!).filter(Boolean);
+  const own=newlyPocketed.filter(c=>c.kind==='coin'&&c.owner===actor.position);
   const foul=sim.strikerPocketed;
   if(foul){
     foulCount[String(actor.position)]=(foulCount[String(actor.position)]??0)+1;
-    for(const c of sim.coins.filter(c=>c.kind==='coin'&&c.owner===actor.position&&c.pocketed).slice(-1)){
-      c.pocketed=false;c.x=CENTER+(c.id%3-1)*38;c.y=CENTER+((c.id%2)*2-1)*38;c.vx=0;c.vy=0;
+    // A foul cancels every coin pocketed during this shot; restore exact rack positions.
+    for(const c of newlyPocketed){
+      const original=coins.find(item=>item.id===c.id);
+      if(original){c.pocketed=false;c.x=original.x;c.y=original.y;c.vx=0;c.vy=0;}
     }
-    for(const c of sim.coins.filter(c=>c.kind==='queen'&&c.pocketed)){c.pocketed=false;c.x=CENTER;c.y=CENTER;c.vx=0;c.vy=0;}
     queenPendingFor=null;
     events.push({type:'FOUL',actorId,payload:{reason:'striker_pocketed'}});
   }else{
     const queen=sim.coins.find(c=>c.kind==='queen')!;
-    if(queenPendingFor===actor.position&&own.length>0){queenCovered=true;queenPendingFor=null;scores[String(actor.position)]=(scores[String(actor.position)]??0)+3;}
-    else if(queenPendingFor===actor.position&&own.length===0){queen.pocketed=false;queen.x=CENTER;queen.y=CENTER;queenPendingFor=null;}
-    if(queen.pocketed&&!queenCovered){
-      if(own.length>0){queenCovered=true;scores[String(actor.position)]=(scores[String(actor.position)]??0)+3;}
-      else queenPendingFor=actor.position;
+    if(queenPendingFor===actor.position){
+      if(own.length>0){
+        queenCovered=true;queenPendingFor=null;
+        scores[String(actor.position)]=(scores[String(actor.position)]??0)+3;
+      }else{
+        // The queen must be covered on the same player's next shot, not on the queen shot.
+        queen.pocketed=false;queen.x=CENTER;queen.y=CENTER;queenPendingFor=null;
+      }
+    }else if(queen.pocketed&&!queenCovered){
+      // Even when a regular coin falls in the queen shot, cover is the following shot.
+      queenPendingFor=actor.position;
     }
-    for(const c of sim.coins.filter(c=>c.kind==='coin'&&c.pocketed)){
+    for(const c of newlyPocketed.filter(item=>item.kind==='coin')){
       const scoringSeat=c.owner??actor.position;scores[String(scoringSeat)]=(scores[String(scoringSeat)]??0)+1;
       pocketedBy[String(scoringSeat)]=[...(pocketedBy[String(scoringSeat)]??[]),c.id];
     }
