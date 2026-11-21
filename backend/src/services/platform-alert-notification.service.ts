@@ -5,14 +5,12 @@ export type PlatformAlertNotificationSettings = {
   enabled: boolean;
   warning: boolean;
   critical: boolean;
-  notifyOnResolved: boolean;
 };
 
 export const DEFAULT_PLATFORM_ALERT_NOTIFICATION_SETTINGS: PlatformAlertNotificationSettings = {
   enabled: true,
   warning: false,
   critical: true,
-  notifyOnResolved: false,
 };
 
 export type PlatformAlertNotification = {
