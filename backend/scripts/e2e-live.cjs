@@ -566,6 +566,48 @@ function loadLivekitService() {
     invalidAlertSettingsResponse.status === 400,
     { status: invalidAlertSettingsResponse.status });
 
+  const notificationSettingsResponse = await api('GET', '/api/admin/operational-alert-notification-settings', { token: adminToken });
+  check('operations: admin notification settings default to critical in-app alerts only',
+    notificationSettingsResponse.status === 200 &&
+    notificationSettingsResponse.json?.enabled === true &&
+    notificationSettingsResponse.json?.critical === true &&
+    notificationSettingsResponse.json?.warning === false,
+    { status: notificationSettingsResponse.status, settings: notificationSettingsResponse.json });
+
+  const notificationSettings = { enabled: true, critical: true, warning: false };
+  const saveNotificationSettingsResponse = await api('PUT', '/api/admin/operational-alert-notification-settings', {
+    token: adminToken, body: notificationSettings,
+  });
+  check('operations: authorized admin can save in-app alert delivery controls',
+    saveNotificationSettingsResponse.status === 200 &&
+    saveNotificationSettingsResponse.json?.critical === true &&
+    saveNotificationSettingsResponse.json?.warning === false,
+    { status: saveNotificationSettingsResponse.status });
+
+  const invalidNotificationSettingsResponse = await api('PUT', '/api/admin/operational-alert-notification-settings', {
+    token: adminToken, body: { enabled: 'yes', critical: true, warning: false },
+  });
+  check('operations: invalid notification controls are rejected',
+    invalidNotificationSettingsResponse.status === 400,
+    { status: invalidNotificationSettingsResponse.status });
+
+  const notificationInboxResponse = await api('GET', '/api/admin/operational-alert-notifications?limit=20', { token: adminToken });
+  check('operations: admin receives a private, bounded alert inbox',
+    notificationInboxResponse.status === 200 &&
+    Array.isArray(notificationInboxResponse.json?.notifications) &&
+    Number.isInteger(notificationInboxResponse.json?.unreadCount),
+    { status: notificationInboxResponse.status, unreadCount: notificationInboxResponse.json?.unreadCount });
+
+  const markNotificationsReadResponse = await api('POST', '/api/admin/operational-alert-notifications/read-all', { token: adminToken });
+  check('operations: admin can mark their own alert inbox as read',
+    markNotificationsReadResponse.status === 200 && Number.isInteger(markNotificationsReadResponse.json?.updated),
+    { status: markNotificationsReadResponse.status });
+
+  const memberNotificationInboxResponse = await api('GET', '/api/admin/operational-alert-notifications', { token: a.token });
+  check('operations: member token cannot access admin alert notifications',
+    memberNotificationInboxResponse.status === 401 || memberNotificationInboxResponse.status === 403,
+    { status: memberNotificationInboxResponse.status });
+
   const systemRoomResponse = await api('POST', '/api/admin/rooms', {
     token: adminToken,
     body: { title: `E2E System Room ${stamp}`, category: 'PARTY', type: 'PUBLIC', seatCapacity: 3 },

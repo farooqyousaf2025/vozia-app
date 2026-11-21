@@ -14,6 +14,7 @@ import { emitToRoom, emitToUser, initSocket } from './services/socket.service';
 import { setTickerBroadcaster } from './services/announcement.service';
 import { loadRankRegistry } from './services/rank.service';
 import { loadThemeRegistry } from './services/theme.service';
+import { platformOperationsSnapshot } from './services/platform-operations.service';
 
 async function waitForDatabase(timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -114,12 +115,23 @@ async function main(): Promise<void> {
     console.info(`[voiza] LiveKit client URL: ${env.livekit.publicUrl}`);
   });
 
+  // Monitor operations independently of an operator keeping the dashboard open.
+  // The same snapshot path persists alert lifecycle and enqueues deduplicated admin inbox items.
+  const monitorOperations = () => {
+    platformOperationsSnapshot({ finance: false, applications: false })
+      .catch((err) => console.warn('[voiza] background operations monitor failed:', err.message));
+  };
+  monitorOperations();
+  const operationsMonitor = setInterval(monitorOperations, 30_000);
+  operationsMonitor.unref();
+
   const shutdown = async (signal: string) => {
     console.info(`[voiza] ${signal} received, closing connections`);
     const timer = setTimeout(() => process.exit(1), 8000);
     clearInterval(sweeper);
     clearInterval(rechargeSweeper);
     clearInterval(pkSweeper);
+    clearInterval(operationsMonitor);
     io.close();
     server.close();
     await Promise.allSettled([closePool(), closeRedis()]);

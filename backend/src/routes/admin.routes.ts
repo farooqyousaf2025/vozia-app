@@ -37,6 +37,11 @@ router.get('/operational-health', requirePermission('dashboard:read'), admin.ope
 router.get('/operational-alerts', requirePermission('dashboard:read'), admin.operationalAlertHistory);
 router.get('/operational-alert-settings', requirePermission('dashboard:read'), admin.operationalAlertSettings);
 router.put('/operational-alert-settings', requirePermission('config:manage'), admin.updateOperationalAlertSettings);
+router.get('/operational-alert-notifications', requirePermission('dashboard:read'), admin.operationalAlertNotifications);
+router.get('/operational-alert-notification-settings', requirePermission('dashboard:read'), admin.operationalAlertNotificationSettings);
+router.put('/operational-alert-notification-settings', requirePermission('config:manage'), admin.updateOperationalAlertNotificationSettings);
+router.post('/operational-alert-notifications/read-all', requirePermission('dashboard:read'), admin.readAllOperationalAlertNotifications);
+router.post('/operational-alert-notifications/:id/read', requirePermission('dashboard:read'), admin.readOperationalAlertNotification);
 
 router.get('/users', requirePermission('user:read'), admin.users);
 router.post('/users', requirePermission('user:moderate'), admin.createUser);

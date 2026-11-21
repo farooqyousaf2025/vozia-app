@@ -4,6 +4,7 @@ import os from 'node:os';
 import { one, ping, pool } from '../config/db';
 import { redis } from '../config/redis';
 import { livekitRooms } from './livekit.service';
+import { enqueuePlatformAlertNotifications } from './platform-alert-notification.service';
 
 export type DependencyState = 'HEALTHY' | 'DEGRADED' | 'DOWN';
 type MetricQuality = 'MEASURED' | 'ESTIMATED' | 'CONFIGURED' | 'UNAVAILABLE';
@@ -476,8 +477,8 @@ export async function platformOperationsSnapshot(access: {
       quality: 'MEASURED', source: 'pg_stat_activity / max_connections',
     }, DEFAULT_PLATFORM_ALERT_THRESHOLDS['postgres.connections']);
   }
-  await persistAlertLifecycle(alerts).catch((error) => {
-    console.error('[operations] could not persist alert lifecycle', error);
+  await persistAlertLifecycle(alerts).then(() => enqueuePlatformAlertNotifications(alerts)).catch((error) => {
+    console.error('[operations] could not persist alert lifecycle or enqueue notifications', error);
   });
 
   return {

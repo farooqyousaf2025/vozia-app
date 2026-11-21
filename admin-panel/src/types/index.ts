@@ -125,6 +125,27 @@ export interface PlatformAlertSettings {
   thresholds: Record<string, PlatformAlertThreshold>;
 }
 
+export interface PlatformAlertNotificationSettings {
+  enabled: boolean;
+  warning: boolean;
+  critical: boolean;
+}
+
+export interface PlatformAlertNotification {
+  id: string;
+  alertEventId: string;
+  severity: 'WARNING' | 'CRITICAL';
+  title: string;
+  message: string;
+  createdAt: string;
+  readAt: string | null;
+}
+
+export interface PlatformAlertNotificationList {
+  notifications: PlatformAlertNotification[];
+  unreadCount: number;
+}
+
 export interface PlatformAlertEvent extends PlatformOperationsAlert {
   fingerprint: string;
   status: 'ACTIVE' | 'RESOLVED';
