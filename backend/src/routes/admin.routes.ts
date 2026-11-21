@@ -39,6 +39,8 @@ router.get('/operational-alert-settings', requirePermission('dashboard:read'), a
 router.put('/operational-alert-settings', requirePermission('config:manage'), admin.updateOperationalAlertSettings);
 router.get('/operational-alert-notifications', requirePermission('dashboard:read'), admin.operationalAlertNotifications);
 router.get('/operational-alert-notification-settings', requirePermission('dashboard:read'), admin.operationalAlertNotificationSettings);
+router.get('/operational-alert-delivery-profile', requirePermission('dashboard:read'), admin.operationalAlertDeliveryProfile);
+router.put('/operational-alert-delivery-profile', requirePermission('dashboard:read'), admin.updateOperationalAlertDeliveryProfile);
 router.put('/operational-alert-notification-settings', requirePermission('config:manage'), admin.updateOperationalAlertNotificationSettings);
 router.post('/operational-alert-notifications/read-all', requirePermission('dashboard:read'), admin.readAllOperationalAlertNotifications);
 router.post('/operational-alert-notifications/:id/read', requirePermission('dashboard:read'), admin.readOperationalAlertNotification);

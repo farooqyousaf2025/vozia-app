@@ -571,25 +571,49 @@ function loadLivekitService() {
     notificationSettingsResponse.status === 200 &&
     notificationSettingsResponse.json?.enabled === true &&
     notificationSettingsResponse.json?.critical === true &&
-    notificationSettingsResponse.json?.warning === false,
+    notificationSettingsResponse.json?.warning === false &&
+    typeof notificationSettingsResponse.json?.emailConfigured === 'boolean' &&
+    typeof notificationSettingsResponse.json?.webhookConfigured === 'boolean',
     { status: notificationSettingsResponse.status, settings: notificationSettingsResponse.json });
 
-  const notificationSettings = { enabled: true, critical: true, warning: false };
+  const notificationSettings = { enabled: true, critical: true, warning: false, email: false, webhook: false };
   const saveNotificationSettingsResponse = await api('PUT', '/api/admin/operational-alert-notification-settings', {
     token: adminToken, body: notificationSettings,
   });
   check('operations: authorized admin can save in-app alert delivery controls',
     saveNotificationSettingsResponse.status === 200 &&
     saveNotificationSettingsResponse.json?.critical === true &&
-    saveNotificationSettingsResponse.json?.warning === false,
+    saveNotificationSettingsResponse.json?.warning === false &&
+    saveNotificationSettingsResponse.json?.email === false &&
+    saveNotificationSettingsResponse.json?.webhook === false,
     { status: saveNotificationSettingsResponse.status });
 
   const invalidNotificationSettingsResponse = await api('PUT', '/api/admin/operational-alert-notification-settings', {
-    token: adminToken, body: { enabled: 'yes', critical: true, warning: false },
+    token: adminToken, body: { enabled: 'yes', critical: true, warning: false, email: false, webhook: false },
   });
   check('operations: invalid notification controls are rejected',
     invalidNotificationSettingsResponse.status === 400,
     { status: invalidNotificationSettingsResponse.status });
+
+
+  const deliveryProfileResponse = await api('GET', '/api/admin/operational-alert-delivery-profile', { token: adminToken });
+  check('operations: admin can inspect their own external alert destination',
+    deliveryProfileResponse.status === 200 && (deliveryProfileResponse.json?.email === null || typeof deliveryProfileResponse.json?.email === 'string'),
+    { status: deliveryProfileResponse.status });
+
+  const saveDeliveryProfileResponse = await api('PUT', '/api/admin/operational-alert-delivery-profile', {
+    token: adminToken, body: { email: 'ops-alerts@example.test' },
+  });
+  check('operations: admin can save their own alert email destination',
+    saveDeliveryProfileResponse.status === 200 && saveDeliveryProfileResponse.json?.email === 'ops-alerts@example.test',
+    { status: saveDeliveryProfileResponse.status });
+
+  const invalidDeliveryProfileResponse = await api('PUT', '/api/admin/operational-alert-delivery-profile', {
+    token: adminToken, body: { email: 'not-an-email' },
+  });
+  check('operations: invalid alert email destination is rejected',
+    invalidDeliveryProfileResponse.status === 400,
+    { status: invalidDeliveryProfileResponse.status });
 
   const notificationInboxResponse = await api('GET', '/api/admin/operational-alert-notifications?limit=20', { token: adminToken });
   check('operations: admin receives a private, bounded alert inbox',

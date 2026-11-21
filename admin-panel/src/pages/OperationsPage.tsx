@@ -153,20 +153,23 @@ export default function OperationsPage() {
   const [notificationSettings, setNotificationSettings] = useState<PlatformAlertNotificationSettings | null>(null);
   const [notificationInbox, setNotificationInbox] = useState<PlatformAlertNotificationList>({ notifications: [], unreadCount: 0 });
   const [savingNotificationSettings, setSavingNotificationSettings] = useState(false);
+  const [alertEmail, setAlertEmail] = useState('');
+  const [savingAlertEmail, setSavingAlertEmail] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [health, settings, history, inbox, notificationPrefs] = await Promise.all([
+      const [health, settings, history, inbox, notificationPrefs, deliveryProfile] = await Promise.all([
         api.operationalHealth(), api.operationalAlertSettings(), api.operationalAlertHistory(50),
-        api.operationalAlertNotifications(50), api.operationalAlertNotificationSettings(),
+        api.operationalAlertNotifications(50), api.operationalAlertNotificationSettings(), api.operationalAlertDeliveryProfile(),
       ]);
       setSnapshot(health);
       setAlertSettings(settings);
       setAlertHistory(history.events);
       setNotificationInbox(inbox);
       setNotificationSettings(notificationPrefs);
+      setAlertEmail(deliveryProfile.email ?? '');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not load platform operations.');
     } finally {
@@ -201,6 +204,18 @@ export default function OperationsPage() {
       setError(err instanceof ApiError ? err.message : 'Could not save notification settings.');
     } finally {
       setSavingNotificationSettings(false);
+    }
+  };
+
+  const saveAlertEmail = async () => {
+    setSavingAlertEmail(true);
+    try {
+      const profile = await api.updateOperationalAlertDeliveryProfile(alertEmail.trim() || null);
+      setAlertEmail(profile.email ?? '');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save alert email.');
+    } finally {
+      setSavingAlertEmail(false);
     }
   };
 
@@ -333,17 +348,25 @@ export default function OperationsPage() {
           </Card>
 
 
-          <Card title={`Admin alert inbox · ${notificationInbox.unreadCount} unread`} subtitle="In-app alerts are delivered to each active admin operator. The inbox refreshes with the operations dashboard.">
+          <Card title={`Admin alert inbox · ${notificationInbox.unreadCount} unread`} subtitle="In-app alerts are immediate; external delivery is queued with retry and failure history.">
             {notificationSettings && (
               <div className="mb-4 rounded-xl border border-line/70 p-3">
                 <p className="mb-2 text-sm font-semibold text-ink">Notification controls</p>
                 <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted">
-                  <label className="flex items-center gap-2"><input type="checkbox" checked={notificationSettings.enabled} onChange={(event) => setNotificationSettings({ ...notificationSettings, enabled: event.target.checked })} /> Enable in-app alerts</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={notificationSettings.enabled} onChange={(event) => setNotificationSettings({ ...notificationSettings, enabled: event.target.checked })} /> Enable alert notifications</label>
                   <label className="flex items-center gap-2"><input type="checkbox" checked={notificationSettings.critical} onChange={(event) => setNotificationSettings({ ...notificationSettings, critical: event.target.checked })} /> Critical alerts</label>
                   <label className="flex items-center gap-2"><input type="checkbox" checked={notificationSettings.warning} onChange={(event) => setNotificationSettings({ ...notificationSettings, warning: event.target.checked })} /> Warning alerts</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={notificationSettings.email} disabled={!notificationSettings.emailConfigured} onChange={(event) => setNotificationSettings({ ...notificationSettings, email: event.target.checked })} /> Email {!notificationSettings.emailConfigured && '(provider not configured)'}</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={notificationSettings.webhook} disabled={!notificationSettings.webhookConfigured} onChange={(event) => setNotificationSettings({ ...notificationSettings, webhook: event.target.checked })} /> Webhook {!notificationSettings.webhookConfigured && '(provider not configured)'}</label>
                 </div>
                 <div className="mt-3"><Button size="sm" onClick={() => void saveNotificationSettings()} disabled={savingNotificationSettings}>{savingNotificationSettings ? 'Saving…' : 'Save notification controls'}</Button></div>
-                <p className="mt-2 text-[10px] text-muted">Only the in-app channel is currently available. External email, webhook and mobile push delivery are not enabled or implied.</p>
+                <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-line/60 pt-3">
+                  <label className="min-w-[240px] flex-1 text-xs text-muted">Your alert email address
+                    <input type="email" value={alertEmail} onChange={(event) => setAlertEmail(event.target.value)} placeholder="admin@example.com" className="mt-1 w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink" />
+                  </label>
+                  <Button size="sm" variant="secondary" onClick={() => void saveAlertEmail()} disabled={savingAlertEmail}>{savingAlertEmail ? 'Saving…' : 'Save email'}</Button>
+                </div>
+                <p className="mt-2 text-[10px] text-muted">Email uses the configured Resend provider; webhook uses a signed HTTPS POST. Provider credentials are deployment secrets. Mobile push to admin accounts is not available because admin identities do not currently register FCM device tokens.</p>
               </div>
             )}
             <div className="mb-3 flex justify-end">
@@ -356,7 +379,8 @@ export default function OperationsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2"><Badge tone={item.severity === 'CRITICAL' ? 'red' : 'amber'}>{item.severity}</Badge><span className="text-sm font-semibold text-ink">{item.title}</span>{!item.readAt && <Badge tone="sky">NEW</Badge>}</div>
                       <p className="mt-1 text-sm text-muted">{item.message}</p>
-                      <p className="mt-1 text-[10px] text-muted">{new Date(item.createdAt).toLocaleString()} · In-app</p>
+                      <p className="mt-1 text-[10px] text-muted">{new Date(item.createdAt).toLocaleString()} · {item.channel} · {item.deliveryStatus}{item.attemptCount ? ` · ${item.attemptCount} attempt(s)` : ''}</p>
+                      {item.lastError && <p className="mt-1 text-xs text-red-400">Delivery: {item.lastError}</p>}
                     </div>
                     {!item.readAt && <Button size="sm" variant="secondary" onClick={() => void markNotificationRead(item.id)}>Mark read</Button>}
                   </div>

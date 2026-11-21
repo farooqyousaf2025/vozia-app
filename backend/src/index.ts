@@ -15,6 +15,7 @@ import { setTickerBroadcaster } from './services/announcement.service';
 import { loadRankRegistry } from './services/rank.service';
 import { loadThemeRegistry } from './services/theme.service';
 import { platformOperationsSnapshot } from './services/platform-operations.service';
+import { deliverPendingPlatformAlertNotifications } from './services/platform-alert-notification.service';
 
 async function waitForDatabase(timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -125,6 +126,16 @@ async function main(): Promise<void> {
   const operationsMonitor = setInterval(monitorOperations, 30_000);
   operationsMonitor.unref();
 
+  // External delivery is isolated from health sampling; failures are retried from the durable outbox.
+  const deliverAlertNotifications = () => {
+    deliverPendingPlatformAlertNotifications(10)
+      .catch((err) => console.warn('[voiza] external alert delivery worker failed:', err.message));
+  };
+  deliverAlertNotifications();
+  const alertDeliveryWorker = setInterval(deliverAlertNotifications, 10_000);
+  alertDeliveryWorker.unref();
+
+
   const shutdown = async (signal: string) => {
     console.info(`[voiza] ${signal} received, closing connections`);
     const timer = setTimeout(() => process.exit(1), 8000);
@@ -132,6 +143,7 @@ async function main(): Promise<void> {
     clearInterval(rechargeSweeper);
     clearInterval(pkSweeper);
     clearInterval(operationsMonitor);
+    clearInterval(alertDeliveryWorker);
     io.close();
     server.close();
     await Promise.allSettled([closePool(), closeRedis()]);
