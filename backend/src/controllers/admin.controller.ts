@@ -158,6 +158,13 @@ import {
   platformOperationsSnapshot,
   updatePlatformAlertSettings,
 } from '../services/platform-operations.service';
+import {
+  getPlatformAlertNotificationSettings,
+  updatePlatformAlertNotificationSettings,
+  listPlatformAlertNotifications,
+  markPlatformAlertNotificationRead,
+  markAllPlatformAlertNotificationsRead,
+} from '../services/platform-alert-notification.service';
 
 /**
  * Whether `?includeTest=true` is honoured (migration 0039).
@@ -236,6 +243,49 @@ export const updateOperationalAlertSettings = asyncHandler(async (req: Request, 
     details: settings,
   });
   res.json(settings);
+});
+
+
+export const operationalAlertNotifications = asyncHandler(async (req: Request, res: Response) => {
+  const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : 50;
+  res.json(await listPlatformAlertNotifications(req.admin!.sub, limit));
+});
+
+export const operationalAlertNotificationSettings = asyncHandler(async (_req: Request, res: Response) => {
+  res.json(await getPlatformAlertNotificationSettings());
+});
+
+export const updateOperationalAlertNotificationSettings = asyncHandler(async (req: Request, res: Response) => {
+  const input = req.body;
+  const keys = ['enabled', 'warning', 'critical', 'notifyOnResolved'] as const;
+  if (!input || typeof input !== 'object' || keys.some((key) => typeof input[key] !== 'boolean')) {
+    throw ApiError.badRequest('All notification settings must be boolean values', 'invalid_alert_notification_settings');
+  }
+  const settings = await updatePlatformAlertNotificationSettings(req.admin!.sub, {
+    enabled: input.enabled,
+    warning: input.warning,
+    critical: input.critical,
+    notifyOnResolved: input.notifyOnResolved,
+  });
+  await logAction(req, {
+    action: 'PLATFORM_ALERT_NOTIFICATIONS_UPDATE',
+    targetType: 'system_config',
+    targetId: 'platform.operations.notifications',
+    summary: 'Updated platform alert notification settings',
+    details: settings,
+  });
+  res.json(settings);
+});
+
+export const readOperationalAlertNotification = asyncHandler(async (req: Request, res: Response) => {
+  const id = requireUuid(req.params.id, 'id');
+  const updated = await markPlatformAlertNotificationRead(req.admin!.sub, id);
+  if (!updated) throw ApiError.notFound('Notification not found');
+  res.json({ ok: true });
+});
+
+export const readAllOperationalAlertNotifications = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ updated: await markAllPlatformAlertNotificationsRead(req.admin!.sub) });
 });
 
 
