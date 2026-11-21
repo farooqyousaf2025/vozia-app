@@ -221,6 +221,28 @@ export default function OperationsPage() {
             </div>
           </Card>
 
+          <Card title="Operational alerts" subtitle="Thresholds: warning at 75%, critical at 90% for supported capacity metrics. Unavailable metrics are not evaluated.">
+            {snapshot.alerts.length === 0 ? (
+              <div className="flex items-center gap-2 text-sm text-emerald-300"><IconShieldCheck className="h-4 w-4" /> No active infrastructure alerts.</div>
+            ) : (
+              <div className="space-y-2">
+                {snapshot.alerts.map((alert) => (
+                  <div key={alert.id} className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-line/70 p-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge tone={alert.severity === 'CRITICAL' ? 'red' : 'amber'}>{alert.severity}</Badge>
+                        <span className="text-sm font-semibold text-ink">{alert.service} · {alert.metric}</span>
+                      </div>
+                      <p className="mt-1 text-sm text-muted">{alert.message}</p>
+                      <p className="mt-1 break-words text-[10px] text-muted/80">Source: {alert.source}</p>
+                    </div>
+                    {alert.value !== null && <span className="text-sm font-semibold tabular-nums text-ink">{alert.value.toFixed(1)}%</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
           <div>
             <div className="mb-3">
               <h2 className="text-base font-semibold text-ink">Resource consumption by service</h2>
