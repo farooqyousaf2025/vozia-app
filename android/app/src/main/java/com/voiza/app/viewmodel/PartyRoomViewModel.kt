@@ -414,7 +414,7 @@ class PartyRoomViewModel(
                         likeTotal = room.likeCount,
                         mySeatIndex = mySeat?.seatIndex,
                         canPublish = mySeat?.isSpeaker == true && mySeat.status == SeatStatus.OCCUPIED,
-                        micMuted = mySeat?.isMuted ?: it.micMuted,
+                        micMuted = if (mySeat?.isMuted == true || mySeat?.isSpeaker != true) true else it.micMuted,
                     )
                 }
                 // LiveKit keeps its own session and reconnects on its own; only the publish rights
@@ -449,7 +449,7 @@ class PartyRoomViewModel(
                 mySeatIndex = mySeat?.seatIndex,
                 isHost = userId != null && userId == room.host.id,
                 canPublish = mySeat?.isSpeaker == true && mySeat.status == SeatStatus.OCCUPIED,
-                micMuted = mySeat?.isMuted ?: true,
+                micMuted = true,
             )
         }
         // Static chat history from the snapshot endpoint (join omits chat).
@@ -824,7 +824,7 @@ class PartyRoomViewModel(
                 audience = audience ?: it.audience,
                 mySeatIndex = mySeat?.seatIndex,
                 canPublish = canPublish,
-                micMuted = if (awaitingInvite) true else (mySeat?.isMuted ?: it.micMuted),
+                micMuted = if (awaitingInvite || !canPublish || mySeat?.isMuted == true) true else it.micMuted,
                 handRaises = it.handRaises.filterNot { u -> u.id in seatedIds },
                 // Same reasoning as the hand raises above, for the approval queue: a request for a
                 // seat that is now occupied is answered, whatever the host used to answer it.
@@ -832,6 +832,7 @@ class PartyRoomViewModel(
             )
         }
         // Rights-only change: never reconnect the LiveKit room here.
+        if (mySeat?.isMuted == true || !canPublish) liveKit.setMicrophoneEnabled(false)
         liveKit.updatePublishRights(canPublish)
     }
 
@@ -977,7 +978,9 @@ class PartyRoomViewModel(
     fun acceptSeatInvite() {
         if (_state.value.invitedToSeat == null) return
         _state.update { it.copy(invitedToSeat = null) }
-        liveKit.setMicrophoneEnabled(true)
+        // Accepting a seat grants permission to speak, not permission to broadcast automatically.
+        // The member explicitly unmutes using the microphone button.
+        liveKit.setMicrophoneEnabled(false)
         // Re-derived from the seats we already hold, which is how the bar and the track get in step.
         applySeats(_state.value.seats, audience = null)
     }

@@ -64,7 +64,7 @@ class LiveKitRoomManager(context: Context) {
     private var micPermission: Boolean = false
 
     @Volatile
-    private var micEnabled: Boolean = true
+    private var micEnabled: Boolean = false
 
     @Volatile
     private var currentRoomName: String? = null
@@ -126,6 +126,9 @@ class LiveKitRoomManager(context: Context) {
     /** Seat changed -> publish rights changed. No reconnect when same room. */
     fun updatePublishRights(canPublish: Boolean) {
         mayPublish = canPublish
+        // Losing a speaker seat always returns the microphone to a muted state.
+        // Re-seating never silently resumes a previously open microphone.
+        if (!canPublish) micEnabled = false
         reconcilePublishing()
     }
 
@@ -147,6 +150,7 @@ class LiveKitRoomManager(context: Context) {
 
     /** Disconnect from the LiveKit room (ViewModel.onCleared / leave). */
     fun disconnect() {
+        micEnabled = false
         hardTeardown()
         currentRoomName = null
         _connectionState.value = LkConnectionState.DISCONNECTED
