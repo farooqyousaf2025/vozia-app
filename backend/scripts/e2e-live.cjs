@@ -1387,6 +1387,15 @@ function loadLivekitService() {
     await delay(250);
     return roomSocket;
   };
+  const deactivateDiscoveryRoom = async (roomId, userId) => {
+    const roomName = await sql(`select livekit_room_name from rooms where id='${roomId}'`);
+    const roomSid = await sql(`select livekit_session_sid from rooms where id='${roomId}'`);
+    await livekitWebhookController.reconcile({
+      event: 'participant_left',
+      room: { name: roomName, sid: roomSid },
+      participant: { identity: userId },
+    });
+  };
 
   // Home discovery requires both a real app room socket and a confirmed LiveKit participant.
   const liveDiscoveryRoom = await api('POST', '/api/rooms', {
@@ -1405,9 +1414,9 @@ function loadLivekitService() {
     !lobbyBeforeSocket.json?.rooms?.some((r) => r.id === liveDiscoveryId || r.id === idleDiscoveryId),
     { liveCreated: liveDiscoveryRoom.status, idleCreated: idleDiscoveryRoom.status });
 
-  await api('POST', `/api/rooms/${liveDiscoveryId}/join`, { token: watcher.token, body: {} });
   const discoverySocket = socketFor(watcher.token);
   await connected(discoverySocket, 'home-discovery');
+  // First connect only the app socket to prove that media presence is also required.
   const discoveryAck = await new Promise((resolve) =>
     discoverySocket.emit('room:join', { roomId: liveDiscoveryId }, resolve));
   await delay(250);
@@ -1437,6 +1446,7 @@ function loadLivekitService() {
 
   discoverySocket.disconnect();
   await delay(350);
+  await deactivateDiscoveryRoom(liveDiscoveryId, watcher.user.id);
   const lobbyAfterDisconnect = await api('GET', '/api/rooms?category=PARTY&region=PK&limit=100');
   check('home category removes a room after its final room socket disconnects',
     !lobbyAfterDisconnect.json?.rooms?.some((r) => r.id === liveDiscoveryId),
@@ -2102,6 +2112,8 @@ function loadLivekitService() {
   quickRoomSocket.disconnect();
   profileRoomSocket.disconnect();
   await delay(350);
+  await deactivateDiscoveryRoom(quickCandidate.id, shopUser.user.id);
+  await deactivateDiscoveryRoom(profileRoom.id, A);
   await api('POST', `/api/rooms/${quickCandidate.id}/close`, { token: shopUser.token, body: {} });
 
   const mine = await api('GET', '/api/rooms/mine?limit=20', { token: a.token });
