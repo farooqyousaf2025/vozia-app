@@ -8,9 +8,16 @@ ALTER TABLE platform_alert_notifications
   ADD CONSTRAINT platform_alert_notifications_channel_check CHECK (channel IN ('IN_APP','EMAIL','WEBHOOK'));
 
 ALTER TABLE platform_alert_notifications
-  ADD COLUMN IF NOT EXISTS delivery_status text NOT NULL DEFAULT 'PENDING'
-    CHECK (delivery_status IN ('PENDING','DELIVERED','RETRY','FAILED','SKIPPED')),
+  ADD COLUMN IF NOT EXISTS delivery_status text NOT NULL DEFAULT 'PENDING',
   ADD COLUMN IF NOT EXISTS attempt_count integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS claimed_at timestamptz;
+
+ALTER TABLE platform_alert_notifications
+  DROP CONSTRAINT IF EXISTS platform_alert_notifications_delivery_status_check;
+ALTER TABLE platform_alert_notifications
+  ADD CONSTRAINT platform_alert_notifications_delivery_status_check
+    CHECK (delivery_status IN ('PENDING','SENDING','DELIVERED','RETRY','FAILED','SKIPPED'));
+
   ADD COLUMN IF NOT EXISTS next_attempt_at timestamptz NOT NULL DEFAULT now(),
   ADD COLUMN IF NOT EXISTS delivered_at timestamptz,
   ADD COLUMN IF NOT EXISTS last_error varchar(1000);
