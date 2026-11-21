@@ -225,10 +225,7 @@ fun VoizaNavHost(
         }
 
         composable(Routes.RANKINGS) {
-            RankingsScreen(
-                onBack = { navController.popBackStack() },
-                onOpenRoom = { roomId -> navController.navigate(Routes.room(roomId)) },
-            )
+            RankingsScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.PROFILE) {
