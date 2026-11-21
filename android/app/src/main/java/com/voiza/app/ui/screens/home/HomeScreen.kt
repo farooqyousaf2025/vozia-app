@@ -851,6 +851,7 @@ private fun DiscoveryRowSearchOpenPreview() {
                 onSearch = {},
                 onCloseSearch = {},
                 onSelectSort = {},
+                onSelectRegion = {},
                 onToggleMyRooms = {},
                 onQuickJoin = {},
             )
