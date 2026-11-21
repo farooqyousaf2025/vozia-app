@@ -7,6 +7,7 @@ import { connectFourDriver } from './connect-four';
 import { rockPaperScissorsDriver } from './rock-paper-scissors';
 import { chessDriver } from './chess';
 import { carromDriver } from './carrom';
+import { checkersDriver } from './checkers';
 
 /**
  * The game registry. Adding a game means writing a driver and listing it here; the
@@ -15,7 +16,7 @@ import { carromDriver } from './carrom';
  * definitions of "paid".
  */
 const DRIVERS = new Map<string, GameDriver>(
-  [ticTacToeDriver, quizBattleDriver, ludoDriver, connectFourDriver, rockPaperScissorsDriver, chessDriver, carromDriver].map((driver) => [driver.key, driver]),
+  [ticTacToeDriver, quizBattleDriver, ludoDriver, connectFourDriver, rockPaperScissorsDriver, chessDriver, carromDriver, checkersDriver].map((driver) => [driver.key, driver]),
 );
 
 export function driverFor(key: string): GameDriver {
