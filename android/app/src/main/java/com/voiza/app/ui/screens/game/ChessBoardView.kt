@@ -1,5 +1,6 @@
 package com.voiza.app.ui.screens.game
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -50,14 +52,12 @@ fun ChessBoardView(board: ChessBoard, myTurn: Boolean, locked: Boolean, onMove: 
                         fontSize = if (piece == null) 14.sp else 27.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1f).clickable(enabled = myTurn && !locked && !board.checkmate && !board.draw) {
-                            if (selected < 0) {
-                                if (piece != null && piece.first().isUpperCase() == (board.turn == "w")) selected = index
-                            } else {
-                                if (selected == index) selected = -1 else {
-                                    onMove(selected, index)
-                                    selected = -1
-                                }
+                        modifier = Modifier.weight(1f).background(if (light) Color(0xFFB9A58C) else Color(0xFF51445A)).clickable(enabled = myTurn && !locked && !board.checkmate && !board.draw) {
+                            if (piece != null && piece.first().isUpperCase() == (board.turn == "w")) {
+                                selected = index
+                            } else if (selected >= 0) {
+                                if (selected != index) onMove(selected, index)
+                                selected = -1
                             }
                         }.padding(vertical = 7.dp)
                     )
