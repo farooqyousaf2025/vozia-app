@@ -658,6 +658,10 @@ const resetShipped = () => sql(`update game_definitions set ${SHIPPED} where key
   const rpsFirst = await api('POST', `/api/games/${rpsId}/action`, {
     token: rpsHost.token, body: { type: 'CHOOSE', payload: { choice: 'ROCK' } },
   });
+  check('rock paper scissors: the first choice remains hidden until both players commit',
+    rpsFirst.status === 200 && Object.keys(rpsFirst.json.session.state.choices || {}).length === 0 &&
+      rpsFirst.json.session.state.committedPositions.includes(0),
+    { visibleChoices: Object.keys(rpsFirst.json.session.state.choices || {}).length, committed: rpsFirst.json.session.state.committedPositions });
   const duplicateChoice = await api('POST', `/api/games/${rpsId}/action`, {
     token: rpsHost.token, body: { type: 'CHOOSE', payload: { choice: 'PAPER' } },
   });
