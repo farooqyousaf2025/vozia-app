@@ -66,6 +66,85 @@ export type PlatformOperationsSnapshot = {
   };
 };
 
+export type PlatformAlertThreshold = { warning: number; critical: number };
+export const DEFAULT_PLATFORM_ALERT_THRESHOLDS: Record<string, PlatformAlertThreshold> = {
+  'backend.CPU': { warning: 75, critical: 90 },
+  'backend.memory': { warning: 75, critical: 90 },
+  'backend.GPU memory': { warning: 80, critical: 95 },
+  'redis.memory': { warning: 75, critical: 90 },
+  'postgres.connections': { warning: 75, critical: 90 },
+};
+
+export type PlatformAlertEvent = {
+  id: string;
+  fingerprint: string;
+  severity: 'WARNING' | 'CRITICAL';
+  service: string;
+  metric: string;
+  message: string;
+  value: number | null;
+  threshold: number | null;
+  source: string;
+  status: 'ACTIVE' | 'RESOLVED';
+  firstSeenAt: string;
+  lastSeenAt: string;
+  resolvedAt: string | null;
+};
+
+export async function getPlatformAlertSettings(): Promise<{ thresholds: Record<string, PlatformAlertThreshold> }> {
+  const row = await one<{ value: { thresholds?: Record<string, PlatformAlertThreshold> } }>(
+    "SELECT value FROM system_config WHERE key = 'platform.operations.alerts'",
+  ).catch(() => null);
+  return { thresholds: { ...DEFAULT_PLATFORM_ALERT_THRESHOLDS, ...(row?.value?.thresholds ?? {}) } };
+}
+
+export async function updatePlatformAlertSettings(
+  adminId: string,
+  thresholds: Record<string, PlatformAlertThreshold>,
+): Promise<{ thresholds: Record<string, PlatformAlertThreshold> }> {
+  const settings = { thresholds: { ...DEFAULT_PLATFORM_ALERT_THRESHOLDS, ...thresholds } };
+  await pool.query(
+    `INSERT INTO system_config (key, value, updated_by)
+     VALUES ('platform.operations.alerts', $1::jsonb, $2)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+    [JSON.stringify(settings), adminId],
+  );
+  return settings;
+}
+
+export async function listPlatformAlertHistory(limit = 50): Promise<PlatformAlertEvent[]> {
+  const result = await pool.query(
+    `SELECT id, fingerprint, severity, service, metric, message, value, threshold, source, status,
+            first_seen_at AS "firstSeenAt", last_seen_at AS "lastSeenAt", resolved_at AS "resolvedAt"
+       FROM platform_alert_events
+      ORDER BY CASE WHEN status = 'ACTIVE' THEN 0 ELSE 1 END, last_seen_at DESC
+      LIMIT $1`,
+    [Math.max(1, Math.min(200, Math.floor(limit)))],
+  );
+  return result.rows as PlatformAlertEvent[];
+}
+
+async function persistAlertLifecycle(alerts: PlatformOperationsSnapshot['alerts']): Promise<void> {
+  const fingerprints = alerts.map((alert) => alert.id);
+  for (const alert of alerts) {
+    await pool.query(
+      `INSERT INTO platform_alert_events
+         (fingerprint, severity, service, metric, message, value, threshold, source, status, first_seen_at, last_seen_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'ACTIVE',now(),now())
+       ON CONFLICT (fingerprint) WHERE status = 'ACTIVE'
+       DO UPDATE SET severity = EXCLUDED.severity, message = EXCLUDED.message, value = EXCLUDED.value,
+                     threshold = EXCLUDED.threshold, source = EXCLUDED.source, last_seen_at = now(), updated_at = now()`,
+      [alert.id, alert.severity, alert.service, alert.metric, alert.message, alert.value, alert.threshold, alert.source],
+    );
+  }
+  await pool.query(
+    `UPDATE platform_alert_events
+        SET status = 'RESOLVED', resolved_at = now(), updated_at = now()
+      WHERE status = 'ACTIVE' AND NOT (fingerprint = ANY($1::text[]))`,
+    [fingerprints],
+  );
+}
+
 const unavailable = (unit: string, source: string, note: string): ResourceMetric => ({
   value: null, unit, capacity: null, available: null, percent: null,
   quality: 'UNAVAILABLE', source, note,
@@ -362,6 +441,7 @@ export async function platformOperationsSnapshot(access: {
 
   const resources = { backend: backendPanel, postgres: postgresPanel, redis: redisPanel, livekit: livekitPanel };
   const alerts: PlatformOperationsSnapshot['alerts'] = [];
+  const configuredThresholds = (await getPlatformAlertSettings()).thresholds;
   for (const [service, state] of Object.entries(dependencies)) {
     if (state === 'DOWN') alerts.push({
       id: `dependency-${service}`, severity: 'CRITICAL', service,
@@ -369,11 +449,12 @@ export async function platformOperationsSnapshot(access: {
       value: null, threshold: null, source: 'dependency connectivity check',
     });
   }
-  const addThresholdAlert = (service: string, metricName: string, value: ResourceMetric, warning: number, critical: number) => {
+  const addThresholdAlert = (service: string, metricName: string, value: ResourceMetric, defaults: PlatformAlertThreshold) => {
     if (value.percent === null || value.quality === 'UNAVAILABLE' || !Number.isFinite(value.percent)) return;
-    if (value.percent >= critical || value.percent >= warning) {
-      const severity = value.percent >= critical ? 'CRITICAL' : 'WARNING';
-      const threshold = severity === 'CRITICAL' ? critical : warning;
+    const thresholdConfig = configuredThresholds[`${service}.${metricName}`] ?? defaults;
+    if (value.percent >= thresholdConfig.critical || value.percent >= thresholdConfig.warning) {
+      const severity = value.percent >= thresholdConfig.critical ? 'CRITICAL' : 'WARNING';
+      const threshold = severity === 'CRITICAL' ? thresholdConfig.critical : thresholdConfig.warning;
       alerts.push({
         id: `capacity-${service}-${metricName}`, severity, service, metric: metricName,
         message: `${service} ${metricName} is at ${value.percent.toFixed(1)}% of configured capacity.`,
@@ -381,10 +462,10 @@ export async function platformOperationsSnapshot(access: {
       });
     }
   };
-  addThresholdAlert('backend', 'CPU', resources.backend.cpu, 75, 90);
-  addThresholdAlert('backend', 'memory', resources.backend.memory, 75, 90);
-  addThresholdAlert('backend', 'GPU memory', resources.backend.gpuMemory, 80, 95);
-  addThresholdAlert('redis', 'memory', resources.redis.memory, 75, 90);
+  addThresholdAlert('backend', 'CPU', resources.backend.cpu, DEFAULT_PLATFORM_ALERT_THRESHOLDS['backend.CPU']);
+  addThresholdAlert('backend', 'memory', resources.backend.memory, DEFAULT_PLATFORM_ALERT_THRESHOLDS['backend.memory']);
+  addThresholdAlert('backend', 'GPU memory', resources.backend.gpuMemory, DEFAULT_PLATFORM_ALERT_THRESHOLDS['backend.GPU memory']);
+  addThresholdAlert('redis', 'memory', resources.redis.memory, DEFAULT_PLATFORM_ALERT_THRESHOLDS['redis.memory']);
   const activeConnections = resources.postgres.facts.find((fact) => fact.label === 'Active connections')?.value;
   const maxConnections = resources.postgres.facts.find((fact) => fact.label === 'Connection capacity')?.value;
   if (typeof activeConnections === 'number' && typeof maxConnections === 'number' && maxConnections > 0) {
@@ -393,8 +474,11 @@ export async function platformOperationsSnapshot(access: {
       value: activeConnections, unit: 'connections', capacity: maxConnections,
       available: Math.max(0, maxConnections - activeConnections), percent: connectionPercent,
       quality: 'MEASURED', source: 'pg_stat_activity / max_connections',
-    }, 75, 90);
+    }, DEFAULT_PLATFORM_ALERT_THRESHOLDS['postgres.connections']);
   }
+  await persistAlertLifecycle(alerts).catch((error) => {
+    console.error('[operations] could not persist alert lifecycle', error);
+  });
 
   return {
     generatedAt: new Date().toISOString(),
