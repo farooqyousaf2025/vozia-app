@@ -213,7 +213,7 @@ export const updateOperationalAlertSettings = asyncHandler(async (req: Request, 
     throw ApiError.badRequest('thresholds must be an object', 'invalid_alert_thresholds');
   }
   const thresholds: Record<string, { warning: number; critical: number }> = {};
-  for (const [key, defaults] of Object.entries(DEFAULT_PLATFORM_ALERT_THRESHOLDS)) {
+  for (const key of Object.keys(DEFAULT_PLATFORM_ALERT_THRESHOLDS)) {
     const value = (input as Record<string, unknown>)[key];
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       throw ApiError.badRequest(`Missing threshold settings for ${key}`, 'invalid_alert_thresholds');
