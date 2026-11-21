@@ -1368,6 +1368,50 @@ function loadLivekitService() {
       new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} socket never connected`)), 20000)),
     ]);
   };
+
+  // Home discovery is driven by actual room sockets, not the participant row created with a room.
+  const liveDiscoveryRoom = await api('POST', '/api/rooms', {
+    token: watcher.token,
+    body: { title: `E2E Live Discovery ${stamp}`, category: 'PARTY', type: 'PUBLIC', region: 'PK' },
+  });
+  const idleDiscoveryRoom = await api('POST', '/api/rooms', {
+    token: shopUser.token,
+    body: { title: `E2E Idle Discovery ${stamp}`, category: 'PARTY', type: 'PUBLIC', region: 'PK' },
+  });
+  const liveDiscoveryId = liveDiscoveryRoom.json?.room?.id;
+  const idleDiscoveryId = idleDiscoveryRoom.json?.room?.id;
+  const lobbyBeforeSocket = await api('GET', '/api/rooms?category=PARTY&region=PK&limit=100');
+  check('home discovery hides newly-created rooms until a real room socket is present',
+    liveDiscoveryRoom.status === 201 && idleDiscoveryRoom.status === 201 &&
+    !lobbyBeforeSocket.json?.rooms?.some((r) => r.id === liveDiscoveryId || r.id === idleDiscoveryId),
+    { liveCreated: liveDiscoveryRoom.status, idleCreated: idleDiscoveryRoom.status,
+      visible: lobbyBeforeSocket.json?.rooms?.filter((r) => [liveDiscoveryId, idleDiscoveryId].includes(r.id)).map((r) => r.id) });
+
+  await api('POST', `/api/rooms/${liveDiscoveryId}/join`, { token: watcher.token, body: {} });
+  const discoverySocket = socketFor(watcher.token);
+  await connected(discoverySocket, 'home-discovery');
+  const discoveryAck = await new Promise((resolve) =>
+    discoverySocket.emit('room:join', { roomId: liveDiscoveryId }, resolve));
+  await delay(250);
+  const lobbyLive = await api('GET', '/api/rooms?category=PARTY&region=PK&limit=100');
+  const liveCard = lobbyLive.json?.rooms?.find((r) => r.id === liveDiscoveryId);
+  check('home category shows a room only after its live socket joins and reports live listeners',
+    discoveryAck?.ok === true && !!liveCard && liveCard.listenerCount === 1 &&
+    !lobbyLive.json?.rooms?.some((r) => r.id === idleDiscoveryId),
+    { ack: discoveryAck, liveCard: liveCard && { id: liveCard.id, listenerCount: liveCard.listenerCount } });
+
+  const wrongRegionLobby = await api('GET', '/api/rooms?category=PARTY&region=US&limit=100');
+  check('home category region filter excludes rooms assigned to another country',
+    !wrongRegionLobby.json?.rooms?.some((r) => r.id === liveDiscoveryId));
+
+  discoverySocket.disconnect();
+  await delay(350);
+  const lobbyAfterDisconnect = await api('GET', '/api/rooms?category=PARTY&region=PK&limit=100');
+  check('home category removes a room after its final room socket disconnects',
+    !lobbyAfterDisconnect.json?.rooms?.some((r) => r.id === liveDiscoveryId),
+    { stillVisible: lobbyAfterDisconnect.json?.rooms?.some((r) => r.id === liveDiscoveryId) });
+  await api('POST', `/api/rooms/${liveDiscoveryId}/close`, { token: watcher.token, body: {} });
+  await api('POST', `/api/rooms/${idleDiscoveryId}/close`, { token: shopUser.token, body: {} });
   // A socket only subscribes a client the room already accepted, so both of these join over REST
   // first — which is what the app does, and what keeps a moderator's kick from being undone here.
   await api('POST', `/api/rooms/${shopRoomId}/join`, { token: watcher.token, body: {} });
