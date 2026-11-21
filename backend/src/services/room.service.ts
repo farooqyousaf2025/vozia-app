@@ -1,6 +1,7 @@
 import { PoolClient } from 'pg';
 import { many, one, query, withTransaction } from '../config/db';
 import { defaultThemeSlug, isTheme, themeSlugs } from './theme.service';
+import { excludeTestSql } from './qa.service';
 import { presenceKeys, redis } from '../config/redis';
 import { ChatRow, ParticipantRow, RoomRow, SeatRow, UserRow } from '../types/db';
 import { hashSecret, randomRoomNumber, verifySecret } from '../utils/crypto';
@@ -330,21 +331,19 @@ const ROOM_ACTIVITY_JOINS = `
     WHERE t.room_id = r.id
       AND t.type = 'GIFT_SENT'
       AND t.created_at >= now() - INTERVAL '24 hours'
+      AND ${excludeTestSql('t', ['sender_id', 'receiver_id'])}
   ) activity_gifts ON TRUE
 `;
 
 const activityScore = `(
-  ap.live_count * 100
-  + LEAST(COALESCE(activity_gifts.gift_diamonds, 0), 5000) / 50
+  LEAST(COALESCE(activity_gifts.gift_diamonds, 0), 5000) / 50
   + LEAST(COALESCE(r.like_count, 0), 1000) / 20
 )`;
 
-const discoveryOrder = (sort: RoomSort | undefined, category: string | undefined): string => {
-  // Connected listeners are always the primary signal; historical popularity cannot revive a dead room.
+const discoveryOrder = (sort: RoomSort | undefined, _category: string | undefined): string => {
+  // Every category is led by the number of people connected now. Recent gifts and likes
+  // only break ties; old popularity and lifetime gifts cannot move an empty room into the lobby.
   if (sort === 'recent') return 'ap.live_count DESC, r.created_at DESC';
-  if (sort === 'trending' || sort === 'popular' || category === 'POPULAR') {
-    return `${activityScore} DESC, ap.live_count DESC, r.created_at DESC`;
-  }
   return `ap.live_count DESC, ${activityScore} DESC, r.created_at DESC`;
 };
 
