@@ -140,7 +140,7 @@ export const carromDriver:GameDriver={
   }
   const remaining=activeRegular(sim.coins);
   let winnerPosition:number|null=null,draw=false;
-  if(remaining===0){const a=scoreFor({...s,scores},ctx.players[0].position),b=scoreFor({...s,scores},ctx.players[1].position);winnerPosition=a===b?null:a>b?ctx.players[0].position:ctx.players[1].position;draw=a===b;}
+  if(remaining===0&&queenPendingFor===null){const a=scoreFor({...s,scores},ctx.players[0].position),b=scoreFor({...s,scores},ctx.players[1].position);winnerPosition=a===b?null:a>b?ctx.players[0].position:ctx.players[1].position;draw=a===b;}
   const retain=!foul&&own.length>0&&!draw&&winnerPosition===null;
   const next=ctx.players.find(p=>p.position!==actor.position)?.position??actor.position;
   const nextState:CarromState={...s,coins:sim.coins,striker:{x:strikerX,y:baselineY,vx:0,vy:0,pocketed:false},turnPosition:retain?actor.position:next,scores,pocketedBy,queenPendingFor,queenCovered,winnerPosition,draw,foulCount,shotCount:s.shotCount+1};
