@@ -82,6 +82,8 @@ class GameSessionViewModel(
 
     fun playCell(cell: Int) = act("MOVE", mapOf("cell" to cell))
 
+    fun playChessMove(from: Int, to: Int) = act("MOVE", mapOf("from" to from, "to" to to))
+
     fun chooseHand(choice: String) = act("CHOOSE", mapOf("choice" to choice))
 
     fun answer(optionIndex: Int) =

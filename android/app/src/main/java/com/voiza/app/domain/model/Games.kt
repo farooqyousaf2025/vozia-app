@@ -127,6 +127,20 @@ data class RockPaperScissorsBoard(
     val myChoicePending: Boolean get() = committedPositions.isEmpty()
 }
 
+/** Server-authored 8x8 chess position. Pieces use standard FEN letters; empty squares are null. */
+data class ChessBoard(
+    val board: List<String?>,
+    val turn: String,
+    val turnPosition: Int,
+    val winnerPosition: Int?,
+    val draw: Boolean,
+    val check: Boolean,
+    val checkmate: Boolean,
+    val stalemate: Boolean,
+    val moveCount: Int,
+    val lastMove: Map<String, Any?>?,
+) : GameBoard
+
 data class QuizQuestionView(val id: Int, val prompt: String, val options: List<String>)
 
 /** One answer the server accepted, with the points it awarded. */

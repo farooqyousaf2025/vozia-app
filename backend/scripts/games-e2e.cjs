@@ -101,7 +101,7 @@ const SHIPPED = `is_active = false, entry_fee_enabled = false, entry_fee_diamond
   entry_fee_max = 0, prize_enabled = false, commission_bps = 0, refund_policy = 'CANCELLED',
   promo_free_entry = false, promo_until = NULL, daily_entry_limit = 50,
   prize_rules = '[{"rank":1,"share_bps":10000}]'::jsonb`;
-const resetShipped = () => sql(`update game_definitions set ${SHIPPED} where key in ('TIC_TAC_TOE','QUIZ_BATTLE','LUDO','CONNECT_FOUR')`);
+const resetShipped = () => sql(`update game_definitions set ${SHIPPED} where key in ('TIC_TAC_TOE','QUIZ_BATTLE','LUDO','CONNECT_FOUR','ROCK_PAPER_SCISSORS','CHESS')`);
 
 (async () => {
   await resetShipped();
