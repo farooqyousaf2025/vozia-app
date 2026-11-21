@@ -40,6 +40,8 @@ export type AgencyOperationsAgency = {
   earnings30dCoins: number;
   override7dCoins: number;
   override30dCoins: number;
+  receivedOverride7dCoins: number;
+  receivedOverride30dCoins: number;
   retained7dCoins: number;
   retained30dCoins: number;
 };
