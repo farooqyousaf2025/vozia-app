@@ -36,7 +36,7 @@ import { Table, TBody, Td, Th, THead, Tr } from '../components/ui/Table';
 import { ApiError, api, assetUrl } from '../lib/api';
 import { formatCompact, formatDiamonds, formatRCoin, parseSignedInt, parseUnsignedInt, relativeTime, formatDateTime } from '../lib/format';
 import { useAuth } from '../context/AuthContext';
-import type { AuditEntry, PromoGrant, PromoPolicyConfig, StoreItemKind, UserListQuery, UserRow, UserSocialSummary, UserStatus, UserType } from '../types';
+import type { ApplicationField, ApplicationFormSpec, ApplicationFormSpecResult, AuditEntry, PromoGrant, PromoPolicyConfig, StoreItemKind, UserListQuery, UserRow, UserSocialSummary, UserStatus, UserType } from '../types';
 
 const PAGE_LIMIT = 20;
 
