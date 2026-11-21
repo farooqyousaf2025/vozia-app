@@ -164,6 +164,8 @@ import {
   listPlatformAlertNotifications,
   markPlatformAlertNotificationRead,
   markAllPlatformAlertNotificationsRead,
+  getAdminAlertEmail,
+  updateAdminAlertEmail,
 } from '../services/platform-alert-notification.service';
 
 /**
@@ -255,9 +257,30 @@ export const operationalAlertNotificationSettings = asyncHandler(async (_req: Re
   res.json(await getPlatformAlertNotificationSettings());
 });
 
+export const operationalAlertDeliveryProfile = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ email: await getAdminAlertEmail(req.admin!.sub) });
+});
+
+export const updateOperationalAlertDeliveryProfile = asyncHandler(async (req: Request, res: Response) => {
+  const raw = req.body?.email;
+  if (raw !== null && raw !== undefined && (typeof raw !== 'string' || raw.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw))) {
+    throw ApiError.badRequest('Enter a valid email address or leave it blank', 'invalid_admin_email');
+  }
+  const email = typeof raw === 'string' && raw.trim() ? raw.trim().toLowerCase() : null;
+  try {
+    const saved = await updateAdminAlertEmail(req.admin!.sub, email);
+    await logAction(req, { action: 'PLATFORM_ALERT_EMAIL_UPDATE', targetType: 'admin', targetId: req.admin!.sub, summary: 'Updated own platform alert email destination', details: { configured: Boolean(saved) } });
+    res.json({ email: saved });
+  } catch (error) {
+    if ((error as { code?: string }).code === '23505') throw ApiError.conflict('That email address is already assigned to another admin', 'admin_email_in_use');
+    throw error;
+  }
+});
+
+
 export const updateOperationalAlertNotificationSettings = asyncHandler(async (req: Request, res: Response) => {
   const input = req.body;
-  const keys = ['enabled', 'warning', 'critical'] as const;
+  const keys = ['enabled', 'warning', 'critical', 'email', 'webhook'] as const;
   if (!input || typeof input !== 'object' || keys.some((key) => typeof input[key] !== 'boolean')) {
     throw ApiError.badRequest('All notification settings must be boolean values', 'invalid_alert_notification_settings');
   }
@@ -265,6 +288,8 @@ export const updateOperationalAlertNotificationSettings = asyncHandler(async (re
     enabled: input.enabled,
     warning: input.warning,
     critical: input.critical,
+    email: input.email,
+    webhook: input.webhook,
   });
   await logAction(req, {
     action: 'PLATFORM_ALERT_NOTIFICATIONS_UPDATE',
