@@ -9,6 +9,7 @@ import com.voiza.app.data.remote.dto.GameResultDto
 import com.voiza.app.data.remote.dto.GameSessionDto
 import com.voiza.app.data.remote.dto.GameSettlementDto
 import com.voiza.app.domain.model.ConnectFourBoard
+import com.voiza.app.domain.model.RockPaperScissorsBoard
 import com.voiza.app.domain.model.GameBoard
 import com.voiza.app.domain.model.GameDefinition
 import com.voiza.app.domain.model.GameHistoryRow
@@ -153,8 +154,23 @@ internal fun parseBoard(gameKey: String, raw: JsonElement?): GameBoard {
         "QUIZ_BATTLE" -> parseQuiz(obj)
         "LUDO" -> parseLudo(obj)
         "CONNECT_FOUR" -> parseConnectFour(obj)
+        "ROCK_PAPER_SCISSORS" -> parseRockPaperScissors(obj)
         else -> GameBoard.Unsupported(gameKey)
     }
+}
+
+private fun parseRockPaperScissors(obj: JsonObject): RockPaperScissorsBoard {
+    val choices = mutableMapOf<Int, String>()
+    obj.get("choices")?.takeIf { it.isJsonObject }?.asJsonObject?.entrySet()?.forEach { (position, value) ->
+        val seat = position.toIntOrNull() ?: return@forEach
+        if (value.isJsonPrimitive && value.asJsonPrimitive.isString) choices[seat] = value.asString
+    }
+    return RockPaperScissorsBoard(
+        choices = choices,
+        winnerPosition = obj.optNullableInt("winnerPosition"),
+        draw = obj.optBoolean("draw"),
+        timeoutPosition = obj.optNullableInt("timeoutPosition"),
+    )
 }
 
 private fun parseConnectFour(obj: JsonObject): ConnectFourBoard = ConnectFourBoard(
