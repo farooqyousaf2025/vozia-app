@@ -5,7 +5,7 @@ import { query } from '../config/db';
 import { presenceKeys, rateLimit, redis, touchOnline } from '../config/redis';
 import { verifyToken } from './token.service';
 import { GiftDto, MiniUser, SeatDto } from '../utils/serialize';
-import { appendChat, appendSystemChat, assertMayAttendRoom, fetchMiniUser, isActiveRoomMember, loadRoom, recomputeListenerCount, seatSnapshot, setHandRaised } from './room.service';
+import { appendChat, appendSystemChat, assertMayAttendRoom, fetchMiniUser, isActiveRoomMember, leaveRoom, loadRoom, recomputeListenerCount, seatSnapshot, setHandRaised } from './room.service';
 import { needsContext, recordEarningProgressOutside } from './earning.service';
 import { forgetLikes, registerLike } from './like.service';
 import { RoomGiftEventDto, recentRoomGiftEvents } from './gift-events.service';
@@ -177,6 +177,27 @@ function data(socket: Socket): SocketData {
   return socket.data as SocketData;
 }
 
+/** A participant remains live while at least one of their sockets is still in this room. */
+async function attachRoomSocket(roomId: string, userId: string, socketId: string): Promise<void> {
+  const key = presenceKeys.roomUserSockets(roomId, userId);
+  await redis.sadd(key, socketId);
+  await redis.expire(key, 86_400);
+}
+
+/** Remove a socket and close its participant presence only when the last room socket leaves. */
+async function detachRoomSocket(roomId: string, userId: string, socketId: string): Promise<void> {
+  const key = presenceKeys.roomUserSockets(roomId, userId);
+  await redis.srem(key, socketId);
+  const remaining = await redis.scard(key);
+  if (remaining === 0) {
+    await redis.del(key);
+    // REST leave and socket disconnect can race; leaveRoom is deliberately idempotent.
+    await leaveRoom(userId, roomId).catch((err) =>
+      console.warn('[socket] leave room presence', roomId, userId, err.message),
+    );
+  }
+}
+
 export function initSocket(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
     cors: {
@@ -244,12 +265,16 @@ export function initSocket(httpServer: HttpServer): Server {
         if (me.roomId && me.roomId !== payload.roomId) {
           const previous = me.roomId;
           socket.leave(chatRoom(previous));
+          await detachRoomSocket(previous, me.userId, socket.id).catch(() => undefined);
           emitToRoom(previous, 'room:user_left', { roomId: previous, userId: me.userId });
           await recomputeListenerCount(previous).catch(() => undefined);
           broadcastSeatUpdate(previous).catch(() => undefined);
         }
         socket.join(chatRoom(payload.roomId));
         me.roomId = payload.roomId;
+        await attachRoomSocket(payload.roomId, me.userId, socket.id).catch((err) =>
+          console.warn('[socket] attach room presence', payload.roomId, me.userId, err.message),
+        );
         await touchOnline(me.userId, 0, payload.roomId).catch(() => undefined);
         const user = await fetchMiniUser(me.userId);
         if (user) {
@@ -280,6 +305,9 @@ export function initSocket(httpServer: HttpServer): Server {
       socket.leave(chatRoom(roomId));
       me.roomId = null;
       if (admin) return;
+      await detachRoomSocket(roomId, me.userId, socket.id).catch((err) =>
+        console.warn('[socket] detach room presence', roomId, me.userId, err.message),
+      );
       emitToRoom(roomId, 'room:user_left', { roomId, userId: me.userId });
       await recomputeListenerCount(roomId).catch(() => undefined);
       broadcastSeatUpdate(roomId).catch(() => undefined);
@@ -417,9 +445,13 @@ export function initSocket(httpServer: HttpServer): Server {
         await markDisconnected(me.userId).catch(() => undefined);
       }
       if (!me.roomId) return;
-      emitToRoom(me.roomId, 'room:user_left', { roomId: me.roomId, userId: me.userId });
-      await recomputeListenerCount(me.roomId).catch(() => undefined);
-      broadcastSeatUpdate(me.roomId).catch(() => undefined);
+      const roomId = me.roomId;
+      await detachRoomSocket(roomId, me.userId, socket.id).catch((err) =>
+        console.warn('[socket] disconnect room presence', roomId, me.userId, err.message),
+      );
+      emitToRoom(roomId, 'room:user_left', { roomId, userId: me.userId });
+      await recomputeListenerCount(roomId).catch(() => undefined);
+      broadcastSeatUpdate(roomId).catch(() => undefined);
     });
   });
 
