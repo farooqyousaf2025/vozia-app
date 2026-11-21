@@ -1414,6 +1414,7 @@ function loadLivekitService() {
     !lobbyBeforeSocket.json?.rooms?.some((r) => r.id === liveDiscoveryId || r.id === idleDiscoveryId),
     { liveCreated: liveDiscoveryRoom.status, idleCreated: idleDiscoveryRoom.status });
 
+  await api('POST', `/api/rooms/${liveDiscoveryId}/join`, { token: watcher.token, body: {} });
   const discoverySocket = socketFor(watcher.token);
   await connected(discoverySocket, 'home-discovery');
   // First connect only the app socket to prove that media presence is also required.
