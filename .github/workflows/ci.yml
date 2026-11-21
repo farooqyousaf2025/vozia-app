@@ -169,6 +169,15 @@ jobs:
         timeout-minutes: 15
         run: npm run test:business
 
+      - name: Partner desk role isolation suite (BD manager, BD agent, coin seller)
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://voiza:voiza@localhost:5432/voiza
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci-only-jwt-secret-not-a-default
+        timeout-minutes: 15
+        run: npm run test:partner:desk
+
       - name: Games engine suite (fees, settlement, disputes)
         working-directory: backend
         env:
