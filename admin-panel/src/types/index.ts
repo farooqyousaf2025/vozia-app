@@ -70,6 +70,26 @@ export interface AdminStats {
   series: StatsSeriesPoint[];
 }
 
+export type OperationalDependencyState = 'HEALTHY' | 'DEGRADED' | 'DOWN';
+
+export interface PlatformOperationsSnapshot {
+  generatedAt: string;
+  uptimeSeconds: number;
+  overall: OperationalDependencyState;
+  dependencies: {
+    backend: OperationalDependencyState;
+    postgres: OperationalDependencyState;
+    redis: OperationalDependencyState;
+    livekit: OperationalDependencyState;
+  };
+  liveMediaRooms: number | null;
+  queues: {
+    withdrawalsPending: number | null;
+    rechargesAwaitingVerification: number | null;
+    applicationsPending: number | null;
+  };
+}
+
 // ---- Users -----------------------------------------------------------------
 export interface UserRow {
   id: string;
