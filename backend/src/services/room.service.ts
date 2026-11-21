@@ -354,13 +354,18 @@ async function activeRoomPresence(): Promise<{ roomIds: string[]; counts: number
     const roomIds = await redis.zrevrange(presenceKeys.activeRooms, 0, -1);
     if (roomIds.length === 0) return { roomIds: [], counts: [] };
     const countPipeline = redis.pipeline();
-    roomIds.forEach((roomId) => countPipeline.scard(presenceKeys.roomUsers(roomId)));
+    roomIds.forEach((roomId) => countPipeline.sinter(
+      presenceKeys.roomUsers(roomId),
+      presenceKeys.roomLivekitUsers(roomId),
+    ));
     const countResults = await countPipeline.exec();
     const activeIds: string[] = [];
     const activeCounts: number[] = [];
     const reconcile = redis.pipeline();
     roomIds.forEach((roomId, index) => {
-      const count = Number(countResults?.[index]?.[1] ?? 0);
+      const count = Array.isArray(countResults?.[index]?.[1])
+        ? (countResults?.[index]?.[1] as string[]).length
+        : 0;
       if (count > 0) {
         activeIds.push(roomId);
         activeCounts.push(count);
