@@ -14,6 +14,7 @@ data class ConversationDto(
     @SerializedName("id") val id: String? = null,
     @SerializedName("partner") val partner: MiniUserDto? = null,
     @SerializedName("lastMessageAt") val lastMessageAt: String? = null,
+    @SerializedName("lastMessagePreview") val lastMessagePreview: String? = null,
     @SerializedName("unreadCount") val unreadCount: Int? = null,
 )
 
