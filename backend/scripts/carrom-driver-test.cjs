@@ -12,8 +12,11 @@ const turn=carromDriver.applyAction(state,ctx,'b',{type:'SHOT',payload:{angle:0,
 assert.equal(turn.ok,false);assert.equal(turn.code,'out_of_turn');
 const malformed=carromDriver.applyAction(state,ctx,'a',{type:'MOVE',payload:{}});
 assert.equal(malformed.ok,false);assert.equal(malformed.code,'unknown_action');
+const repeat=carromDriver.applyAction(state,ctx,'a',{type:'SHOT',payload:{angle:90,power:.65,strikerX:500}});
 const shot=carromDriver.applyAction(state,ctx,'a',{type:'SHOT',payload:{angle:90,power:.65,strikerX:500}});
 assert.equal(shot.ok,true);
+assert.equal(repeat.ok,true);
+assert.deepEqual(repeat.state.coins,shot.state.coins,'identical server inputs must produce deterministic physics');
 state=shot.state;
 assert.equal(state.shotCount,1);
 assert.equal(state.coins.length,19);
