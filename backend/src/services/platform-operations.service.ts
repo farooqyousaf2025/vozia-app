@@ -114,7 +114,7 @@ export async function updatePlatformAlertSettings(
 
 export async function listPlatformAlertHistory(limit = 50): Promise<PlatformAlertEvent[]> {
   const result = await pool.query(
-    `SELECT id, fingerprint, severity, service, metric, message, value, threshold, source, status,
+    `SELECT id, fingerprint, severity, service, metric, message, value::double precision AS value, threshold::double precision AS threshold, source, status,
             first_seen_at AS "firstSeenAt", last_seen_at AS "lastSeenAt", resolved_at AS "resolvedAt"
        FROM platform_alert_events
       ORDER BY CASE WHEN status = 'ACTIVE' THEN 0 ELSE 1 END, last_seen_at DESC
