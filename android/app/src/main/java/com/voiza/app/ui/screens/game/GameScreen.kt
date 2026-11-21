@@ -113,6 +113,7 @@ private fun SessionBody(
     secondsLeft: Int?,
     busy: Boolean,
     onCell: (Int) -> Unit,
+    onChoice: (String) -> Unit,
     onAnswer: (Int) -> Unit,
     onRoll: () -> Unit,
     onPiece: (Int) -> Unit,
@@ -135,6 +136,7 @@ private fun SessionBody(
         busy = busy,
         secondsLeft = secondsLeft,
         onCell = onCell,
+        onChoice = onChoice,
         onAnswer = onAnswer,
         onRoll = onRoll,
         onPiece = onPiece,
@@ -161,6 +163,7 @@ private fun RenderBoard(
     busy: Boolean,
     secondsLeft: Int?,
     onCell: (Int) -> Unit,
+    onChoice: (String) -> Unit,
     onAnswer: (Int) -> Unit,
     onRoll: () -> Unit,
     onPiece: (Int) -> Unit,
@@ -175,7 +178,13 @@ private fun RenderBoard(
             locked = busy || session.isOver,
             onCell = onCell,
         )
-        is RockPaperScissorsBoard -> RockPaperScissorsBoardView(\n            board = board,\n            mySeat = mySeat,\n            locked = busy || session.isOver,\n            onChoose = onChoice,\n        )\n        is ConnectFourBoard -> ConnectFourBoardView(
+        is RockPaperScissorsBoard -> RockPaperScissorsBoardView(
+            board = board,
+            mySeat = mySeat,
+            locked = busy || session.isOver,
+            onChoose = onChoice,
+        )
+        is ConnectFourBoard -> ConnectFourBoardView(
             board = board,
             myTurn = session.turnOwnerId == myId,
             locked = busy || session.isOver,
@@ -309,7 +318,8 @@ private fun gameTitle(gameKey: String): String = when (gameKey) {
     "TIC_TAC_TOE" -> "Tic-Tac-Toe"
     "QUIZ_BATTLE" -> "Quiz Battle"
     "LUDO" -> "Ludo"
-    "CONNECT_FOUR" -> "Connect Four"\n    "ROCK_PAPER_SCISSORS" -> "Rock Paper Scissors"
+    "CONNECT_FOUR" -> "Connect Four"
+    "ROCK_PAPER_SCISSORS" -> "Rock Paper Scissors"
     else -> gameKey.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
 }
 
