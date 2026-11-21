@@ -28,3 +28,7 @@ UPDATE platform_alert_notifications
 CREATE INDEX IF NOT EXISTS platform_alert_notifications_delivery_queue
   ON platform_alert_notifications (next_attempt_at, created_at)
   WHERE channel <> 'IN_APP' AND delivery_status IN ('PENDING','RETRY','SENDING');
+
+-- Webhooks are platform-wide integrations, so one event is posted once rather than once per admin.
+CREATE UNIQUE INDEX IF NOT EXISTS platform_alert_notifications_webhook_once
+  ON platform_alert_notifications (alert_event_id) WHERE channel = 'WEBHOOK';
