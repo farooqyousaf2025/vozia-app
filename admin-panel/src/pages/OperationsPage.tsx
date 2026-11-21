@@ -14,6 +14,8 @@ import type {
   PlatformOperationsSnapshot,
   PlatformAlertEvent,
   PlatformAlertSettings,
+  PlatformAlertNotificationList,
+  PlatformAlertNotificationSettings,
 } from '../types';
 
 const TONE: Record<OperationalDependencyState, 'green' | 'amber' | 'red'> = {
@@ -148,17 +150,23 @@ export default function OperationsPage() {
   const [alertHistory, setAlertHistory] = useState<PlatformAlertEvent[]>([]);
   const [savingThresholds, setSavingThresholds] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
+  const [notificationSettings, setNotificationSettings] = useState<PlatformAlertNotificationSettings | null>(null);
+  const [notificationInbox, setNotificationInbox] = useState<PlatformAlertNotificationList>({ notifications: [], unreadCount: 0 });
+  const [savingNotificationSettings, setSavingNotificationSettings] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [health, settings, history] = await Promise.all([
+      const [health, settings, history, inbox, notificationPrefs] = await Promise.all([
         api.operationalHealth(), api.operationalAlertSettings(), api.operationalAlertHistory(50),
+        api.operationalAlertNotifications(50), api.operationalAlertNotificationSettings(),
       ]);
       setSnapshot(health);
       setAlertSettings(settings);
       setAlertHistory(history.events);
+      setNotificationInbox(inbox);
+      setNotificationSettings(notificationPrefs);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not load platform operations.');
     } finally {
@@ -181,6 +189,31 @@ export default function OperationsPage() {
     } finally {
       setSavingThresholds(false);
     }
+  };
+
+
+  const saveNotificationSettings = async () => {
+    if (!notificationSettings) return;
+    setSavingNotificationSettings(true);
+    try {
+      setNotificationSettings(await api.updateOperationalAlertNotificationSettings(notificationSettings));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save notification settings.');
+    } finally {
+      setSavingNotificationSettings(false);
+    }
+  };
+
+  const markNotificationRead = async (id: string) => {
+    await api.readOperationalAlertNotification(id);
+    const inbox = await api.operationalAlertNotifications(50);
+    setNotificationInbox(inbox);
+  };
+
+  const markAllNotificationsRead = async () => {
+    await api.readAllOperationalAlertNotifications();
+    const inbox = await api.operationalAlertNotifications(50);
+    setNotificationInbox(inbox);
   };
 
   useEffect(() => { void load(); }, [load]);
@@ -296,6 +329,39 @@ export default function OperationsPage() {
                   {settingsMessage && <span className="text-sm text-muted">{settingsMessage}</span>}
                 </div>
               </>
+            )}
+          </Card>
+
+
+          <Card title={`Admin alert inbox · ${notificationInbox.unreadCount} unread`} subtitle="In-app alerts are delivered to each active admin operator. The inbox refreshes with the operations dashboard.">
+            {notificationSettings && (
+              <div className="mb-4 rounded-xl border border-line/70 p-3">
+                <p className="mb-2 text-sm font-semibold text-ink">Notification controls</p>
+                <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted">
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={notificationSettings.enabled} onChange={(event) => setNotificationSettings({ ...notificationSettings, enabled: event.target.checked })} /> Enable in-app alerts</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={notificationSettings.critical} onChange={(event) => setNotificationSettings({ ...notificationSettings, critical: event.target.checked })} /> Critical alerts</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={notificationSettings.warning} onChange={(event) => setNotificationSettings({ ...notificationSettings, warning: event.target.checked })} /> Warning alerts</label>
+                </div>
+                <div className="mt-3"><Button size="sm" onClick={() => void saveNotificationSettings()} disabled={savingNotificationSettings}>{savingNotificationSettings ? 'Saving…' : 'Save notification controls'}</Button></div>
+                <p className="mt-2 text-[10px] text-muted">Only the in-app channel is currently available. External email, webhook and mobile push delivery are not enabled or implied.</p>
+              </div>
+            )}
+            <div className="mb-3 flex justify-end">
+              <Button size="sm" variant="secondary" onClick={() => void markAllNotificationsRead()} disabled={notificationInbox.unreadCount === 0}>Mark all read</Button>
+            </div>
+            {notificationInbox.notifications.length === 0 ? <p className="text-sm text-muted">No admin notifications yet.</p> : (
+              <div className="space-y-2">
+                {notificationInbox.notifications.map((item) => (
+                  <div key={item.id} className={`flex flex-wrap items-start justify-between gap-3 rounded-xl border p-3 ${item.readAt ? 'border-line/60 opacity-70' : 'border-violet-400/40'}`}>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2"><Badge tone={item.severity === 'CRITICAL' ? 'red' : 'amber'}>{item.severity}</Badge><span className="text-sm font-semibold text-ink">{item.title}</span>{!item.readAt && <Badge tone="blue">NEW</Badge>}</div>
+                      <p className="mt-1 text-sm text-muted">{item.message}</p>
+                      <p className="mt-1 text-[10px] text-muted">{new Date(item.createdAt).toLocaleString()} · In-app</p>
+                    </div>
+                    {!item.readAt && <Button size="sm" variant="secondary" onClick={() => void markNotificationRead(item.id)}>Mark read</Button>}
+                  </div>
+                ))}
+              </div>
             )}
           </Card>
 
