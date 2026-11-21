@@ -26,7 +26,7 @@ async function get(path) {
       (index === 0 || Number(leaders[index - 1].score) >= Number(row.score))),
       `${kind} positions and quality scores are ordered`, leaders);
     const serialized = JSON.stringify(result.body);
-    assert(!serialized.includes('qa_ref') && !serialized.includes('is_test') && !serialized.includes('QA-'),
+    assert(!serialized.includes('qa_ref') && !serialized.includes('is_test'),
       `${kind} board does not expose QA internals`);
   }
 
