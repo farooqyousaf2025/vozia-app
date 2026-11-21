@@ -71,6 +71,7 @@ const TRANSITIONS: Record<BusinessAccountStatus, BusinessAccountStatus[]> = {
 export default function PartnersPage() {
   const { can } = useAuth();
   const manage = can('business:manage');
+  const canCreateAccount = can('account:create');
   // The cash book is a finance read, not a partner-management one (0042).
   const financeRead = can('finance:read');
 
@@ -147,7 +148,7 @@ export default function PartnersPage() {
           <Button icon={<IconRefresh className="h-4 w-4" />} onClick={() => void load()}>
             Refresh
           </Button>
-          {manage && (
+          {canCreateAccount && (
             <Button variant="primary" icon={<IconPlus className="h-4 w-4" />} onClick={() => setCreating(true)}>
               New account
             </Button>
