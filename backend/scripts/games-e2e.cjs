@@ -671,7 +671,7 @@ const resetShipped = () => sql(`update game_definitions set ${SHIPPED} where key
   check('rock paper scissors: starts free, rejects invalid choices and locks one choice per player',
     rpsStart.status === 200 && rpsStart.json.session.entryFeeDiamonds === 0 &&
       badChoice.status === 400 && codeOf(badChoice) === 'bad_choice' &&
-      rpsFirst.status === 200 && duplicateChoice.status === 409 && codeOf(duplicateChoice) === 'already_chosen',
+      rpsFirst.status === 200 && duplicateChoice.status === 400 && codeOf(duplicateChoice) === 'already_chosen',
     { start: rpsStart.status, invalid: codeOf(badChoice), duplicate: codeOf(duplicateChoice) });
   check('rock paper scissors: server resolves Rock over Scissors after both players choose',
     rpsDone.status === 200 && rpsDone.json.session.status === 'COMPLETED' &&
