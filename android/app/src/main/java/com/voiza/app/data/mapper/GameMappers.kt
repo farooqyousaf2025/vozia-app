@@ -167,6 +167,7 @@ private fun parseRockPaperScissors(obj: JsonObject): RockPaperScissorsBoard {
     }
     return RockPaperScissorsBoard(
         choices = choices,
+        committedPositions = obj.optArray("committedPositions").mapNotNull { it?.takeIf { e -> e.isNumber }?.asInt },
         winnerPosition = obj.optNullableInt("winnerPosition"),
         draw = obj.optBoolean("draw"),
         timeoutPosition = obj.optNullableInt("timeoutPosition"),
