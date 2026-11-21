@@ -525,6 +525,47 @@ function loadLivekitService() {
     { postgresFacts: operations.resources && operations.resources.postgres.facts && operations.resources.postgres.facts.length,
       redisFacts: operations.resources && operations.resources.redis.facts && operations.resources.redis.facts.length });
 
+  const alertSettingsResponse = await api('GET', '/api/admin/operational-alert-settings', { token: adminToken });
+  const alertSettings = alertSettingsResponse.json || {};
+  check('operations: admin can read configurable warning and critical thresholds',
+    alertSettingsResponse.status === 200 &&
+    alertSettings.thresholds &&
+    ['backend.CPU', 'backend.memory', 'backend.GPU memory', 'redis.memory', 'postgres.connections'].every((key) =>
+      Number.isFinite(alertSettings.thresholds[key]?.warning) &&
+      Number.isFinite(alertSettings.thresholds[key]?.critical) &&
+      alertSettings.thresholds[key].warning < alertSettings.thresholds[key].critical),
+    { status: alertSettingsResponse.status, keys: Object.keys(alertSettings.thresholds || {}) });
+
+  const alertHistoryResponse = await api('GET', '/api/admin/operational-alerts?limit=20', { token: adminToken });
+  check('operations: alert history endpoint returns persisted active and resolved events',
+    alertHistoryResponse.status === 200 &&
+    Array.isArray(alertHistoryResponse.json?.events) &&
+    alertHistoryResponse.json.events.every((event) =>
+      ['ACTIVE', 'RESOLVED'].includes(event.status) &&
+      typeof event.fingerprint === 'string' &&
+      typeof event.firstSeenAt === 'string' &&
+      typeof event.lastSeenAt === 'string'),
+    { status: alertHistoryResponse.status, count: alertHistoryResponse.json?.events?.length });
+
+  const saveAlertSettingsResponse = await api('PUT', '/api/admin/operational-alert-settings', {
+    token: adminToken, body: alertSettings,
+  });
+  check('operations: authorized admin can save validated alert thresholds',
+    saveAlertSettingsResponse.status === 200 &&
+    saveAlertSettingsResponse.json?.thresholds &&
+    Object.keys(alertSettings.thresholds).every((key) =>
+      saveAlertSettingsResponse.json.thresholds[key]?.warning === alertSettings.thresholds[key].warning &&
+      saveAlertSettingsResponse.json.thresholds[key]?.critical === alertSettings.thresholds[key].critical),
+    { status: saveAlertSettingsResponse.status });
+
+  const invalidAlertSettingsResponse = await api('PUT', '/api/admin/operational-alert-settings', {
+    token: adminToken,
+    body: { thresholds: { ...alertSettings.thresholds, 'backend.CPU': { warning: 95, critical: 90 } } },
+  });
+  check('operations: invalid alert threshold ordering is rejected',
+    invalidAlertSettingsResponse.status === 400,
+    { status: invalidAlertSettingsResponse.status });
+
   const systemRoomResponse = await api('POST', '/api/admin/rooms', {
     token: adminToken,
     body: { title: `E2E System Room ${stamp}`, category: 'PARTY', type: 'PUBLIC', seatCapacity: 3 },
