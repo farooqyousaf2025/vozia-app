@@ -397,7 +397,7 @@ export async function listRooms(opts: {
 
   const order = discoveryOrder(opts.sort, opts.category);
   const rooms = await many<RoomRow>(
-    `${ROOM_SELECT}
+    `${ROOM_SELECT.replace('SELECT r.*,', 'SELECT r.*, COALESCE(live.present_count, 0)::int AS listener_count,')}
       ${ROOM_ACTIVITY_JOINS}
       WHERE ${where.join(' AND ')}
       ORDER BY ${order}
