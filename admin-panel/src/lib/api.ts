@@ -424,6 +424,18 @@ export const api = {  // ---- auth ---------------------------------------------
     );
   },
 
+  createUser(body: { phone: string; username: string; countryCode?: string }): Promise<{ user: UserRow; requiresPhoneVerification: boolean }> {
+    return request<{ user: UserRow; requiresPhoneVerification: boolean }>('/api/admin/users', { method: 'POST', body });
+  },
+
+  updateUserProfile(userId: string, body: { username?: string; countryCode?: string | null; bio?: string | null; avatarUrl?: string | null }): Promise<UserMutationResult> {
+    return request<UserMutationResult>(`/api/admin/users/${userId}/profile`, { method: 'PUT', body });
+  },
+
+  archiveUser(userId: string, reason: string): Promise<{ user: UserRow; archived: boolean; hardDeleted: boolean }> {
+    return request<{ user: UserRow; archived: boolean; hardDeleted: boolean }>(`/api/admin/users/${userId}`, { method: 'DELETE', body: { reason } });
+  },
+
   adjustBalance(userId: string, diamondDelta: number, rCoinDelta: number, note: string): Promise<BalanceAdjustResult> {
     return request<BalanceAdjustResult>(`/api/admin/users/${userId}/balance`, {
       method: 'POST',
@@ -1040,6 +1052,10 @@ export const api = {  // ---- auth ---------------------------------------------
    */
   applicationForms(): Promise<ApplicationFormSpecResult> {
     return request<ApplicationFormSpecResult>('/api/admin/partner-applications/forms');
+  },
+
+  provisionPartnerRole(body: { userId: string; role: 'HOST' | 'AGENCY'; data: Record<string, unknown> }): Promise<ApplicationMutationResult> {
+    return request<ApplicationMutationResult>('/api/admin/partner-applications/provision', { method: 'POST', body });
   },
 
   approveApplication(applicationId: string, body: { note?: string; bdAccountId?: string } = {}): Promise<ApplicationMutationResult> {
