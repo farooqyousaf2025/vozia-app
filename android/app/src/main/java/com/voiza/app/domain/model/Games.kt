@@ -128,6 +128,15 @@ data class RockPaperScissorsBoard(
 }
 
 /** Server-authored 8x8 chess position. Pieces use standard FEN letters; empty squares are null. */
+data class CheckersBoard(
+    val board: List<String?>,
+    val turn: String,
+    val turnPosition: Int,
+    val winnerPosition: Int?,
+    val forcedFrom: Int?,
+    val moveCount: Int,
+) : GameBoard
+
 data class ChessBoard(
     val board: List<String?>,
     val turn: String,
