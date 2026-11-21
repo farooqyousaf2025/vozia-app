@@ -109,6 +109,13 @@ export const env = {
     androidChannel: str('PUSH_ANDROID_CHANNEL', 'voiza_activity'),
   },
 
+  alertDelivery: {
+    resendApiKey: str('RESEND_API_KEY', ''),
+    emailFrom: str('ALERT_EMAIL_FROM', ''),
+    webhookUrl: str('ALERT_WEBHOOK_URL', ''),
+    webhookSecret: str('ALERT_WEBHOOK_SECRET', ''),
+  },
+
   corsOrigin: str('CORS_ORIGIN', '*'),
 } as const;
 
