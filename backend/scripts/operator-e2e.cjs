@@ -113,6 +113,11 @@ const login = async (username, password) => api('POST', '/api/admin/login', { bo
     ['FINANCE_ADMIN', 'OPERATIONS_ADMIN', 'MODERATOR'].every((r) => !byRole[r].includes('operator:manage')) && byRole.SUPER_ADMIN.includes('operator:manage'),
     Object.entries(byRole).map(([r, p]) => `${r}:${p.includes('operator:manage') ? 'yes' : 'no'}`),
   );
+  report(
+    'only SUPER_ADMIN may provision member and partner accounts',
+    byRole.SUPER_ADMIN.includes('account:create') && ['FINANCE_ADMIN', 'OPERATIONS_ADMIN', 'MODERATOR'].every((r) => !byRole[r].includes('account:create')),
+    Object.entries(byRole).map(([r, p]) => `${r}:${p.includes('account:create') ? 'yes' : 'no'}`),
+  );
 
   // ---- who may reach the roster ----------------------------------------------
   const fin = await api('POST', '/api/admin/operators', {
@@ -232,6 +237,26 @@ const login = async (username, password) => api('POST', '/api/admin/login', { bo
   const noChange = await api('PUT', `/api/admin/operators/${mod.json.operator.id}`, { token: T, body: {} });
   report('an update that changes nothing is refused', noChange.status === 400 && noChange.code === 'nothing_to_update', noChange.status);
 
+  // ---- account provisioning belongs to SUPER_ADMIN only ---------------------
+  const ops = await api('POST', '/api/admin/operators', {
+    token: T,
+    body: { username: name('ops'), password: pw('ops'), role: 'OPERATIONS_ADMIN', displayName: 'E2E operations operator' },
+  });
+  const opsLogin = await login(name('ops'), pw('ops'));
+  report('operations operator can sign in with moderation and partner-management permissions', ops.status === 201 && opsLogin.status === 200 && opsLogin.json.permissions.includes('user:moderate') && opsLogin.json.permissions.includes('business:manage') && opsLogin.json.permissions.includes('application:review') && !opsLogin.json.permissions.includes('account:create'), {
+    create: ops.status, login: opsLogin.status, permissions: opsLogin.json && opsLogin.json.permissions,
+  });
+  const OT = opsLogin.json.token;
+  const deniedCreates = await Promise.all([
+    api('POST', '/api/admin/users', { token: OT, body: {} }),
+    api('POST', '/api/admin/business/accounts', { token: OT, body: {} }),
+    api('POST', '/api/admin/partner-applications/provision', { token: OT, body: {} }),
+    api('POST', '/api/admin/partner-applications/00000000-0000-4000-8000-000000000000/approve', { token: OT, body: {} }),
+    api('POST', '/api/admin/operators', { token: OT, body: {} }),
+  ]);
+  report('operations operators cannot create users, BD/seller accounts, Host/Agency grants or operator accounts', deniedCreates.every((r) => r.status === 403 && r.code === 'permission_denied'), deniedCreates.map((r) => ({ status: r.status, code: r.code })));
+
+
   // ---- the guards that keep the platform reachable ----------------------------
   const selfDisable = await api('POST', `/api/admin/operators/${admin.admin.id}/disable`, { token: T, body: { reason: `operator-e2e-${stamp} lockout` } });
   report('an operator cannot disable the account they are using', selfDisable.status === 409 && selfDisable.code === 'cannot_disable_self', {
@@ -336,7 +361,7 @@ const login = async (username, password) => api('POST', '/api/admin/login', { bo
   const remaining = await sql('SELECT COUNT(*)::int AS n FROM admins WHERE username LIKE $1 AND is_active', [`e2e_op_%_%_${stamp}`]);
   report(
     'the run leaves its own operators disabled',
-    mine.rows.length === 4 && switchOff.every((entry) => entry.endsWith(':200')) && remaining.rows[0].n === 0,
+    mine.rows.length === 5 && switchOff.every((entry) => entry.endsWith(':200')) && remaining.rows[0].n === 0,
     { disabled: switchOff, active: remaining.rows[0].n },
   );
   const untouched = await sql("SELECT username, is_active FROM admins WHERE username = 'admin'");
