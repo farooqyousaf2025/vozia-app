@@ -7,6 +7,8 @@ import com.voiza.app.di.ServiceLocator
 import com.voiza.app.domain.model.RankingBoard
 import com.voiza.app.domain.model.RankingBoardKind
 import com.voiza.app.domain.model.RankingPeriod
+import com.voiza.app.domain.model.DiscoveryRanking
+import com.voiza.app.domain.model.DiscoveryRankingKind
 import com.voiza.app.domain.repository.AuthRepository
 import com.voiza.app.domain.repository.RankingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,6 +43,11 @@ class RankingsViewModel(
         val rewardSheetOpen: Boolean = false,
         val error: String? = null,
         val message: String? = null,
+        val discoveryKind: DiscoveryRankingKind = DiscoveryRankingKind.ROOMS,
+        val discoveryRegion: String? = null,
+        val discoveryData: DiscoveryRanking? = null,
+        val discoveryLoading: Boolean = false,
+        val discoveryError: String? = null,
     )
 
     private val _state = MutableStateFlow(RankingsUiState(board = initialBoard, period = initialPeriod))
@@ -48,6 +55,7 @@ class RankingsViewModel(
 
     init {
         load()
+        loadDiscovery()
     }
 
     fun selectBoard(board: RankingBoardKind) {
@@ -68,6 +76,45 @@ class RankingsViewModel(
         load()
     }
 
+    fun selectDiscoveryKind(kind: DiscoveryRankingKind) {
+        if (_state.value.discoveryKind == kind) return
+        _state.update { it.copy(discoveryKind = kind) }
+        loadDiscovery()
+    }
+
+    fun selectDiscoveryRegion(region: String?) {
+        val normalized = region?.uppercase()?.takeIf { it.matches(Regex("[A-Z]{2}")) }
+        if (_state.value.discoveryRegion == normalized) return
+        _state.update { it.copy(discoveryRegion = normalized) }
+        loadDiscovery()
+    }
+
+    /** Default to the account's declared country; users can switch back to the global board. */
+    fun useAccountRegionIfUnset(region: String?) {
+        if (_state.value.discoveryRegion == null && !region.isNullOrBlank()) {
+            selectDiscoveryRegion(region)
+        }
+    }
+
+    fun loadDiscovery() {
+        viewModelScope.launch {
+            val request = _state.value
+            _state.update { it.copy(discoveryLoading = it.discoveryData == null, discoveryError = null) }
+            when (val result = rankingsRepository.discovery(request.discoveryKind, request.discoveryRegion, 10)) {
+                is ApiResult.Success -> _state.update {
+                    if (it.discoveryKind == request.discoveryKind && it.discoveryRegion == request.discoveryRegion) {
+                        it.copy(discoveryData = result.data, discoveryLoading = false)
+                    } else it
+                }
+                is ApiResult.Failure -> _state.update {
+                    if (it.discoveryKind == request.discoveryKind && it.discoveryRegion == request.discoveryRegion) {
+                        it.copy(discoveryLoading = false, discoveryError = result.message)
+                    } else it
+                }
+            }
+        }
+    }
+
     fun load() {
         viewModelScope.launch {
             val s = _state.value
@@ -82,8 +129,8 @@ class RankingsViewModel(
 
     /** A gift sent elsewhere moves the live board; re-read when the screen returns to the front. */
     fun refresh() {
-        if (_state.value.data == null) return
-        load()
+        if (_state.value.data != null) load()
+        loadDiscovery()
     }
 
     fun openRewardSheet() = _state.update { it.copy(rewardSheetOpen = true) }
