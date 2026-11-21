@@ -116,6 +116,17 @@ data class ConnectFourBoard(
     val moveCount: Int,
 ) : GameBoard
 
+/** Simultaneous Rock Paper Scissors choices, revealed only after both players lock in. */
+data class RockPaperScissorsBoard(
+    val choices: Map<Int, String>,
+    val committedPositions: List<Int>,
+    val winnerPosition: Int?,
+    val draw: Boolean,
+    val timeoutPosition: Int?,
+) : GameBoard {
+    val myChoicePending: Boolean get() = committedPositions.isEmpty()
+}
+
 data class QuizQuestionView(val id: Int, val prompt: String, val options: List<String>)
 
 /** One answer the server accepted, with the points it awarded. */

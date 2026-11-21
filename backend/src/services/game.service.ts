@@ -164,16 +164,31 @@ function contextFor(session: GameSessionRow, players: GamePlayer[], roomId: stri
  * leaves the service — means a leak needs a new code path, not a forgotten call site.
  */
 export function publicState(gameKey: string, state: unknown): unknown {
-  if (gameKey !== 'QUIZ_BATTLE' || !state || typeof state !== 'object') return state;
-  const raw = state as { questions?: unknown[] };
-  if (!Array.isArray(raw.questions)) return state;
-  return {
-    ...(state as Record<string, unknown>),
-    questions: raw.questions.map((q) => {
-      const { answerIndex: _answerIndex, ...rest } = (q ?? {}) as Record<string, unknown>;
-      return rest;
-    }),
-  };
+  if (!state || typeof state !== 'object') return state;
+  if (gameKey === 'QUIZ_BATTLE') {
+    const raw = state as { questions?: unknown[] };
+    if (!Array.isArray(raw.questions)) return state;
+    return {
+      ...(state as Record<string, unknown>),
+      questions: raw.questions.map((q) => {
+        const { answerIndex: _answerIndex, ...rest } = (q ?? {}) as Record<string, unknown>;
+        return rest;
+      }),
+    };
+  }
+  if (gameKey === 'ROCK_PAPER_SCISSORS') {
+    const raw = state as { choices?: Record<string, unknown> };
+    const choices = raw.choices && typeof raw.choices === 'object' ? raw.choices : {};
+    const committedPositions = Object.keys(choices).map(Number).filter(Number.isInteger);
+    // A choice is a commitment until both seats submit. Do not leak the first hand
+    // through REST or socket state; reveal both together once the round is resolved.
+    return {
+      ...(state as Record<string, unknown>),
+      choices: committedPositions.length === 2 ? choices : {},
+      committedPositions,
+    };
+  }
+  return state;
 }
 
 async function broadcast(session: GameSessionRow, participants: GameParticipantRow[], extra: Record<string, unknown> = {}): Promise<void> {

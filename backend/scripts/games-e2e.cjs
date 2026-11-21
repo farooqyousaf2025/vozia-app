@@ -636,6 +636,49 @@ const resetShipped = () => sql(`update game_definitions set ${SHIPPED} where key
     { statuses: moves.map((move) => move.status), status: cfDone.status, winner: cfDone.state.winnerPosition });
   await api('PUT', '/api/admin/games/CONNECT_FOUR/rules', { token: admin, body: { isActive: false } });
 
+  // ---- J3. Rock Paper Scissors uses simultaneous, server-validated choices ----
+  const rpsHost = await makeUser('rph');
+  const rpsGuest = await makeUser('rpg');
+  await api('PUT', '/api/admin/games/ROCK_PAPER_SCISSORS/rules', { token: admin, body: { isActive: true } });
+  const rpsRoom = await api('POST', '/api/rooms', {
+    token: rpsHost.token,
+    body: { title: `E2E Rock Paper Scissors ${stamp}`, category: 'CHAT', type: 'PUBLIC', seatCapacity: 4 },
+  });
+  const rpsOpen = await api('POST', '/api/games', {
+    token: rpsHost.token,
+    body: { gameKey: 'ROCK_PAPER_SCISSORS', roomId: rpsRoom.json.room.id },
+  });
+  const rpsId = rpsOpen.json.session.id;
+  await api('POST', `/api/games/${rpsId}/join`, { token: rpsGuest.token, body: {} });
+  await api('POST', `/api/games/${rpsId}/ready`, { token: rpsGuest.token, body: {} });
+  const rpsStart = await api('POST', `/api/games/${rpsId}/start`, { token: rpsHost.token, body: {} });
+  const badChoice = await api('POST', `/api/games/${rpsId}/action`, {
+    token: rpsHost.token, body: { type: 'CHOOSE', payload: { choice: 'LASER' } },
+  });
+  const rpsFirst = await api('POST', `/api/games/${rpsId}/action`, {
+    token: rpsHost.token, body: { type: 'CHOOSE', payload: { choice: 'ROCK' } },
+  });
+  check('rock paper scissors: the first choice remains hidden until both players commit',
+    rpsFirst.status === 200 && Object.keys(rpsFirst.json.session.state.choices || {}).length === 0 &&
+      rpsFirst.json.session.state.committedPositions.includes(0),
+    { visibleChoices: Object.keys(rpsFirst.json.session.state.choices || {}).length, committed: rpsFirst.json.session.state.committedPositions });
+  const duplicateChoice = await api('POST', `/api/games/${rpsId}/action`, {
+    token: rpsHost.token, body: { type: 'CHOOSE', payload: { choice: 'PAPER' } },
+  });
+  const rpsDone = await api('POST', `/api/games/${rpsId}/action`, {
+    token: rpsGuest.token, body: { type: 'CHOOSE', payload: { choice: 'SCISSORS' } },
+  });
+  check('rock paper scissors: starts free, rejects invalid choices and locks one choice per player',
+    rpsStart.status === 200 && rpsStart.json.session.entryFeeDiamonds === 0 &&
+      badChoice.status === 400 && codeOf(badChoice) === 'bad_choice' &&
+      rpsFirst.status === 200 && duplicateChoice.status === 400 && codeOf(duplicateChoice) === 'already_chosen',
+    { start: rpsStart.status, invalid: codeOf(badChoice), duplicate: codeOf(duplicateChoice) });
+  check('rock paper scissors: server resolves Rock over Scissors after both players choose',
+    rpsDone.status === 200 && rpsDone.json.session.status === 'COMPLETED' &&
+      rpsDone.json.session.state.winnerPosition === 0 && rpsDone.json.session.entryFeeDiamonds === 0,
+    { status: rpsDone.json && rpsDone.json.session.status, winner: rpsDone.json && rpsDone.json.session.state.winnerPosition });
+  await api('PUT', '/api/admin/games/ROCK_PAPER_SCISSORS/rules', { token: admin, body: { isActive: false } });
+
   // ---- K. leave the shipped posture as it was found ----
   const restore = await api('PUT', '/api/admin/games/TIC_TAC_TOE/rules', {
     token: admin,
