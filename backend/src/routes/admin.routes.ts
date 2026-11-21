@@ -35,7 +35,7 @@ router.post('/change-password', admin.changePassword);
 router.get('/stats', requirePermission('dashboard:read'), admin.stats);
 
 router.get('/users', requirePermission('user:read'), admin.users);
-router.post('/users', requirePermission('user:moderate'), admin.createUser);
+router.post('/users', requirePermission('account:create'), admin.createUser);
 router.put('/users/:id/profile', requirePermission('user:moderate'), admin.updateUserProfile);
 router.delete('/users/:id', requirePermission('user:moderate'), admin.archiveUser);
 router.post('/users/:id/balance', requirePermission('user:wallet'), admin.adjustUserBalance);
@@ -250,9 +250,9 @@ router.post('/operators/:id/enable', requirePermission('operator:manage'), opera
 router.get('/partner-applications', requirePermission('application:read'), partnerApplication.queue);
 // Ordered before `/:id`, which would otherwise read "forms" as an application id and refuse it.
 router.get('/partner-applications/forms', requirePermission('application:read'), partnerApplication.specs);
-router.post('/partner-applications/provision', requirePermission('application:review'), partnerApplication.provision);
+router.post('/partner-applications/provision', requirePermission('account:create'), partnerApplication.provision);
 router.get('/partner-applications/:id', requirePermission('application:read'), partnerApplication.detail);
-router.post('/partner-applications/:id/approve', requirePermission('application:review'), partnerApplication.approve);
+router.post('/partner-applications/:id/approve', requirePermission('account:create'), partnerApplication.approve);
 router.post('/partner-applications/:id/reject', requirePermission('application:review'), partnerApplication.reject);
 router.post('/partner-applications/:id/request-info', requirePermission('application:review'), partnerApplication.requestInfo);
 // The reward engine's controls (migration 0038): campaigns, rules, the claim queue and the payout
