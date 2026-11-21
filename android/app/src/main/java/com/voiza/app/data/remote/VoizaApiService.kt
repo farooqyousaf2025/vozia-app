@@ -399,6 +399,13 @@ interface VoizaApiService {
      * the same call answers a guest with the list and a member with their own row and reward.
      * `settled` = "true" reads the finished window; omitted reads the live one.
      */
+    @GET("api/rankings/discovery")
+    suspend fun discoveryRankings(
+        @Query("kind") kind: String,
+        @Query("region") region: String?,
+        @Query("limit") limit: Int = 10,
+    ): DiscoveryRankingResponse
+
     @GET("api/rankings")
     suspend fun rankings(
         @Query("board") board: String,
