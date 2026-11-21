@@ -26,6 +26,8 @@ import type {
   AdminRoomTheme,
   AdminStats,
   PlatformOperationsSnapshot,
+  PlatformAlertEvent,
+  PlatformAlertSettings,
   Agency,
   AgencyDetailResult,
   AgencyListResult,
@@ -417,6 +419,18 @@ export const api = {  // ---- auth ---------------------------------------------
 
   operationalHealth(): Promise<PlatformOperationsSnapshot> {
     return request<PlatformOperationsSnapshot>('/api/admin/operational-health');
+  },
+
+  operationalAlertHistory(limit = 50): Promise<{ events: PlatformAlertEvent[] }> {
+    return request<{ events: PlatformAlertEvent[] }>(`/api/admin/operational-alerts?limit=${limit}`);
+  },
+
+  operationalAlertSettings(): Promise<PlatformAlertSettings> {
+    return request<PlatformAlertSettings>('/api/admin/operational-alert-settings');
+  },
+
+  updateOperationalAlertSettings(settings: PlatformAlertSettings): Promise<PlatformAlertSettings> {
+    return request<PlatformAlertSettings>('/api/admin/operational-alert-settings', { method: 'PUT', body: settings });
   },
 
   // ---- users ------------------------------------------------------------------

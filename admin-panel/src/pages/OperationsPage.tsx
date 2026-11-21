@@ -12,6 +12,8 @@ import type {
   OperationalResourceMetric,
   OperationalResourcePanel,
   PlatformOperationsSnapshot,
+  PlatformAlertEvent,
+  PlatformAlertSettings,
 } from '../types';
 
 const TONE: Record<OperationalDependencyState, 'green' | 'amber' | 'red'> = {
@@ -142,18 +144,44 @@ export default function OperationsPage() {
   const [snapshot, setSnapshot] = useState<PlatformOperationsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [alertSettings, setAlertSettings] = useState<PlatformAlertSettings | null>(null);
+  const [alertHistory, setAlertHistory] = useState<PlatformAlertEvent[]>([]);
+  const [savingThresholds, setSavingThresholds] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setSnapshot(await api.operationalHealth());
+      const [health, settings, history] = await Promise.all([
+        api.operationalHealth(), api.operationalAlertSettings(), api.operationalAlertHistory(50),
+      ]);
+      setSnapshot(health);
+      setAlertSettings(settings);
+      setAlertHistory(history.events);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not load platform operations.');
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const saveAlertThresholds = async () => {
+    if (!alertSettings) return;
+    setSavingThresholds(true);
+    setSettingsMessage(null);
+    try {
+      const saved = await api.updateOperationalAlertSettings(alertSettings);
+      setAlertSettings(saved);
+      setSettingsMessage('Alert thresholds saved.');
+      const history = await api.operationalAlertHistory(50);
+      setAlertHistory(history.events);
+    } catch (err) {
+      setSettingsMessage(err instanceof ApiError ? err.message : 'Could not save alert thresholds.');
+    } finally {
+      setSavingThresholds(false);
+    }
+  };
 
   useEffect(() => { void load(); }, [load]);
 
@@ -237,6 +265,55 @@ export default function OperationsPage() {
                       <p className="mt-1 break-words text-[10px] text-muted/80">Source: {alert.source}</p>
                     </div>
                     {alert.value !== null && <span className="text-sm font-semibold tabular-nums text-ink">{alert.value.toFixed(1)}%</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card title="Alert thresholds" subtitle="Set warning and critical percentages for supported measured capacity metrics. Critical must be higher than warning. Saving requires config:manage permission.">
+            {!alertSettings ? <p className="text-sm text-muted">Alert settings are unavailable.</p> : (
+              <>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {Object.entries(alertSettings.thresholds).map(([key, value]) => (
+                    <div key={key} className="rounded-xl border border-line/70 p-3">
+                      <p className="mb-3 text-sm font-semibold text-ink">{key}</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="text-xs text-muted">Warning %
+                          <input type="number" min="1" max="99" value={value.warning} onChange={(event) => setAlertSettings((current) => current ? ({ ...current, thresholds: { ...current.thresholds, [key]: { ...current.thresholds[key], warning: Number(event.target.value) } } }) : current)} className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink" />
+                        </label>
+                        <label className="text-xs text-muted">Critical %
+                          <input type="number" min="2" max="100" value={value.critical} onChange={(event) => setAlertSettings((current) => current ? ({ ...current, thresholds: { ...current.thresholds, [key]: { ...current.thresholds[key], critical: Number(event.target.value) } } }) : current)} className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink" />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <Button onClick={() => void saveAlertThresholds()} disabled={savingThresholds}>
+                    {savingThresholds ? 'Saving…' : 'Save thresholds'}
+                  </Button>
+                  {settingsMessage && <span className="text-sm text-muted">{settingsMessage}</span>}
+                </div>
+              </>
+            )}
+          </Card>
+
+          <Card title="Alert history" subtitle="Alerts are recorded when they first appear, updated while active, and marked resolved when the condition clears.">
+            {alertHistory.length === 0 ? <p className="text-sm text-muted">No alert events have been recorded yet.</p> : (
+              <div className="space-y-2">
+                {alertHistory.map((event) => (
+                  <div key={event.id} className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-line/70 p-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge tone={event.status === 'ACTIVE' ? (event.severity === 'CRITICAL' ? 'red' : 'amber') : 'green'}>{event.status}</Badge>
+                        <Badge tone={event.severity === 'CRITICAL' ? 'red' : 'amber'}>{event.severity}</Badge>
+                        <span className="text-sm font-semibold text-ink">{event.service} · {event.metric}</span>
+                      </div>
+                      <p className="mt-1 text-sm text-muted">{event.message}</p>
+                      <p className="mt-1 text-[10px] text-muted">First seen: {new Date(event.firstSeenAt).toLocaleString()} · Last seen: {new Date(event.lastSeenAt).toLocaleString()}{event.resolvedAt ? ` · Resolved: ${new Date(event.resolvedAt).toLocaleString()}` : ''}</p>
+                    </div>
+                    {event.value !== null && <span className="text-sm font-semibold tabular-nums text-ink">{event.value.toFixed(1)}%</span>}
                   </div>
                 ))}
               </div>

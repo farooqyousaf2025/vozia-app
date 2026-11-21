@@ -151,7 +151,13 @@ import {
 import { setAnnouncement } from '../services/room-community.service';
 import { AuditEntry, listAudit, recordAudit } from '../services/audit.service';
 import { adminPermissions } from '../services/rbac.service';
-import { platformOperationsSnapshot } from '../services/platform-operations.service';
+import {
+  DEFAULT_PLATFORM_ALERT_THRESHOLDS,
+  getPlatformAlertSettings,
+  listPlatformAlertHistory,
+  platformOperationsSnapshot,
+  updatePlatformAlertSettings,
+} from '../services/platform-operations.service';
 
 /**
  * Whether `?includeTest=true` is honoured (migration 0039).
@@ -189,6 +195,47 @@ export const operationalHealth = asyncHandler(async (req: Request, res: Response
     finance: permissions.includes('finance:read'),
     applications: permissions.includes('application:read'),
   }));
+});
+
+export const operationalAlertHistory = asyncHandler(async (req: Request, res: Response) => {
+  const rawLimit = Number(req.query.limit ?? 50);
+  const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(200, Math.floor(rawLimit))) : 50;
+  res.json({ events: await listPlatformAlertHistory(limit) });
+});
+
+export const operationalAlertSettings = asyncHandler(async (_req: Request, res: Response) => {
+  res.json(await getPlatformAlertSettings());
+});
+
+export const updateOperationalAlertSettings = asyncHandler(async (req: Request, res: Response) => {
+  const input = req.body?.thresholds;
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw ApiError.badRequest('thresholds must be an object', 'invalid_alert_thresholds');
+  }
+  const thresholds: Record<string, { warning: number; critical: number }> = {};
+  for (const key of Object.keys(DEFAULT_PLATFORM_ALERT_THRESHOLDS)) {
+    const value = (input as Record<string, unknown>)[key];
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw ApiError.badRequest(`Missing threshold settings for ${key}`, 'invalid_alert_thresholds');
+    }
+    const warning = Number((value as Record<string, unknown>).warning);
+    const critical = Number((value as Record<string, unknown>).critical);
+    if (!Number.isFinite(warning) || !Number.isFinite(critical) || warning < 1 || critical > 100 || warning >= critical) {
+      throw ApiError.badRequest(`Thresholds for ${key} must satisfy 1 <= warning < critical <= 100`, 'invalid_alert_thresholds');
+    }
+    thresholds[key] = { warning, critical };
+  }
+  const adminId = req.admin?.sub;
+  if (!adminId) throw ApiError.unauthorized();
+  const settings = await updatePlatformAlertSettings(adminId, thresholds);
+  await logAction(req, {
+    action: 'PLATFORM_ALERT_THRESHOLDS_UPDATE',
+    targetType: 'system_config',
+    targetId: 'platform.operations.alerts',
+    summary: 'Updated platform operations alert thresholds',
+    details: settings,
+  });
+  res.json(settings);
 });
 
 
