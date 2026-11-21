@@ -9,6 +9,8 @@ import com.voiza.app.domain.model.RankingBoard
 import com.voiza.app.domain.model.RankingBoardKind
 import com.voiza.app.domain.model.RankingClaimResult
 import com.voiza.app.domain.model.RankingPeriod
+import com.voiza.app.domain.model.DiscoveryRanking
+import com.voiza.app.domain.model.DiscoveryRankingKind
 import com.voiza.app.domain.repository.RankingsRepository
 
 /**
@@ -17,6 +19,11 @@ import com.voiza.app.domain.repository.RankingsRepository
  * so nothing here patches a balance.
  */
 class RankingsRepositoryImpl(private val api: VoizaApiService) : RankingsRepository {
+
+    override suspend fun discovery(kind: DiscoveryRankingKind, region: String?, limit: Int): ApiResult<DiscoveryRanking> =
+        apiCall { api.discoveryRankings(kind.wire, region, limit) }
+            .mapSuccess { it.toDiscoveryDomain() }
+
 
     override suspend fun board(board: RankingBoardKind, period: RankingPeriod, settled: Boolean): ApiResult<RankingBoard> =
         apiCall { api.rankings(board.wire, period.wire, if (settled) "true" else null) }
