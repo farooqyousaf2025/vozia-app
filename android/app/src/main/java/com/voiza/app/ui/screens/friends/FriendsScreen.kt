@@ -63,6 +63,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -561,9 +564,9 @@ private fun ConversationRow(conversation: Conversation, onClick: () -> Unit) {
 @Composable
 private fun MessageBubble(message: DirectMessage, mine: Boolean) {
     val background = if (mine) VoizaSurfaceHigh else VoizaSurfaceHigh.copy(alpha = 0.80f)
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
+        horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
     ) {
         Text(
             text = message.content,
@@ -575,7 +578,36 @@ private fun MessageBubble(message: DirectMessage, mine: Boolean) {
                 .padding(horizontal = 12.dp, vertical = 8.dp)
                 .fillMaxWidth(0.8f),
         )
+        Row(
+            modifier = Modifier.fillMaxWidth(0.8f).padding(top = 2.dp, end = 3.dp),
+            horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = messageTime(message.createdAt),
+                color = OnDarkMuted,
+                fontSize = 9.sp,
+            )
+            if (mine) {
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = if (message.readAt != null) "Read ✓✓" else "Sent ✓",
+                    color = if (message.readAt != null) Cyan else OnDarkMuted,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        }
     }
+}
+
+private fun messageTime(value: String): String {
+    val parsed = runCatching {
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.parse(value)
+    }.getOrNull() ?: return ""
+    return SimpleDateFormat("h:mm a", Locale.getDefault()).format(parsed)
 }
 
 @Composable
