@@ -34,6 +34,16 @@ type ResourcePanel = {
 
 export type PlatformOperationsSnapshot = {
   generatedAt: string;
+  alerts: Array<{
+    id: string;
+    severity: 'WARNING' | 'CRITICAL';
+    service: string;
+    metric: string;
+    message: string;
+    value: number | null;
+    threshold: number | null;
+    source: string;
+  }>;
   uptimeSeconds: number;
   overall: DependencyState;
   dependencies: {
