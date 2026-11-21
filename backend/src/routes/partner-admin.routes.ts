@@ -15,7 +15,7 @@ const router = Router();
 
 // --- Partner accounts and their limits ---
 router.get('/accounts', requirePermission('business:manage'), partner.accounts);
-router.post('/accounts', requirePermission('business:manage'), partner.createAccount);
+router.post('/accounts', requirePermission('account:create'), partner.createAccount);
 router.patch('/accounts/:id', requirePermission('business:manage'), partner.updateAccount);
 router.post('/accounts/:id/status', requirePermission('business:manage'), partner.accountStatus);
 router.post('/accounts/:id/password', requirePermission('business:manage'), partner.accountPassword);
