@@ -215,7 +215,7 @@ fun RankingsScreen(
                     "Loading live rankings…", color = OnDarkMuted, fontSize = 11.sp,
                 )
                 discovery == null && state.discoveryError != null -> Text(
-                    state.discoveryError, color = DangerRed, fontSize = 11.sp,
+                    state.discoveryError.orEmpty(), color = DangerRed, fontSize = 11.sp,
                 )
                 discovery?.leaders.isNullOrEmpty() -> Text(
                     "No qualifying live activity yet in this region.", color = OnDarkMuted, fontSize = 11.sp,
