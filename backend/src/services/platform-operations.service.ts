@@ -350,13 +350,50 @@ export async function platformOperationsSnapshot(access: {
       ? 'DOWN'
       : 'DEGRADED';
 
+  const resources = { backend: backendPanel, postgres: postgresPanel, redis: redisPanel, livekit: livekitPanel };
+  const alerts: PlatformOperationsSnapshot['alerts'] = [];
+  for (const [service, state] of Object.entries(dependencies)) {
+    if (state === 'DOWN') alerts.push({
+      id: `dependency-${service}`, severity: 'CRITICAL', service,
+      metric: 'availability', message: `${service} dependency is unreachable.`,
+      value: null, threshold: null, source: 'dependency connectivity check',
+    });
+  }
+  const addThresholdAlert = (service: string, metricName: string, value: ResourceMetric, warning: number, critical: number) => {
+    if (value.percent === null || value.quality === 'UNAVAILABLE' || !Number.isFinite(value.percent)) return;
+    if (value.percent >= critical || value.percent >= warning) {
+      const severity = value.percent >= critical ? 'CRITICAL' : 'WARNING';
+      const threshold = severity === 'CRITICAL' ? critical : warning;
+      alerts.push({
+        id: `capacity-${service}-${metricName}`, severity, service, metric: metricName,
+        message: `${service} ${metricName} is at ${value.percent.toFixed(1)}% of configured capacity.`,
+        value: Number(value.percent.toFixed(1)), threshold, source: value.source,
+      });
+    }
+  };
+  addThresholdAlert('backend', 'CPU', resources.backend.cpu, 75, 90);
+  addThresholdAlert('backend', 'memory', resources.backend.memory, 75, 90);
+  addThresholdAlert('backend', 'GPU memory', resources.backend.gpuMemory, 80, 95);
+  addThresholdAlert('redis', 'memory', resources.redis.memory, 75, 90);
+  const activeConnections = resources.postgres.facts.find((fact) => fact.label === 'Active connections')?.value;
+  const maxConnections = resources.postgres.facts.find((fact) => fact.label === 'Connection capacity')?.value;
+  if (typeof activeConnections === 'number' && typeof maxConnections === 'number' && maxConnections > 0) {
+    const connectionPercent = activeConnections / maxConnections * 100;
+    addThresholdAlert('postgres', 'connections', {
+      value: activeConnections, unit: 'connections', capacity: maxConnections,
+      available: Math.max(0, maxConnections - activeConnections), percent: connectionPercent,
+      quality: 'MEASURED', source: 'pg_stat_activity / max_connections',
+    }, 75, 90);
+  }
+
   return {
     generatedAt: new Date().toISOString(),
     uptimeSeconds: Math.round(process.uptime()),
     overall,
     dependencies,
     liveMediaRooms: livekitResult,
-    resources: { backend: backendPanel, postgres: postgresPanel, redis: redisPanel, livekit: livekitPanel },
+    resources,
+    alerts,
     queues,
   };
 }
