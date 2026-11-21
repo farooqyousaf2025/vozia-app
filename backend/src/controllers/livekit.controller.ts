@@ -117,7 +117,6 @@ export async function reconcile(event: LivekitWebhookEvent): Promise<void> {
         'UPDATE room_participants SET left_at = now() WHERE room_id = $1 AND user_id = $2 AND left_at IS NULL',
         [room.id, identity],
       );
-      const eventSid = event.room?.sid;
       if (identity === room.host_id && room.owner_type !== 'SYSTEM'
           && (!eventSid || !room.livekit_session_sid || eventSid === room.livekit_session_sid)) {
         await query(
