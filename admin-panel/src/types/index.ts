@@ -2063,3 +2063,76 @@ export interface QaMoneySummary {
   testRows: number;
   productionRows: number;
 }
+
+
+export interface AgencyOperationsHost {
+  userId: string;
+  username: string;
+  avatarUrl: string | null;
+  agencyId: string;
+  agencyName: string;
+  agencyStatus: string;
+  agencyKind: 'MASTER' | 'SUB';
+  parentAgencyId: string | null;
+  parentAgencyName: string | null;
+  joinedAt: string;
+  lastVerifiedCheckInAt: string | null;
+  lastRoomCreatedAt: string | null;
+  lastVisitorAt: string | null;
+  lastActivityAt: string | null;
+  daysSinceVerifiedCheckIn: number | null;
+  attendanceDays7d: number;
+  attendanceDays30d: number;
+  earnings7dCoins: number;
+  earnings30dCoins: number;
+  inactive: boolean;
+}
+
+export interface AgencyOperationsAgency {
+  id: string;
+  name: string;
+  status: string;
+  kind: 'MASTER' | 'SUB';
+  parentAgencyId: string | null;
+  parentAgencyName: string | null;
+  activeHosts: number;
+  inactiveHosts: number;
+  hostsWithRecentAttendance: number;
+  lastVerifiedCheckInAt: string | null;
+  earnings7dCoins: number;
+  earnings30dCoins: number;
+  override7dCoins: number;
+  override30dCoins: number;
+  retained7dCoins: number;
+  retained30dCoins: number;
+}
+
+export interface AgencyOperationsReport {
+  generatedAt: string;
+  timezone: 'UTC';
+  windowDays: 7 | 30;
+  inactiveDays: 7 | 14 | 30;
+  summary: {
+    agencies: number;
+    activeAgencies: number;
+    masterAgencies: number;
+    subAgencies: number;
+    activeHosts: number;
+    inactiveHosts: number;
+    hostsWithRecentAttendance: number;
+    earnings7dCoins: number;
+    earnings30dCoins: number;
+  };
+  agencies: AgencyOperationsAgency[];
+  hosts: AgencyOperationsHost[];
+  truncated: { agencies: boolean; hosts: boolean };
+}
+
+export interface AgencyOperationsAuditEntry {
+  id: string;
+  action: string;
+  summary: string;
+  details: Record<string, unknown>;
+  createdAt: string;
+  actor: string;
+}
