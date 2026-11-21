@@ -99,7 +99,7 @@ class RankingsViewModel(
     fun loadDiscovery() {
         viewModelScope.launch {
             val request = _state.value
-            _state.update { it.copy(discoveryLoading = it.discoveryData == null, discoveryError = null) }
+            _state.update { it.copy(discoveryLoading = true, discoveryError = null) }
             when (val result = rankingsRepository.discovery(request.discoveryKind, request.discoveryRegion, 10)) {
                 is ApiResult.Success -> _state.update {
                     if (it.discoveryKind == request.discoveryKind && it.discoveryRegion == request.discoveryRegion) {
