@@ -59,6 +59,8 @@ data class Conversation(
     val id: String,
     val partner: MiniUser,
     val lastMessageAt: String?,
+    /** A short, server-truncated preview of the latest message in this private conversation. */
+    val lastMessagePreview: String?,
     /** The server's count of the partner's unread rows, never a local tally. */
     val unreadCount: Int,
 )
