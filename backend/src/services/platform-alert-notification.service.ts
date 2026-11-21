@@ -172,7 +172,7 @@ export async function deliverPendingPlatformAlertNotifications(batchSize = 10): 
           WHERE n.channel <> 'IN_APP' AND n.delivery_status IN ('PENDING','RETRY')
             AND n.next_attempt_at <= now()
           ORDER BY n.created_at
-          FOR UPDATE OF n SKIP LOCKED LIMIT 1`,
+          LIMIT 1 FOR UPDATE OF n SKIP LOCKED`,
       );
       row = claimed.rows[0] ?? null;
       if (!row) { await client.query('COMMIT'); break; }
