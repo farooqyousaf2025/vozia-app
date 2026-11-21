@@ -60,7 +60,7 @@ function apply(s:ChessState,from:number,to:number,promotion:string):ChessState{
   return {...s,board,turn:side==='w'?'b':'w',castling:castling||'-',enPassant:kind==='p'&&Math.abs(to-from)===16?(from+to)/2:null,halfmove:kind==='p'||captured?0:s.halfmove+1,fullmove:s.fullmove+(side==='b'?1:0),moveCount:s.moveCount+1,lastMove:{from,to,san:algebraic(from)+'-'+algebraic(to)}};
 }
 function legal(s:ChessState,from:number,to:number,promotion:string):boolean{
- const p=s.board[from];if(!p||color(p)!==s.turn||!pseudo(s,from).includes(to))return false;
+ const p=s.board[from];if(!p||color(p)!==s.turn||s.board[to]?.toLowerCase()==='k'||!pseudo(s,from).includes(to))return false;
  if(!['q','r','b','n'].includes((promotion||'q').toLowerCase()))return false;
  if(p.toLowerCase()==='p'&&(Math.floor(to/8)===0||Math.floor(to/8)===7)&&!['q','r','b','n'].includes((promotion||'q').toLowerCase()))return false;
  return !inCheck(apply(s,from,to,promotion).board,s.turn);
