@@ -30,7 +30,7 @@ function kingSquare(board: Piece[], side: Color): number { return board.findInde
 function inCheck(board: Piece[], side: Color): boolean { const k=kingSquare(board,side); return k<0 || attacked(board,k,side==='w'?'b':'w'); }
 function pseudo(s: ChessState, from: number): number[] {
   const p=s.board[from]; if(!p) return []; const side=color(p)!, f=from%8,r=Math.floor(from/8), kind=p.toLowerCase(), out:number[]=[];
-  const add=(x:number,y:number)=>{if(inside(x,y)){const t=s.board[pos(x,y)];if(!t||color(t)!==side)out.push(pos(x,y));}};
+  const add=(x:number,y:number)=>{if(inside(x,y)){const t=s.board[pos(x,y)];if((!t||color(t)!==side)&&t?.toLowerCase()!=='k')out.push(pos(x,y));}};
   if(kind==='p'){
     const d=side==='w'?-1:1, start=side==='w'?6:1;
     if(inside(f,r+d)&&!s.board[pos(f,r+d)]){out.push(pos(f,r+d));if(r===start&&!s.board[pos(f,r+2*d)])out.push(pos(f,r+2*d));}
@@ -38,7 +38,7 @@ function pseudo(s: ChessState, from: number): number[] {
   } else if(kind==='n'){for(const [df,dr] of [[1,2],[2,1],[2,-1],[1,-2],[-1,-2],[-2,-1],[-2,1],[-1,2]])add(f+df,r+dr);}
   else {
     const dirs=kind==='b'?[[1,1],[1,-1],[-1,1],[-1,-1]]:kind==='r'?[[1,0],[-1,0],[0,1],[0,-1]]:[[1,1],[1,-1],[-1,1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
-    for(const [df,dr] of dirs){let x=f+df,y=r+dr;while(inside(x,y)){const to=pos(x,y),t=s.board[to];if(!t)out.push(to);else{if(color(t)!==side)out.push(to);break;}x+=df;y+=dr;}}
+    for(const [df,dr] of dirs){let x=f+df,y=r+dr;while(inside(x,y)){const to=pos(x,y),t=s.board[to];if(!t)out.push(to);else{if(color(t)!==side&&t.toLowerCase()!=='k')out.push(to);break;}x+=df;y+=dr;}}
     if(kind==='k'&&r===(side==='w'?7:0)&&f===4&&!inCheck(s.board,side)){
       const rank=side==='w'?7:0, enemy=side==='w'?'b':'w';
       if(s.castling.includes(side==='w'?'K':'k')&&!s.board[pos(5,rank)]&&!s.board[pos(6,rank)]&&s.board[pos(7,rank)]===(side==='w'?'R':'r')&&!attacked(s.board,pos(5,rank),enemy)&&!attacked(s.board,pos(6,rank),enemy))out.push(pos(6,rank));
@@ -61,6 +61,7 @@ function apply(s:ChessState,from:number,to:number,promotion:string):ChessState{
 }
 function legal(s:ChessState,from:number,to:number,promotion:string):boolean{
  const p=s.board[from];if(!p||color(p)!==s.turn||!pseudo(s,from).includes(to))return false;
+ if(!['q','r','b','n'].includes((promotion||'q').toLowerCase()))return false;
  if(p.toLowerCase()==='p'&&(Math.floor(to/8)===0||Math.floor(to/8)===7)&&!['q','r','b','n'].includes((promotion||'q').toLowerCase()))return false;
  return !inCheck(apply(s,from,to,promotion).board,s.turn);
 }
@@ -80,12 +81,15 @@ export const chessDriver:GameDriver={
   if(s.winnerPosition!==null||s.draw)return {ok:false,code:'game_over',message:'This game is already over'};
   const actor=ctx.players.find(p=>p.userId===actorId);if(!actor)return {ok:false,code:'not_a_player',message:'Only the two players can move'};
   if(actor.position!==s.turnPosition)return {ok:false,code:'out_of_turn',message:'Wait for your turn'};
-  const fromRaw=action.payload.from,toRaw=action.payload.to,from=typeof fromRaw==='number'?fromRaw:typeof fromRaw==='string'?FILES.indexOf(fromRaw[0])+((8-Number(fromRaw[1]))*8):NaN,to=typeof toRaw==='number'?toRaw:typeof toRaw==='string'?FILES.indexOf(toRaw[0])+((8-Number(toRaw[1]))*8):NaN;
+  const parseSquare=(v:unknown):number=>typeof v==='number'?v:typeof v==='string'&&/^[a-h][1-8]$/.test(v)?FILES.indexOf(v[0])+(8-Number(v[1]))*8:NaN;
+  const from=parseSquare(action.payload.from),to=parseSquare(action.payload.to);
   const promotion=typeof action.payload.promotion==='string'?action.payload.promotion:'q';
   if(!Number.isInteger(from)||!Number.isInteger(to)||from<0||from>63||to<0||to>63||from===to)return {ok:false,code:'bad_square',message:'Use valid chess squares such as e2 and e4'};
   if(!legal(s,from,to,promotion))return {ok:false,code:'illegal_move',message:'That move is not legal in the current position'};
-  const next=finish(apply(s,from,to,promotion),ctx),nextPlayer=ctx.players.find(p=>p.position!==actor.position);
-  const stateOut={...next,turnPosition:next.turn==='w'?ctx.players[0]?.position??0:ctx.players[1]?.position??1};
+  const nextBase=apply(s,from,to,promotion);
+  nextBase.turnPosition=nextBase.turn==='w'?(ctx.players[0]?.position??0):(ctx.players[1]?.position??1);
+  const next=finish(nextBase,ctx);
+  const stateOut=next;
   const events:DriverEvent[]=[{type:'MOVE',actorId,payload:{from:algebraic(from),to:algebraic(to),promotion,position:actor.position,check:next.check,checkmate:next.checkmate,stalemate:next.stalemate}}];
   if(next.checkmate)events.push({type:'WON',actorId:null,payload:{winnerPosition:next.winnerPosition}});
   if(next.draw)events.push({type:'DRAW',actorId:null,payload:{reason:next.stalemate?'stalemate':'fifty_move_rule'}});
