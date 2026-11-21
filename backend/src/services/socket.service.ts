@@ -2,7 +2,7 @@ import { Server, Socket } from 'socket.io';
 import type { Server as HttpServer } from 'http';
 import { env } from '../config/env';
 import { query } from '../config/db';
-import { presenceKeys, rateLimit, redis, touchOnline } from '../config/redis';
+import { presenceKeys, rateLimit, redis, refreshRoomLivePresence, touchOnline } from '../config/redis';
 import { verifyToken } from './token.service';
 import { GiftDto, MiniUser, SeatDto } from '../utils/serialize';
 import { appendChat, appendSystemChat, assertMayAttendRoom, fetchMiniUser, isActiveRoomMember, leaveRoom, loadRoom, recomputeListenerCount, seatSnapshot, setHandRaised } from './room.service';
@@ -193,10 +193,9 @@ async function attachRoomSocket(roomId: string, userId: string, socketId: string
   const sockets = await redis.scard(key);
   if (sockets === 1) await redis.sadd(presenceKeys.roomUsers(roomId), userId);
   const roomUsers = presenceKeys.roomUsers(roomId);
-  const count = await redis.scard(roomUsers);
   await redis.expire(key, ROOM_PRESENCE_TTL_SECONDS);
   await redis.expire(roomUsers, ROOM_PRESENCE_TTL_SECONDS);
-  if (count > 0) await redis.zadd(presenceKeys.activeRooms, count, roomId);
+  await refreshRoomLivePresence(roomId);
 }
 
 /** Remove a socket and close its participant presence only when the last room socket leaves. */
@@ -208,13 +207,9 @@ async function detachRoomSocket(roomId: string, userId: string, socketId: string
     await redis.del(key);
     await redis.srem(presenceKeys.roomUsers(roomId), userId);
     const remainingRoomUsers = await redis.scard(presenceKeys.roomUsers(roomId));
-    if (remainingRoomUsers === 0) {
-      await redis.del(presenceKeys.roomUsers(roomId));
-      await redis.zrem(presenceKeys.activeRooms, roomId);
-    } else {
-      await redis.expire(presenceKeys.roomUsers(roomId), ROOM_PRESENCE_TTL_SECONDS);
-      await redis.zadd(presenceKeys.activeRooms, remainingRoomUsers, roomId);
-    }
+    if (remainingRoomUsers === 0) await redis.del(presenceKeys.roomUsers(roomId));
+    else await redis.expire(presenceKeys.roomUsers(roomId), ROOM_PRESENCE_TTL_SECONDS);
+    await refreshRoomLivePresence(roomId);
     // REST leave and socket disconnect can race; leaveRoom is deliberately idempotent.
     await leaveRoom(userId, roomId).catch((err) =>
       console.warn('[socket] leave room presence', roomId, userId, err.message),
