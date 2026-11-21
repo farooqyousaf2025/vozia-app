@@ -13,6 +13,10 @@ import com.voiza.app.domain.model.RankingLeader
 import com.voiza.app.domain.model.RankingPeriod
 import com.voiza.app.domain.model.RankingReward
 import com.voiza.app.domain.model.RankingSelf
+import com.voiza.app.domain.model.DiscoveryLeader
+import com.voiza.app.domain.model.DiscoveryRanking
+import com.voiza.app.domain.model.DiscoveryRankingKind
+import com.voiza.app.data.remote.dto.DiscoveryRankingResponse
 
 /**
  * The landing boards as the app consumes them. Positions, scores and reward state are copied
@@ -63,3 +67,21 @@ fun RankingClaimResponse.toDomain(): RankingClaimResult? {
         alreadyClaimed = alreadyClaimed ?: false,
     )
 }
+
+fun DiscoveryRankingResponse.toDiscoveryDomain(): DiscoveryRanking = DiscoveryRanking(
+    kind = when (kind) {
+        "hosts" -> DiscoveryRankingKind.HOSTS
+        "agencies" -> DiscoveryRankingKind.AGENCIES
+        else -> DiscoveryRankingKind.ROOMS
+    },
+    region = region,
+    leaders = leaders.orEmpty().mapNotNull { row ->
+        val id = row.id ?: return@mapNotNull null
+        DiscoveryLeader(
+            position = row.position ?: 0, id = id, name = row.name ?: "", avatarUrl = row.avatarUrl,
+            region = row.region, score = row.score ?: 0, activeRooms = row.activeRooms ?: 0,
+            listenerCount = row.listenerCount ?: 0, activeHostCount = row.activeHostCount,
+            hostName = row.hostName, hostAvatarUrl = row.hostAvatarUrl,
+        )
+    },
+)
