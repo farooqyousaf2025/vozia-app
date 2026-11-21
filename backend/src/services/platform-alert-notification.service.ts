@@ -80,7 +80,7 @@ export async function enqueuePlatformAlertNotifications(
          SELECT event.id, admins.id, $2, $3, $4, $5, CASE WHEN $2 = 'IN_APP' THEN 'DELIVERED' ELSE 'PENDING' END
            FROM platform_alert_events event
            CROSS JOIN admins
-          WHERE event.fingerprint = $1 AND event.status = 'ACTIVE' AND admins.is_active = true
+          WHERE event.fingerprint = $1 AND event.status = 'ACTIVE'
             AND ($2 <> 'EMAIL' OR (admins.email IS NOT NULL AND admins.email <> ''))
          ON CONFLICT (alert_event_id, admin_id, channel) DO NOTHING`,
         [alert.id, channel, alert.severity, title, alert.message],
