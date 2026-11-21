@@ -1003,3 +1003,71 @@ export async function hostApplicationRequired(): Promise<boolean> {
   const config = await readConfig('roles.hostApplicationRequired', { enabled: false });
   return config.enabled === true;
 }
+
+/**
+ * Operator-created Host and Agency grants. The operator supplies the same validated answers the
+ * applicant form requires; the approved role_application row remains the single source of truth.
+ * This deliberately does not grant BD or seller permissions — those use business-account flows.
+ */
+export async function provisionRoleByAdmin(
+  adminId: string,
+  userIdRaw: unknown,
+  roleRaw: unknown,
+  rawData: unknown,
+): Promise<RoleApplicationDto> {
+  const userId = requireUuid(userIdRaw, 'userId');
+  const role = requireEnum(roleRaw, 'role', ['HOST', 'AGENCY'] as const);
+  const createdId = await withTransaction(async (client) => {
+    const user = await client.query<{ id: string; status: string }>(
+      'SELECT id, status FROM users WHERE id = $1 FOR UPDATE',
+      [userId],
+    );
+    if (!user.rows[0]) throw ApiError.notFound('Account not found', 'user_not_found');
+    if (user.rows[0].status !== 'ACTIVE') {
+      throw ApiError.conflict('Only an active account can receive a Host or Agency role', 'account_not_active');
+    }
+    const data = await normaliseForm(role, rawData, client);
+    let inserted: { id: string };
+    try {
+      const result = await client.query<{ id: string }>(
+        `INSERT INTO role_applications (user_id, role, status, data, form_version)
+         VALUES ($1,$2,'PENDING',$3::jsonb,$4) RETURNING id`,
+        [userId, role, JSON.stringify(data), FORM_VERSION],
+      );
+      inserted = result.rows[0];
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505') {
+        throw ApiError.conflict('This account already has an open application or active grant for this role', 'application_already_open');
+      }
+      throw err;
+    }
+    const row: LockedRow = {
+      id: inserted.id,
+      user_id: userId,
+      role,
+      status: 'PENDING',
+      data,
+      agency_id: null,
+      business_account_id: null,
+    };
+    const grant = await activateRole(client, row, adminId, {});
+    await client.query(
+      `UPDATE role_applications
+          SET status = 'APPROVED', reviewed_by = $2, reviewed_at = now(),
+              agency_id = $3, business_account_id = NULL, updated_at = now()
+        WHERE id = $1`,
+      [inserted.id, adminId, grant.agencyId],
+    );
+    await raiseUserTypeMarker(client, userId, role);
+    await recordAudit({
+      adminId,
+      action: 'ROLE_ADMIN_PROVISION',
+      targetType: 'role_application',
+      targetId: inserted.id,
+      summary: `Admin directly granted ${role} to account ${userId}`,
+      details: { role, userId, agencyId: grant.agencyId, data },
+    }, client);
+    return inserted.id;
+  });
+  return (await findApplication(createdId))!;
+}

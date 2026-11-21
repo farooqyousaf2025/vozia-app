@@ -36,7 +36,7 @@ import { Table, TBody, Td, Th, THead, Tr } from '../components/ui/Table';
 import { ApiError, api, assetUrl } from '../lib/api';
 import { formatCompact, formatDiamonds, formatRCoin, parseSignedInt, parseUnsignedInt, relativeTime, formatDateTime } from '../lib/format';
 import { useAuth } from '../context/AuthContext';
-import type { AuditEntry, PromoGrant, PromoPolicyConfig, StoreItemKind, UserListQuery, UserRow, UserSocialSummary, UserStatus, UserType } from '../types';
+import type { ApplicationField, ApplicationFormSpec, ApplicationFormSpecResult, AuditEntry, PromoGrant, PromoPolicyConfig, StoreItemKind, UserListQuery, UserRow, UserSocialSummary, UserStatus, UserType } from '../types';
 
 const PAGE_LIMIT = 20;
 
@@ -73,6 +73,10 @@ export default function UsersPage() {
   const [socialTarget, setSocialTarget] = useState<UserRow | null>(null);
   const [historyTarget, setHistoryTarget] = useState<UserRow | null>(null);
   const [promoTarget, setPromoTarget] = useState<UserRow | null>(null);
+  const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<UserRow | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<UserRow | null>(null);
+  const [roleTarget, setRoleTarget] = useState<UserRow | null>(null);
 
   const query = useMemo<UserListQuery>(
     () => ({
@@ -132,9 +136,12 @@ export default function UsersPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
-      <div>
-        <h1 className="text-xl font-bold text-ink">Users</h1>
-        <p className="mt-0.5 text-sm text-muted">Moderate accounts, wallets and access.</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-ink">Users</h1>
+          <p className="mt-0.5 text-sm text-muted">Create phone-verified member profiles, edit account details and control access.</p>
+        </div>
+        {can('user:moderate') && <Button variant="primary" onClick={() => setCreateUserOpen(true)}>Create user</Button>}
       </div>
 
       <Card bodyClassName="p-4">
@@ -293,6 +300,9 @@ export default function UsersPage() {
                     <Td className="whitespace-nowrap">{relativeTime(user.lastSeenAt)}</Td>
                     <Td align="right" className="whitespace-nowrap pr-4">
                       <div className="flex items-center justify-end gap-1.5">
+                        {can('user:moderate') && <Button size="sm" variant="secondary" onClick={() => setEditTarget(user)}>Edit</Button>}
+                        {can('application:review') && <Button size="sm" variant="secondary" onClick={() => setRoleTarget(user)}>Grant role</Button>}
+                        {can('user:moderate') && user.status === 'ACTIVE' && <Button size="sm" variant="danger" onClick={() => setArchiveTarget(user)}>Archive</Button>}
                         {can('user:wallet') && <Button
                           size="sm"
                           icon={<IconDiamond className="h-3.5 w-3.5" />}
@@ -408,6 +418,31 @@ export default function UsersPage() {
         />
       )}
 
+      {createUserOpen && <CreateUserModal onClose={() => setCreateUserOpen(false)} onCreated={(created) => {
+        setCreateUserOpen(false);
+        setRows((current) => [created, ...current.filter((row) => row.id !== created.id)].slice(0, PAGE_LIMIT));
+        setTotal((value) => value + 1);
+        toast.success(`Created ${created.username}. They must verify ${created.phone} by OTP before signing in.`);
+      }} />}
+
+      {editTarget !== null && <EditUserModal user={editTarget} onClose={() => setEditTarget(null)} onUpdated={(updated) => {
+        replaceRow(updated);
+        setEditTarget(null);
+        toast.success(`Updated ${updated.username}.`);
+      }} />}
+
+      {archiveTarget !== null && <ArchiveUserModal user={archiveTarget} onClose={() => setArchiveTarget(null)} onArchived={(updated) => {
+        replaceRow(updated);
+        setArchiveTarget(null);
+        toast.success(`${updated.username} archived; financial and historical records were preserved.`);
+      }} />}
+
+      {roleTarget !== null && <GrantRoleModal user={roleTarget} onClose={() => setRoleTarget(null)} onGranted={() => {
+        setRoleTarget(null);
+        void load();
+        toast.success('Role granted and recorded in the audit trail.');
+      }} />}
+
       {banTarget !== null && (
         <BanModal
           user={banTarget}
@@ -425,6 +460,131 @@ export default function UsersPage() {
       )}
     </div>
   );
+}
+
+
+function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: (user: UserRow) => void }) {
+  const [phone, setPhone] = useState('');
+  const [username, setUsername] = useState('');
+  const [countryCode, setCountryCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true); setError(null);
+    try {
+      const result = await api.createUser({ phone: phone.trim(), username: username.trim(), countryCode: countryCode.trim() || undefined });
+      onCreated(result.user);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not create the account.');
+      setBusy(false);
+    }
+  };
+  return <Modal open onClose={onClose} title="Create member account" subtitle="The member must prove control of this phone number with OTP before they can sign in." footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" type="submit" form="create-user-form" loading={busy}>Create account</Button></>}>
+    <form id="create-user-form" onSubmit={submit} className="space-y-3">
+      <Input label="Phone number" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required placeholder="+923001234567" />
+      <Input label="Username" value={username} onChange={(e) => setUsername(e.target.value)} required minLength={3} maxLength={40} placeholder="member_name" />
+      <Input label="Country code (optional)" value={countryCode} onChange={(e) => setCountryCode(e.target.value.toUpperCase())} maxLength={2} placeholder="PK" />
+      {error && <p className="text-xs text-rose-300">{error}</p>}
+    </form>
+  </Modal>;
+}
+
+function EditUserModal({ user, onClose, onUpdated }: { user: UserRow; onClose: () => void; onUpdated: (user: UserRow) => void }) {
+  const [username, setUsername] = useState(user.username);
+  const [countryCode, setCountryCode] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true); setError(null);
+    try {
+      const result = await api.updateUserProfile(user.id, {
+        username: username.trim(),
+        ...(countryCode.trim() ? { countryCode: countryCode.trim().toUpperCase() } : {}),
+        avatarUrl: avatarUrl || null,
+      });
+      onUpdated(result.user);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not update the account.');
+      setBusy(false);
+    }
+  };
+  return <Modal open onClose={onClose} title={`Edit ${user.username}`} subtitle="Phone identity, wallet balances and role grants cannot be changed in this profile editor." footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" type="submit" form="edit-user-form" loading={busy}>Save changes</Button></>}>
+    <form id="edit-user-form" onSubmit={submit} className="space-y-3">
+      <Input label="Username" value={username} onChange={(e) => setUsername(e.target.value)} required minLength={3} maxLength={40} />
+      <Input label="Set country code (optional)" value={countryCode} onChange={(e) => setCountryCode(e.target.value.toUpperCase())} maxLength={2} placeholder="Leave blank to keep current" />
+      <Input label="Avatar URL" value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} maxLength={500} placeholder="https://…" />
+      {error && <p className="text-xs text-rose-300">{error}</p>}
+    </form>
+  </Modal>;
+}
+
+function ArchiveUserModal({ user, onClose, onArchived }: { user: UserRow; onClose: () => void; onArchived: (user: UserRow) => void }) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (busy || reason.trim().length < 3) return;
+    setBusy(true); setError(null);
+    try {
+      const result = await api.archiveUser(user.id, reason.trim());
+      onArchived(result.user);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not archive the account.');
+      setBusy(false);
+    }
+  };
+  return <Modal open onClose={onClose} title={`Archive ${user.username}?`} subtitle="This disables sign-in without deleting the user or cascading into wallets, ledgers, rooms, gifts or chat history." footer={<><Button onClick={onClose}>Cancel</Button><Button variant="danger" type="submit" form="archive-user-form" loading={busy} disabled={reason.trim().length < 3}>Archive account</Button></>}>
+    <form id="archive-user-form" onSubmit={submit} className="space-y-3">
+      <Textarea label="Reason (required)" value={reason} onChange={(e) => setReason(e.target.value)} minLength={3} maxLength={200} rows={3} />
+      {error && <p className="text-xs text-rose-300">{error}</p>}
+    </form>
+  </Modal>;
+}
+
+
+function GrantRoleModal({ user, onClose, onGranted }: { user: UserRow; onClose: () => void; onGranted: () => void }) {
+  const [forms, setForms] = useState<ApplicationFormSpecResult | null>(null);
+  const [role, setRole] = useState<'HOST' | 'AGENCY'>('HOST');
+  const [answers, setAnswers] = useState<Record<string, unknown>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    api.applicationForms().then(setForms).catch((err) => setError(err instanceof ApiError ? err.message : 'Could not load role requirements.'));
+  }, []);
+  const spec: ApplicationFormSpec | undefined = forms?.roles.find((item) => item.role === role);
+  const setAnswer = (key: string, value: unknown) => setAnswers((current) => ({ ...current, [key]: value }));
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (busy || !spec) return;
+    setBusy(true); setError(null);
+    try {
+      await api.provisionPartnerRole({ userId: user.id, role, data: answers });
+      onGranted();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not grant the role.');
+      setBusy(false);
+    }
+  };
+  const fieldControl = (field: ApplicationField) => {
+    const value = answers[field.key];
+    if (field.input === 'TEXTAREA') return <Textarea label={field.label} value={String(value ?? '')} onChange={(e) => setAnswer(field.key, e.target.value)} required={field.required} rows={3} maxLength={field.max ?? 2000} />;
+    if (field.input === 'CHECKBOX') return <label className="flex items-center gap-2 text-sm text-ink"><input type="checkbox" checked={value === true} onChange={(e) => setAnswer(field.key, e.target.checked)} />{field.label}</label>;
+    if (field.input === 'AGENCY') return <Select label={field.label} value={String(value ?? '')} onChange={(e) => setAnswer(field.key, e.target.value || undefined)}><option value="">No preferred agency</option>{(forms?.agencies ?? []).map((agency) => <option key={agency.id} value={agency.id}>{agency.name}</option>)}</Select>;
+    return <Input label={field.label} type={field.input === 'NUMBER' ? 'number' : 'text'} value={String(value ?? '')} onChange={(e) => setAnswer(field.key, field.input === 'NUMBER' ? (e.target.value === '' ? undefined : Number(e.target.value)) : field.input === 'COUNTRY' ? e.target.value.toUpperCase() : e.target.value)} required={field.required} min={field.min} max={field.max} maxLength={field.input === 'NUMBER' ? undefined : field.max} />;
+  };
+  return <Modal open onClose={onClose} title={`Grant a role · ${user.username}`} subtitle="Direct Host and Agency grants use the same server-validated eligibility fields and create an auditable approved role record." footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" type="submit" form="grant-role-form" loading={busy} disabled={!spec || !forms}>Grant role</Button></>}>
+    <form id="grant-role-form" onSubmit={submit} className="space-y-3">
+      <Select label="Role" value={role} onChange={(e) => { setRole(e.target.value as 'HOST' | 'AGENCY'); setAnswers({}); }}><option value="HOST">Host</option><option value="AGENCY">Agency Owner</option></Select>
+      {spec ? <><p className="text-xs text-muted">{spec.blurb}</p>{spec.fields.map((field) => <div key={field.key}>{fieldControl(field)}{field.hint && <p className="mt-1 text-[11px] text-faint">{field.hint}</p>}</div>)}</> : <p className="text-xs text-muted">Loading role requirements…</p>}
+      {error && <p className="text-xs text-rose-300">{error}</p>}
+    </form>
+  </Modal>;
 }
 
 // ---------------------------------------------------------------------------

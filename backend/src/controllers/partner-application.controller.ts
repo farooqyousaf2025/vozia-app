@@ -15,6 +15,7 @@ import {
   listApplications,
   myApplications,
   revokeApplication,
+  provisionRoleByAdmin,
   roleCatalogue,
   supplementApplication,
   submitApplication,
@@ -187,4 +188,11 @@ export const revoke = asyncHandler(async (req: Request, res: Response) => {
   const application = await revokeApplication(req.admin!.sub, req.params.id, req.body?.reason);
   tell(application, 'REVOKED');
   res.json({ application });
+});
+
+/** Direct Host/Agency provisioning is a deliberate admin decision, still recorded as a live grant. */
+export const provision = asyncHandler(async (req: Request, res: Response) => {
+  const application = await provisionRoleByAdmin(req.admin!.sub, req.body?.userId, req.body?.role, req.body?.data);
+  tell(application, 'APPROVED');
+  res.status(201).json({ application });
 });

@@ -57,6 +57,7 @@ import { UserRow } from '../types/db';
 import {
   ApiError,
   asyncHandler,
+  normalizePhone,
   optionalInt,
   optionalString,
   optionalEnum,
@@ -179,6 +180,73 @@ async function logAction(req: Request, entry: Omit<AuditEntry, 'adminId'>): Prom
 
 export const stats = asyncHandler(async (req: Request, res: Response) => {
   res.json(await dashboardStats({ includeTest: maySeeTestMoney(req) }));
+});
+
+
+/** Create a phone-bound member profile. The person must still prove control of the number via OTP before sign-in. */
+export const createUser = asyncHandler(async (req: Request, res: Response) => {
+  const phone = normalizePhone(req.body?.phone, 'phone');
+  const username = requireString(req.body?.username, 'username', { min: 3, max: 40 }).toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_.-]{2,39}$/.test(username)) {
+    throw ApiError.badRequest('Username must start with a letter or number and contain only letters, numbers, dots, underscores or hyphens', 'invalid_username');
+  }
+  const countryCode = optionalString(req.body?.countryCode, 'countryCode', 2)?.toUpperCase();
+  if (countryCode && !/^[A-Z]{2}$/.test(countryCode)) throw ApiError.badRequest('Country code must be two letters', 'invalid_country');
+  let row: UserRow | null;
+  try {
+    row = await one<UserRow>(
+      `INSERT INTO users (phone, username, country_code, user_type, status, is_verified)
+       VALUES ($1,$2,$3,'USER','ACTIVE',FALSE) RETURNING *`,
+      [phone, username, countryCode ?? null],
+    );
+  } catch (err) {
+    if ((err as { code?: string }).code === '23505') throw ApiError.conflict('That phone number or username is already registered', 'account_exists');
+    throw err;
+  }
+  if (!row) throw new Error('Could not create member account');
+  await logAction(req, {
+    action: 'USER_CREATE',
+    targetType: 'user',
+    targetId: row.id,
+    summary: `Created member account ${row.username}; phone OTP verification is still required`,
+    details: { username: row.username, countryCode: row.country_code, phone: '[redacted]' },
+  });
+  res.status(201).json({ user: toUser(row), requiresPhoneVerification: true });
+});
+
+/** Profile edits are deliberately limited to non-financial, non-identity-proof fields. */
+export const updateUserProfile = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUuid(req.params.id, 'userId');
+  const username = optionalString(req.body?.username, 'username', 40)?.toLowerCase();
+  const countryCode = req.body?.countryCode === null || req.body?.countryCode === '' ? null : optionalString(req.body?.countryCode, 'countryCode', 2)?.toUpperCase();
+  const bio = req.body?.bio === null ? null : optionalString(req.body?.bio, 'bio', 200);
+  const avatarUrl = req.body?.avatarUrl === null ? null : optionalString(req.body?.avatarUrl, 'avatarUrl', 500);
+  if (username !== undefined && !/^[a-z0-9][a-z0-9_.-]{2,39}$/.test(username)) throw ApiError.badRequest('Invalid username', 'invalid_username');
+  if (countryCode && !/^[A-Z]{2}$/.test(countryCode)) throw ApiError.badRequest('Country code must be two letters', 'invalid_country');
+  if (username === undefined && countryCode === undefined && bio === undefined && avatarUrl === undefined) throw ApiError.badRequest('No profile fields supplied');
+  const row = await one<UserRow>(
+    `UPDATE users SET
+       username = COALESCE($2, username),
+       country_code = CASE WHEN $3::boolean THEN $4 ELSE country_code END,
+       bio = CASE WHEN $5::boolean THEN $6 ELSE bio END,
+       avatar_url = CASE WHEN $7::boolean THEN $8 ELSE avatar_url END,
+       updated_at = now()
+     WHERE id = $1 RETURNING *`,
+    [userId, username ?? null, req.body?.countryCode !== undefined, countryCode, req.body?.bio !== undefined, bio, req.body?.avatarUrl !== undefined, avatarUrl],
+  );
+  if (!row) throw ApiError.notFound('Account not found', 'user_not_found');
+  await logAction(req, { action: 'USER_PROFILE_UPDATE', targetType: 'user', targetId: userId, summary: `Updated profile for ${row.username}`, details: { username: username ?? null, countryCode, bioChanged: req.body?.bio !== undefined, avatarChanged: req.body?.avatarUrl !== undefined } });
+  res.json({ user: toUser(row) });
+});
+
+/** Deletion is a reversible access archive; financial and social history is never cascaded away. */
+export const archiveUser = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUuid(req.params.id, 'userId');
+  const reason = requireString(req.body?.reason, 'reason', { min: 3, max: 200 });
+  const row = await setUserStatus(userId, true);
+  await logAction(req, { action: 'USER_ARCHIVE', targetType: 'user', targetId: userId, summary: `Archived ${row.username}: ${reason}`, details: { reason, preservedHistory: true } });
+  emitToUser(userId, 'account:status', { status: row.status, reason });
+  res.json({ user: toUser(row), archived: true, hardDeleted: false });
 });
 
 export const users = asyncHandler(async (req: Request, res: Response) => {
