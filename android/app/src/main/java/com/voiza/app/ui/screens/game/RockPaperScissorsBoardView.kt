@@ -24,7 +24,7 @@ fun RockPaperScissorsBoardView(
     locked: Boolean,
     onChoose: (String) -> Unit,
 ) {
-    val submitted = mySeat != null && board.choices.containsKey(mySeat)
+    val submitted = mySeat != null && board.committedPositions.contains(mySeat)
     val revealed = board.choices.size == 2
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp),
