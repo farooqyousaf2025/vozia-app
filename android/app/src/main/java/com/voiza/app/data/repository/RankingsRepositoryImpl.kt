@@ -1,6 +1,7 @@
 package com.voiza.app.data.repository
 
 import com.voiza.app.data.mapper.toDomain
+import com.voiza.app.data.mapper.toDiscoveryDomain
 import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.data.remote.VoizaApiService
 import com.voiza.app.data.remote.apiCall
