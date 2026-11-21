@@ -238,6 +238,8 @@ fun HomeScreen(
                 search = state.search,
                 searchOpen = searchOpen || state.search.isNotBlank(),
                 sort = state.sort,
+                region = state.region,
+                accountRegion = state.user?.countryCode,
                 showingMyRooms = state.showingMyRooms,
                 quickJoinPending = state.quickJoinPending,
                 quickJoinError = state.quickJoinError,
@@ -247,6 +249,7 @@ fun HomeScreen(
                     viewModel.setSearch("")
                 },
                 onSelectSort = viewModel::selectSort,
+                onSelectRegion = viewModel::selectRegion,
                 onToggleMyRooms = viewModel::toggleMyRooms,
                 onQuickJoin = viewModel::quickJoin,
             )
@@ -329,12 +332,15 @@ private fun DiscoveryRow(
     search: String,
     searchOpen: Boolean,
     sort: RoomSort,
+    region: String?,
+    accountRegion: String?,
     showingMyRooms: Boolean,
     quickJoinPending: Boolean,
     quickJoinError: String?,
     onSearch: (String) -> Unit,
     onCloseSearch: () -> Unit,
     onSelectSort: (RoomSort) -> Unit,
+    onSelectRegion: (String?) -> Unit,
     onToggleMyRooms: () -> Unit,
     onQuickJoin: () -> Unit,
 ) {
@@ -443,6 +449,27 @@ private fun DiscoveryRow(
                         selected = sort == option,
                         onClick = { onSelectSort(option) },
                         label = { Text(option.label, fontSize = 12.sp) },
+                        colors = voizaChipColors(),
+                    )
+                }
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .padding(top = 6.dp)
+                    .horizontalScroll(rememberScrollState()),
+            ) {
+                FilterChip(
+                    selected = region == null,
+                    onClick = { onSelectRegion(null) },
+                    label = { Text("Global", fontSize = 12.sp) },
+                    colors = voizaChipColors(),
+                )
+                accountRegion?.uppercase()?.takeIf { it.matches(Regex("[A-Z]{2}")) }?.let { code ->
+                    FilterChip(
+                        selected = region == code,
+                        onClick = { onSelectRegion(code) },
+                        label = { Text("Region · $code", fontSize = 12.sp) },
                         colors = voizaChipColors(),
                     )
                 }
@@ -791,12 +818,15 @@ private fun DiscoveryRowPreview() {
                 search = "",
                 searchOpen = false,
                 sort = RoomSort.DEFAULT,
+                region = null,
+                accountRegion = null,
                 showingMyRooms = false,
                 quickJoinPending = false,
                 quickJoinError = null,
                 onSearch = {},
                 onCloseSearch = {},
                 onSelectSort = {},
+                onSelectRegion = {},
                 onToggleMyRooms = {},
                 onQuickJoin = {},
             )
@@ -813,12 +843,15 @@ private fun DiscoveryRowSearchOpenPreview() {
                 search = "",
                 searchOpen = true,
                 sort = RoomSort.TRENDING,
+                region = null,
+                accountRegion = null,
                 showingMyRooms = false,
                 quickJoinPending = false,
                 quickJoinError = null,
                 onSearch = {},
                 onCloseSearch = {},
                 onSelectSort = {},
+                onSelectRegion = {},
                 onToggleMyRooms = {},
                 onQuickJoin = {},
             )

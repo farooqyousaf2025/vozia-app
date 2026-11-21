@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { one, query, withTransaction } from '../config/db';
+import { presenceKeys, redis, refreshRoomLivePresence } from '../config/redis';
 import { RoomRow } from '../types/db';
 import { asyncHandler } from '../utils/http';
 import { LivekitWebhookEvent, verifyWebhook } from '../services/livekit.service';
@@ -18,7 +19,7 @@ export const webhook = asyncHandler(async (req: Request, res: Response) => {
   reconcile(event).catch((err) => console.error('[livekit:webhook] reconcile failed', (err as Error).message));
 });
 
-async function reconcile(event: LivekitWebhookEvent): Promise<void> {
+export async function reconcile(event: LivekitWebhookEvent): Promise<void> {
   const roomName = event.room?.name;
   if (!roomName) return;
   const room = await one<RoomRow & { livekit_session_sid: string | null }>(
@@ -61,15 +62,32 @@ async function reconcile(event: LivekitWebhookEvent): Promise<void> {
         );
         return true;
       });
-      if (reconciled) emitToRoom(room.id, 'room:session_ended', { roomId: room.id });
+      if (reconciled) {
+        await redis.del(presenceKeys.roomLivekitUsers(room.id));
+        await redis.zrem(presenceKeys.activeRooms, room.id);
+        emitToRoom(room.id, 'room:session_ended', { roomId: room.id });
+      }
       break;
     }
 
     case 'participant_joined': {
       const identity = event.participant?.identity;
-      if (!identity || !room.host_id || room.owner_type === 'SYSTEM' || identity !== room.host_id) break;
       const eventSid = event.room?.sid;
-      if (eventSid && room.livekit_session_sid && eventSid !== room.livekit_session_sid) break;
+      if (!identity || (eventSid && room.livekit_session_sid && eventSid !== room.livekit_session_sid)) break;
+      // A media participant is eligible only if the API has an active, non-test room membership.
+      const member = await one<{ user_id: string }>(
+        `SELECT rp.user_id
+           FROM room_participants rp
+           JOIN users u ON u.id = rp.user_id
+          WHERE rp.room_id = $1 AND rp.user_id = $2 AND rp.left_at IS NULL
+            AND u.status = 'ACTIVE' AND NOT u.is_test`,
+        [room.id, identity],
+      );
+      if (!member) break;
+      await redis.sadd(presenceKeys.roomLivekitUsers(room.id), identity);
+      await refreshRoomLivePresence(room.id);
+
+      if (!room.host_id || room.owner_type === 'SYSTEM' || identity !== room.host_id) break;
       const host = await one<{ username: string }>('SELECT username FROM users WHERE id = $1', [identity]);
       if (!host) break;
       await query(
@@ -86,7 +104,10 @@ async function reconcile(event: LivekitWebhookEvent): Promise<void> {
 
     case 'participant_left': {
       const identity = event.participant?.identity;
-      if (!identity) break;
+      const eventSid = event.room?.sid;
+      if (!identity || (eventSid && room.livekit_session_sid && eventSid !== room.livekit_session_sid)) break;
+      await redis.srem(presenceKeys.roomLivekitUsers(room.id), identity);
+      await refreshRoomLivePresence(room.id);
       await query(
         `UPDATE room_seats SET user_id = NULL, status = 'EMPTY', is_speaker = FALSE, is_muted = FALSE
           WHERE room_id = $1 AND user_id = $2`,
@@ -96,7 +117,6 @@ async function reconcile(event: LivekitWebhookEvent): Promise<void> {
         'UPDATE room_participants SET left_at = now() WHERE room_id = $1 AND user_id = $2 AND left_at IS NULL',
         [room.id, identity],
       );
-      const eventSid = event.room?.sid;
       if (identity === room.host_id && room.owner_type !== 'SYSTEM'
           && (!eventSid || !room.livekit_session_sid || eventSid === room.livekit_session_sid)) {
         await query(

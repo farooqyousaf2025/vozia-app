@@ -36,6 +36,9 @@ class HomeViewModel(
         val search: String = "",
         /** True while the list is `GET /api/rooms/mine` rather than the lobby. */
         val showingMyRooms: Boolean = false,
+        /** Country-scoped discovery defaults to the signed-in account; null means global. */
+        val region: String? = null,
+        val regionInitialized: Boolean = false,
         val rooms: List<RoomSummary> = emptyList(),
         val loading: Boolean = false,
         val refreshing: Boolean = false,
@@ -69,7 +72,16 @@ class HomeViewModel(
         loadSeatPolicy()
         viewModelScope.launch {
             authRepository.currentUser.collect { user ->
-                _state.update { it.copy(user = user) }
+                val initializeRegion = user != null && !_state.value.regionInitialized
+                val accountRegion = user?.countryCode?.uppercase()?.takeIf { it.matches(Regex("[A-Z]{2}")) }
+                _state.update {
+                    it.copy(
+                        user = user,
+                        region = if (initializeRegion) accountRegion else it.region,
+                        regionInitialized = it.regionInitialized || user != null,
+                    )
+                }
+                if (initializeRegion && accountRegion != null) loadRooms()
             }
         }
     }
@@ -127,6 +139,7 @@ class HomeViewModel(
                 limit = 60,
                 search = request.search.trim().takeIf { it.isNotEmpty() },
                 sort = request.sort.apiValue,
+                region = request.region,
             )
         }
         when (result) {
@@ -152,6 +165,14 @@ class HomeViewModel(
     fun selectSort(sort: RoomSort) {
         if (_state.value.sort == sort) return
         _state.update { it.copy(sort = sort) }
+        loadRooms()
+    }
+
+    /** Home discovery can switch between the account's country and the global lobby. */
+    fun selectRegion(region: String?) {
+        val normalized = region?.uppercase()?.takeIf { it.matches(Regex("[A-Z]{2}")) }
+        if (_state.value.region == normalized) return
+        _state.update { it.copy(region = normalized, regionInitialized = true) }
         loadRooms()
     }
 

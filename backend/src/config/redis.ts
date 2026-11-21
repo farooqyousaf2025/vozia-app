@@ -29,6 +29,10 @@ export const presenceKeys = {
   online: 'presence:online',
   user: (userId: string) => `presence:user:${userId}`,
   roomListeners: (roomId: string) => `room:${roomId}:listeners`,
+  roomUserSockets: (roomId: string, userId: string) => `presence:room:${roomId}:user:${userId}:sockets`,
+  roomUsers: (roomId: string) => `presence:room:${roomId}:users`,
+  roomLivekitUsers: (roomId: string) => `presence:room:${roomId}:livekit-users`,
+  activeRooms: 'presence:rooms:active',
 } as const;
 
 /**
@@ -51,6 +55,23 @@ export async function touchOnline(
 
 export async function onlineUserCount(): Promise<number> {
   return redis.scard(presenceKeys.online);
+}
+
+/**
+ * A room is discoverable only when the same member has both an in-room app socket and a
+ * connected LiveKit participant. This keeps a failed media join from looking like a healthy room.
+ */
+export async function refreshRoomLivePresence(roomId: string): Promise<number> {
+  const users = await redis.sinter(
+    presenceKeys.roomUsers(roomId),
+    presenceKeys.roomLivekitUsers(roomId),
+  );
+  if (users.length > 0) {
+    await redis.zadd(presenceKeys.activeRooms, users.length, roomId);
+  } else {
+    await redis.zrem(presenceKeys.activeRooms, roomId);
+  }
+  return users.length;
 }
 
 /** Fixed-window rate limiter; returns the remaining budget or -1 when blocked. */

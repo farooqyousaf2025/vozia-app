@@ -1368,6 +1368,92 @@ function loadLivekitService() {
       new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} socket never connected`)), 20000)),
     ]);
   };
+
+  const livekitWebhookController = require(path.join(BE_ROOT, 'dist', 'controllers', 'livekit.controller.js'));
+  const activateDiscoveryRoom = async (roomId, token, userId, label) => {
+    await api('POST', `/api/rooms/${roomId}/join`, { token, body: {} });
+    const roomSocket = socketFor(token);
+    await connected(roomSocket, label);
+    const roomAck = await new Promise((resolve) =>
+      roomSocket.emit('room:join', { roomId }, resolve));
+    if (roomAck?.ok !== true) throw new Error(`${label} socket room join failed: ${JSON.stringify(roomAck)}`);
+    const roomName = await sql(`select livekit_room_name from rooms where id='${roomId}'`);
+    const roomSid = await sql(`select livekit_session_sid from rooms where id='${roomId}'`);
+    await livekitWebhookController.reconcile({
+      event: 'participant_joined',
+      room: { name: roomName, sid: roomSid },
+      participant: { identity: userId },
+    });
+    await delay(250);
+    return roomSocket;
+  };
+  const deactivateDiscoveryRoom = async (roomId, userId) => {
+    const roomName = await sql(`select livekit_room_name from rooms where id='${roomId}'`);
+    const roomSid = await sql(`select livekit_session_sid from rooms where id='${roomId}'`);
+    await livekitWebhookController.reconcile({
+      event: 'participant_left',
+      room: { name: roomName, sid: roomSid },
+      participant: { identity: userId },
+    });
+  };
+
+  // Home discovery requires both a real app room socket and a confirmed LiveKit participant.
+  const liveDiscoveryRoom = await api('POST', '/api/rooms', {
+    token: watcher.token,
+    body: { title: `E2E Live Discovery ${stamp}`, category: 'PARTY', type: 'PUBLIC', region: 'PK' },
+  });
+  const idleDiscoveryRoom = await api('POST', '/api/rooms', {
+    token: shopUser.token,
+    body: { title: `E2E Idle Discovery ${stamp}`, category: 'PARTY', type: 'PUBLIC', region: 'PK' },
+  });
+  const liveDiscoveryId = liveDiscoveryRoom.json?.room?.id;
+  const idleDiscoveryId = idleDiscoveryRoom.json?.room?.id;
+  const lobbyBeforeSocket = await api('GET', '/api/rooms?category=PARTY&region=PK&limit=100');
+  check('home discovery hides newly-created rooms before a live socket connects',
+    liveDiscoveryRoom.status === 201 && idleDiscoveryRoom.status === 201 &&
+    !lobbyBeforeSocket.json?.rooms?.some((r) => r.id === liveDiscoveryId || r.id === idleDiscoveryId),
+    { liveCreated: liveDiscoveryRoom.status, idleCreated: idleDiscoveryRoom.status });
+
+  await api('POST', `/api/rooms/${liveDiscoveryId}/join`, { token: watcher.token, body: {} });
+  const discoverySocket = socketFor(watcher.token);
+  await connected(discoverySocket, 'home-discovery');
+  // First connect only the app socket to prove that media presence is also required.
+  const discoveryAck = await new Promise((resolve) =>
+    discoverySocket.emit('room:join', { roomId: liveDiscoveryId }, resolve));
+  await delay(250);
+  const lobbySocketOnly = await api('GET', '/api/rooms?category=PARTY&region=PK&limit=100');
+  check('home discovery does not promote a socket-only room without LiveKit media presence',
+    discoveryAck?.ok === true &&
+    !lobbySocketOnly.json?.rooms?.some((r) => r.id === liveDiscoveryId));
+
+  const discoveryRoomName = await sql(`select livekit_room_name from rooms where id='${liveDiscoveryId}'`);
+  const discoveryRoomSid = await sql(`select livekit_session_sid from rooms where id='${liveDiscoveryId}'`);
+  await livekitWebhookController.reconcile({
+    event: 'participant_joined',
+    room: { name: discoveryRoomName, sid: discoveryRoomSid },
+    participant: { identity: watcher.user.id },
+  });
+  await delay(250);
+  const lobbyLive = await api('GET', '/api/rooms?category=PARTY&region=PK&limit=100');
+  const liveCard = lobbyLive.json?.rooms?.find((r) => r.id === liveDiscoveryId);
+  check('home category shows only after both app socket and LiveKit participant are present',
+    !!liveCard && liveCard.listenerCount === 1 &&
+    !lobbyLive.json?.rooms?.some((r) => r.id === idleDiscoveryId),
+    { liveCard: liveCard && { id: liveCard.id, listenerCount: liveCard.listenerCount } });
+
+  const wrongRegionLobby = await api('GET', '/api/rooms?category=PARTY&region=US&limit=100');
+  check('home category region filter excludes rooms assigned to another country',
+    !wrongRegionLobby.json?.rooms?.some((r) => r.id === liveDiscoveryId));
+
+  discoverySocket.disconnect();
+  await delay(350);
+  await deactivateDiscoveryRoom(liveDiscoveryId, watcher.user.id);
+  const lobbyAfterDisconnect = await api('GET', '/api/rooms?category=PARTY&region=PK&limit=100');
+  check('home category removes a room after its final room socket disconnects',
+    !lobbyAfterDisconnect.json?.rooms?.some((r) => r.id === liveDiscoveryId),
+    { stillVisible: lobbyAfterDisconnect.json?.rooms?.some((r) => r.id === liveDiscoveryId) });
+  await api('POST', `/api/rooms/${liveDiscoveryId}/close`, { token: watcher.token, body: {} });
+  await api('POST', `/api/rooms/${idleDiscoveryId}/close`, { token: shopUser.token, body: {} });
   // A socket only subscribes a client the room already accepted, so both of these join over REST
   // first — which is what the app does, and what keeps a moderator's kick from being undone here.
   await api('POST', `/api/rooms/${shopRoomId}/join`, { token: watcher.token, body: {} });
@@ -1937,6 +2023,7 @@ function loadLivekitService() {
     },
   });
   const profileRoom = messy.json && messy.json.room;
+  const profileRoomSocket = await activateDiscoveryRoom(profileRoom.id, a.token, A, 'profile-discovery');
   check('profile: language and region are normalized and rules trimmed on the way in',
     messy.status === 201 && profileRoom.language === 'en-us' && profileRoom.region === 'US'
       && profileRoom.rules === 'No hate speech. Mic etiquette after 22:00.',
@@ -1985,21 +2072,32 @@ function loadLivekitService() {
     cleared.json && { rules: cleared.json.room.rules, language: cleared.json.room.language });
 
   const trending = await api('GET', '/api/rooms?sort=trending&limit=8');
-  const trendIds = (trending.json.rooms || []).map((r) => r.id);
-  const trendValues = [];
-  for (const id of trendIds) {
-    trendValues.push(Number(await sql(`select coalesce(sum(amount_diamonds),0) from transactions where room_id='${id}' and type='GIFT_SENT' and created_at > now() - interval '24 hours'`)));
-  }
-  const trendOrdered = trendValues.every((v, i) => i === 0 || trendValues[i - 1] >= v);
-  check('discovery: sort=trending really orders by gifts in the last 24 hours',
-    trending.status === 200 && trendOrdered, { order: trendValues });
+  const trendRooms = trending.json.rooms || [];
+  const trendOrdered = trendRooms.every((r, i) =>
+    i === 0 || Number(trendRooms[i - 1].listenerCount) >= Number(r.listenerCount));
+  check('discovery: trending ranks the currently-connected audience first',
+    trending.status === 200 && trendOrdered,
+    { listeners: trendRooms.map((r) => r.listenerCount) });
   const recent = await api('GET', '/api/rooms?sort=recent&limit=8');
-  const recentOrdered = (recent.json.rooms || []).every((r, i, all) => i === 0 || new Date(all[i - 1].createdAt) >= new Date(r.createdAt));
-  check('discovery: sort=recent orders by creation time, newest first', recent.status === 200 && recentOrdered,
-    { statuses: recent.json.rooms && recent.json.rooms.map((r) => r.createdAt) });
+  const recentRooms = recent.json.rooms || [];
+  const recentOrdered = recentRooms.every((r, i) => i === 0 ||
+    Number(recentRooms[i - 1].listenerCount) > Number(r.listenerCount) ||
+    (Number(recentRooms[i - 1].listenerCount) === Number(r.listenerCount) &&
+      new Date(recentRooms[i - 1].createdAt) >= new Date(r.createdAt)));
+  check('discovery: recent keeps the live audience first, then newest rooms within a tie',
+    recent.status === 200 && recentOrdered,
+    { rooms: recentRooms.map((r) => ({ listeners: r.listenerCount, createdAt: r.createdAt })) });
   const badSort = await api('GET', '/api/rooms?sort=hot');
   check('discovery: an unknown sort is named, not silently ignored', badSort.status === 400, { status: badSort.status });
 
+  const quickCandidateResponse = await api('POST', '/api/rooms', {
+    token: shopUser.token,
+    body: { title: `E2E Quick Join Candidate ${stamp}`, category: 'CHAT', type: 'PUBLIC', region: 'US' },
+  });
+  const quickCandidate = quickCandidateResponse.json?.room;
+  const quickRoomSocket = await activateDiscoveryRoom(
+    quickCandidate.id, shopUser.token, shopUser.user.id, 'quick-discovery',
+  );
   const anonQuick = await api('GET', '/api/rooms/quick-join');
   check('quick join: needs a session', anonQuick.status === 401, { status: anonQuick.status });
   const quick = await api('GET', '/api/rooms/quick-join', { token: b.token });
@@ -2012,6 +2110,12 @@ function loadLivekitService() {
     quickAgain.status === 200 && quickAgain.json.room.id !== quick.json.room.id,
     { first: quick.json.room && quick.json.room.id, second: quickAgain.json.room && quickAgain.json.room.id });
   await api('POST', `/api/rooms/${quick.json.room.id}/leave`, { token: b.token, body: {} });
+  quickRoomSocket.disconnect();
+  profileRoomSocket.disconnect();
+  await delay(350);
+  await deactivateDiscoveryRoom(quickCandidate.id, shopUser.user.id);
+  await deactivateDiscoveryRoom(profileRoom.id, A);
+  await api('POST', `/api/rooms/${quickCandidate.id}/close`, { token: shopUser.token, body: {} });
 
   const mine = await api('GET', '/api/rooms/mine?limit=20', { token: a.token });
   check('my room: lists the rooms a hosts, and not the ones b hosts',
