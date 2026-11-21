@@ -5,7 +5,7 @@ import { query } from '../config/db';
 import { presenceKeys, rateLimit, redis, refreshRoomLivePresence, touchOnline } from '../config/redis';
 import { verifyToken } from './token.service';
 import { GiftDto, MiniUser, SeatDto } from '../utils/serialize';
-import { appendChat, appendSystemChat, assertMayAttendRoom, fetchMiniUser, isActiveRoomMember, leaveRoom, loadRoom, recomputeListenerCount, seatSnapshot, setHandRaised } from './room.service';
+import { appendChat, appendSystemChat, assertMayAttendRoom, fetchMiniUser, isActiveRoomMember, loadRoom, recomputeListenerCount, seatSnapshot, setHandRaised } from './room.service';
 import { needsContext, recordEarningProgressOutside } from './earning.service';
 import { forgetLikes, registerLike } from './like.service';
 import { RoomGiftEventDto, recentRoomGiftEvents } from './gift-events.service';
@@ -210,10 +210,8 @@ async function detachRoomSocket(roomId: string, userId: string, socketId: string
     if (remainingRoomUsers === 0) await redis.del(presenceKeys.roomUsers(roomId));
     else await redis.expire(presenceKeys.roomUsers(roomId), ROOM_PRESENCE_TTL_SECONDS);
     await refreshRoomLivePresence(roomId);
-    // REST leave and socket disconnect can race; leaveRoom is deliberately idempotent.
-    await leaveRoom(userId, roomId).catch((err) =>
-      console.warn('[socket] leave room presence', roomId, userId, err.message),
-    );
+    // Do not mutate room membership or seats on a transport disconnect. REST leave and
+    // LiveKit participant webhooks remain authoritative; this index only controls discovery.
   }
 }
 
