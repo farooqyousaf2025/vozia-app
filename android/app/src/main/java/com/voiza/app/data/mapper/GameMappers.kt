@@ -10,6 +10,7 @@ import com.voiza.app.data.remote.dto.GameSessionDto
 import com.voiza.app.data.remote.dto.GameSettlementDto
 import com.voiza.app.domain.model.CarromBoard
 import com.voiza.app.domain.model.CarromCoin
+import com.voiza.app.domain.model.CheckersBoard
 import com.voiza.app.domain.model.ChessBoard
 import com.voiza.app.domain.model.ConnectFourBoard
 import com.voiza.app.domain.model.RockPaperScissorsBoard
@@ -160,9 +161,19 @@ internal fun parseBoard(gameKey: String, raw: JsonElement?): GameBoard {
         "ROCK_PAPER_SCISSORS" -> parseRockPaperScissors(obj)
         "CHESS" -> parseChess(obj)
         "CARROM" -> parseCarrom(obj)
+        "CHECKERS" -> parseCheckers(obj)
         else -> GameBoard.Unsupported(gameKey)
     }
 }
+
+private fun parseCheckers(obj: JsonObject): CheckersBoard = CheckersBoard(
+    board = obj.optArray("board").map { it?.takeIf { e -> e.isText }?.asString },
+    turn = obj.optString("turn", "r"),
+    turnPosition = obj.optInt("turnPosition"),
+    winnerPosition = obj.optNullableInt("winnerPosition"),
+    forcedFrom = obj.optNullableInt("forcedFrom"),
+    moveCount = obj.optInt("moveCount"),
+)
 
 private fun parseCarrom(obj: JsonObject): CarromBoard {
     val coins = obj.optArray("coins").mapNotNull { element ->
