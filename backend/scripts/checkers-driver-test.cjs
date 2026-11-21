@@ -41,7 +41,7 @@ assert.equal(checkersDriver.isFinished(result.state, ctx), true);
 // Promotion to king at the far rank.
 let promotion = { ...initial, board: Array(64).fill(null), turn: 'r', turnPosition: 0, winnerPosition: null, forcedFrom: null };
 promotion.board[10] = 'r';
-promotion.board[1] = 'b';
+promotion.board[63] = 'b';
 result = checkersDriver.applyAction(promotion, ctx, 'red', { type: 'MOVE', payload: { from: 10, to: 1 } });
 assert.equal(result.ok, true);
 assert.equal(result.state.board[1], 'R');
