@@ -1,4 +1,5 @@
 import { many } from '../config/db';
+import { redis } from '../config/redis';
 import { excludeTestSql } from './qa.service';
 
 /**
@@ -77,6 +78,15 @@ export async function discoveryRanking(
   region: string | null,
   limit: number,
 ): Promise<{ kind: DiscoveryKind; region: string | null; leaders: DiscoveryLeader[] }> {
+  // A short cache absorbs lobby refresh bursts without making the board feel stale.
+  const cacheKey = `discovery:ranking:${kind}:${region ?? 'global'}:${limit}`;
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) return JSON.parse(cached) as { kind: DiscoveryKind; region: string | null; leaders: DiscoveryLeader[] };
+  } catch {
+    // Cache availability must not make public discovery unavailable; fall through to PostgreSQL.
+  }
+
   let rows: RoomActivityRow[];
   if (kind === 'rooms') {
     rows = await many<RoomActivityRow>(
@@ -127,7 +137,7 @@ export async function discoveryRanking(
     );
   }
 
-  return {
+  const result = {
     kind,
     region,
     leaders: rows.map((row, index) => ({
@@ -143,4 +153,10 @@ export async function discoveryRanking(
       ...(row.host_name === undefined ? {} : { hostName: row.host_name, hostAvatarUrl: row.host_avatar_url ?? null }),
     })),
   };
+  try {
+    await redis.set(cacheKey, JSON.stringify(result), 'EX', 20);
+  } catch {
+    // The next request can recompute; a cache write is never a ranking dependency.
+  }
+  return result;
 }
