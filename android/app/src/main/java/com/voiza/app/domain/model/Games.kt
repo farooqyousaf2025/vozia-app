@@ -141,6 +141,31 @@ data class ChessBoard(
     val lastMove: Map<String, Any?>?,
 ) : GameBoard
 
+/** One server-simulated Carrom coin. Coordinates use the backend's 0..1000 board space. */
+data class CarromCoin(
+    val id: Int,
+    val owner: Int?,
+    val kind: String,
+    val x: Float,
+    val y: Float,
+    val pocketed: Boolean,
+)
+
+/** Server-authored Carrom position; the client only sends aim, power and striker lane. */
+data class CarromBoard(
+    val coins: List<CarromCoin>,
+    val strikerX: Float,
+    val strikerY: Float,
+    val turnPosition: Int,
+    val scores: Map<Int, Int>,
+    val queenPendingFor: Int?,
+    val queenCovered: Boolean,
+    val winnerPosition: Int?,
+    val draw: Boolean,
+    val shotCount: Int,
+    val foulCount: Map<Int, Int>,
+) : GameBoard
+
 data class QuizQuestionView(val id: Int, val prompt: String, val options: List<String>)
 
 /** One answer the server accepted, with the points it awarded. */

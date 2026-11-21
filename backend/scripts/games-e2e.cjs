@@ -101,7 +101,7 @@ const SHIPPED = `is_active = false, entry_fee_enabled = false, entry_fee_diamond
   entry_fee_max = 0, prize_enabled = false, commission_bps = 0, refund_policy = 'CANCELLED',
   promo_free_entry = false, promo_until = NULL, daily_entry_limit = 50,
   prize_rules = '[{"rank":1,"share_bps":10000}]'::jsonb`;
-const resetShipped = () => sql(`update game_definitions set ${SHIPPED} where key in ('TIC_TAC_TOE','QUIZ_BATTLE','LUDO','CONNECT_FOUR','ROCK_PAPER_SCISSORS','CHESS')`);
+const resetShipped = () => sql(`update game_definitions set ${SHIPPED} where key in ('TIC_TAC_TOE','QUIZ_BATTLE','LUDO','CONNECT_FOUR','ROCK_PAPER_SCISSORS','CHESS','CARROM')`);
 
 (async () => {
   await resetShipped();
@@ -678,6 +678,48 @@ const resetShipped = () => sql(`update game_definitions set ${SHIPPED} where key
       rpsDone.json.session.state.winnerPosition === 0 && rpsDone.json.session.entryFeeDiamonds === 0,
     { status: rpsDone.json && rpsDone.json.session.status, winner: rpsDone.json && rpsDone.json.session.state.winnerPosition });
   await api('PUT', '/api/admin/games/ROCK_PAPER_SCISSORS/rules', { token: admin, body: { isActive: false } });
+
+  // ---- J4. Carrom accepts shot intent only; the server owns every physics result ----
+  const carromHost = await makeUser('crh');
+  const carromGuest = await makeUser('crg');
+  await api('PUT', '/api/admin/games/CARROM/rules', { token: admin, body: { isActive: true } });
+  const carromRoom = await api('POST', '/api/rooms', {
+    token: carromHost.token,
+    body: { title: `E2E Carrom ${stamp}`, category: 'CHAT', type: 'PUBLIC', seatCapacity: 4 },
+  });
+  const carromOpen = await api('POST', '/api/games', {
+    token: carromHost.token,
+    body: { gameKey: 'CARROM', roomId: carromRoom.json.room.id },
+  });
+  const carromId = carromOpen.json.session.id;
+  await api('POST', `/api/games/${carromId}/join`, { token: carromGuest.token, body: {} });
+  await api('POST', `/api/games/${carromId}/ready`, { token: carromGuest.token, body: {} });
+  const carromStart = await api('POST', `/api/games/${carromId}/start`, { token: carromHost.token, body: {} });
+  const carromBadShot = await api('POST', `/api/games/${carromId}/action`, {
+    token: carromHost.token, body: { type: 'SHOT', payload: { angle: 90, power: 2, strikerX: 500 } },
+  });
+  const carromOutOfTurn = await api('POST', `/api/games/${carromId}/action`, {
+    token: carromGuest.token, body: { type: 'SHOT', payload: { angle: 90, power: 0.5, strikerX: 500 } },
+  });
+  const carromShot = await api('POST', `/api/games/${carromId}/action`, {
+    token: carromHost.token, body: { type: 'SHOT', payload: { angle: 90, power: 0.62, strikerX: 500 } },
+  });
+  const carromState = carromShot.json && carromShot.json.session && carromShot.json.session.state;
+  check('carrom: starts free with 18 coins and a central queen', carromStart.status === 200 &&
+    carromStart.json.session.entryFeeDiamonds === 0 && carromStart.json.session.state.coins.length === 19 &&
+    carromStart.json.session.state.coins.filter((coin) => coin.kind === 'coin').length === 18 &&
+    carromStart.json.session.state.coins.filter((coin) => coin.kind === 'queen').length === 1,
+    { start: carromStart.status, coins: carromStart.json?.session?.state?.coins?.length, fee: carromStart.json?.session?.entryFeeDiamonds });
+  check('carrom: invalid power and out-of-turn shots are rejected without advancing the match', carromBadShot.status === 400 &&
+    codeOf(carromBadShot) === 'bad_shot' && carromOutOfTurn.status === 400 &&
+    codeOf(carromOutOfTurn) === 'out_of_turn' && carromStart.json.session.state.shotCount === 0,
+    { badShot: codeOf(carromBadShot), outOfTurn: codeOf(carromOutOfTurn) });
+  check('carrom: the backend simulates a bounded shot and persists finite coin coordinates', carromShot.status === 200 &&
+    carromState.shotCount === 1 && carromState.coins.length === 19 &&
+    carromState.coins.every((coin) => Number.isFinite(coin.x) && Number.isFinite(coin.y)) &&
+    carromState.striker.pocketed === false && carromShot.json.session.entryFeeDiamonds === 0,
+    { status: carromShot.status, shots: carromState?.shotCount, striker: carromState?.striker });
+  await api('PUT', '/api/admin/games/CARROM/rules', { token: admin, body: { isActive: false } });
 
   // ---- K. leave the shipped posture as it was found ----
   const restore = await api('PUT', '/api/admin/games/TIC_TAC_TOE/rules', {

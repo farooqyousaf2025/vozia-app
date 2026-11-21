@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.voiza.app.data.remote.dto.GameCatalogResponse
 import com.voiza.app.data.remote.dto.GameHistoryResponse
 import com.voiza.app.data.remote.dto.GameSessionDto
+import com.voiza.app.domain.model.CarromBoard
 import com.voiza.app.domain.model.ChessBoard
 import com.voiza.app.domain.model.GameBoard
 import com.voiza.app.domain.model.GamePhase
@@ -243,6 +244,34 @@ class GameMappersTest {
 
         assertEquals(0, rows.first().netDiamonds)
         assertNull(rows.first().endedAt)
+    }
+
+    @Test
+    fun `the Carrom parser reads server coins, striker, scores and queen state`() {
+        val state = """{"coins":[
+            {"id":0,"owner":0,"kind":"coin","x":460,"y":500,"vx":0,"vy":0,"pocketed":false},
+            {"id":1,"owner":1,"kind":"coin","x":540,"y":500,"vx":0,"vy":0,"pocketed":true},
+            {"id":18,"owner":null,"kind":"queen","x":500,"y":500,"vx":0,"vy":0,"pocketed":false}
+        ],"striker":{"x":500,"y":840,"vx":0,"vy":0,"pocketed":false},
+        "turnPosition":1,"scores":{"0":2,"1":1},"pocketedBy":{"0":[0],"1":[]},
+        "queenPendingFor":1,"queenCovered":false,"winnerPosition":null,"draw":false,
+        "foulCount":{"0":0,"1":1},"shotCount":3,"timeoutPosition":null}"""
+        val session = gson.fromJson(sessionJson("CARROM", state), GameSessionDto::class.java).toDomain()
+        val board = session.board as CarromBoard
+
+        assertEquals(3, board.coins.size)
+        assertEquals(0, board.coins.first().owner)
+        assertEquals(540f, board.coins[1].x)
+        assertTrue(board.coins[1].pocketed)
+        assertNull(board.coins.last().owner)
+        assertEquals(500f, board.strikerX)
+        assertEquals(840f, board.strikerY)
+        assertEquals(1, board.turnPosition)
+        assertEquals(2, board.scores[0])
+        assertEquals(1, board.queenPendingFor)
+        assertFalse(board.queenCovered)
+        assertEquals(3, board.shotCount)
+        assertEquals(1, board.foulCount[1])
     }
 
     @Test

@@ -8,6 +8,8 @@ import com.voiza.app.data.remote.dto.GameParticipantDto
 import com.voiza.app.data.remote.dto.GameResultDto
 import com.voiza.app.data.remote.dto.GameSessionDto
 import com.voiza.app.data.remote.dto.GameSettlementDto
+import com.voiza.app.domain.model.CarromBoard
+import com.voiza.app.domain.model.CarromCoin
 import com.voiza.app.domain.model.ChessBoard
 import com.voiza.app.domain.model.ConnectFourBoard
 import com.voiza.app.domain.model.RockPaperScissorsBoard
@@ -157,8 +159,45 @@ internal fun parseBoard(gameKey: String, raw: JsonElement?): GameBoard {
         "CONNECT_FOUR" -> parseConnectFour(obj)
         "ROCK_PAPER_SCISSORS" -> parseRockPaperScissors(obj)
         "CHESS" -> parseChess(obj)
+        "CARROM" -> parseCarrom(obj)
         else -> GameBoard.Unsupported(gameKey)
     }
+}
+
+private fun parseCarrom(obj: JsonObject): CarromBoard {
+    val coins = obj.optArray("coins").mapNotNull { element ->
+        if (element == null || !element.isJsonObject) return@mapNotNull null
+        val coin = element.asJsonObject
+        CarromCoin(
+            id = coin.optInt("id"),
+            owner = coin.optNullableInt("owner"),
+            kind = coin.optString("kind", "coin"),
+            x = coin.get("x")?.takeIf { it.isNumber }?.asFloat ?: 500f,
+            y = coin.get("y")?.takeIf { it.isNumber }?.asFloat ?: 500f,
+            pocketed = coin.optBoolean("pocketed"),
+        )
+    }
+    val striker = obj.get("striker")?.takeIf { it.isJsonObject }?.asJsonObject
+    fun intMap(field: String): Map<Int, Int> =
+        obj.get(field)?.takeIf { it.isJsonObject }?.asJsonObject?.entrySet()
+            ?.mapNotNull { (key, value) ->
+                val seat = key.toIntOrNull() ?: return@mapNotNull null
+                if (!value.isNumber) return@mapNotNull null
+                seat to value.asInt
+            }?.toMap() ?: emptyMap()
+    return CarromBoard(
+        coins = coins,
+        strikerX = striker?.get("x")?.takeIf { it.isNumber }?.asFloat ?: 500f,
+        strikerY = striker?.get("y")?.takeIf { it.isNumber }?.asFloat ?: 840f,
+        turnPosition = obj.optInt("turnPosition"),
+        scores = intMap("scores"),
+        queenPendingFor = obj.optNullableInt("queenPendingFor"),
+        queenCovered = obj.optBoolean("queenCovered"),
+        winnerPosition = obj.optNullableInt("winnerPosition"),
+        draw = obj.optBoolean("draw"),
+        shotCount = obj.optInt("shotCount"),
+        foulCount = intMap("foulCount"),
+    )
 }
 
 private fun parseChess(obj: JsonObject): ChessBoard = ChessBoard(
