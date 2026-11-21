@@ -19,6 +19,8 @@ export const PERMISSIONS = [
   'dashboard:read',
   'user:read',
   'user:moderate',
+  // Account provisioning is reserved for the platform super-admin; operators may moderate but not create identities.
+  'account:create',
   'user:wallet',
   'user:vip',
   'room:read',
