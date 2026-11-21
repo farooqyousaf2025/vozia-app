@@ -354,7 +354,7 @@ export default function OperationsPage() {
                 {notificationInbox.notifications.map((item) => (
                   <div key={item.id} className={`flex flex-wrap items-start justify-between gap-3 rounded-xl border p-3 ${item.readAt ? 'border-line/60 opacity-70' : 'border-violet-400/40'}`}>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2"><Badge tone={item.severity === 'CRITICAL' ? 'red' : 'amber'}>{item.severity}</Badge><span className="text-sm font-semibold text-ink">{item.title}</span>{!item.readAt && <Badge tone="blue">NEW</Badge>}</div>
+                      <div className="flex items-center gap-2"><Badge tone={item.severity === 'CRITICAL' ? 'red' : 'amber'}>{item.severity}</Badge><span className="text-sm font-semibold text-ink">{item.title}</span>{!item.readAt && <Badge tone="sky">NEW</Badge>}</div>
                       <p className="mt-1 text-sm text-muted">{item.message}</p>
                       <p className="mt-1 text-[10px] text-muted">{new Date(item.createdAt).toLocaleString()} · In-app</p>
                     </div>
