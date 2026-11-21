@@ -178,19 +178,43 @@ function data(socket: Socket): SocketData {
 }
 
 /** A participant remains live while at least one of their sockets is still in this room. */
+const ROOM_PRESENCE_TTL_SECONDS = 60;
+
+async function refreshRoomPresenceTtl(roomId: string, userId: string): Promise<void> {
+  await Promise.all([
+    redis.expire(presenceKeys.roomUserSockets(roomId, userId), ROOM_PRESENCE_TTL_SECONDS),
+    redis.expire(presenceKeys.roomUsers(roomId), ROOM_PRESENCE_TTL_SECONDS),
+  ]);
+}
+
 async function attachRoomSocket(roomId: string, userId: string, socketId: string): Promise<void> {
   const key = presenceKeys.roomUserSockets(roomId, userId);
   await redis.sadd(key, socketId);
-  await redis.expire(key, 86_400);
+  const sockets = await redis.scard(key);
+  if (sockets === 1) await redis.sadd(presenceKeys.roomUsers(roomId), userId);
+  const roomUsers = presenceKeys.roomUsers(roomId);
+  const count = await redis.scard(roomUsers);
+  await redis.expire(key, ROOM_PRESENCE_TTL_SECONDS);
+  await redis.expire(roomUsers, ROOM_PRESENCE_TTL_SECONDS);
+  if (count > 0) await redis.zadd(presenceKeys.activeRooms, count, roomId);
 }
 
 /** Remove a socket and close its participant presence only when the last room socket leaves. */
 async function detachRoomSocket(roomId: string, userId: string, socketId: string): Promise<void> {
   const key = presenceKeys.roomUserSockets(roomId, userId);
   await redis.srem(key, socketId);
-  const remaining = await redis.scard(key);
-  if (remaining === 0) {
+  const remainingUserSockets = await redis.scard(key);
+  if (remainingUserSockets === 0) {
     await redis.del(key);
+    await redis.srem(presenceKeys.roomUsers(roomId), userId);
+    const remainingRoomUsers = await redis.scard(presenceKeys.roomUsers(roomId));
+    if (remainingRoomUsers === 0) {
+      await redis.del(presenceKeys.roomUsers(roomId));
+      await redis.zrem(presenceKeys.activeRooms, roomId);
+    } else {
+      await redis.expire(presenceKeys.roomUsers(roomId), ROOM_PRESENCE_TTL_SECONDS);
+      await redis.zadd(presenceKeys.activeRooms, remainingRoomUsers, roomId);
+    }
     // REST leave and socket disconnect can race; leaveRoom is deliberately idempotent.
     await leaveRoom(userId, roomId).catch((err) =>
       console.warn('[socket] leave room presence', roomId, userId, err.message),
@@ -233,6 +257,16 @@ export function initSocket(httpServer: HttpServer): Server {
   io.on('connection', async (socket: Socket) => {
     const me = data(socket);
     const admin = me.scope === 'admin';
+    if (!admin) {
+      // Engine.IO's pong is the room-presence heartbeat. If the process dies without a
+      // disconnect callback, the Redis room index expires within one minute instead of
+      // advertising a dead room for hours.
+      socket.conn.on('packet', (packet: { type: string }) => {
+        if (packet.type === 'pong' && me.roomId) {
+          refreshRoomPresenceTtl(me.roomId, me.userId).catch(() => undefined);
+        }
+      });
+    }
     // Operator logins are not app users: no presence key and no personal channel,
     // because the console must not show up in any roster or online count.
     if (!admin) {
