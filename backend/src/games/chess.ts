@@ -38,7 +38,7 @@ function pseudo(s: ChessState, from: number): number[] {
   } else if(kind==='n'){for(const [df,dr] of [[1,2],[2,1],[2,-1],[1,-2],[-1,-2],[-2,-1],[-2,1],[-1,2]])add(f+df,r+dr);}
   else {
     const dirs=kind==='b'?[[1,1],[1,-1],[-1,1],[-1,-1]]:kind==='r'?[[1,0],[-1,0],[0,1],[0,-1]]:[[1,1],[1,-1],[-1,1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
-    for(const [df,dr] of dirs){let x=f+df,y=r+dr;while(inside(x,y)){const to=pos(x,y),t=s.board[to];if(!t)out.push(to);else{if(color(t)!==side&&t.toLowerCase()!=='k')out.push(to);break;}x+=df;y+=dr;}}
+    for(const [df,dr] of dirs){let x=f+df,y=r+dr;while(inside(x,y)){const to=pos(x,y),t=s.board[to];if(!t)out.push(to);else{if(color(t)!==side&&t.toLowerCase()!=='k')out.push(to);break;}if(kind==='k')break;x+=df;y+=dr;}}
     if(kind==='k'&&r===(side==='w'?7:0)&&f===4&&!inCheck(s.board,side)){
       const rank=side==='w'?7:0, enemy=side==='w'?'b':'w';
       if(s.castling.includes(side==='w'?'K':'k')&&!s.board[pos(5,rank)]&&!s.board[pos(6,rank)]&&s.board[pos(7,rank)]===(side==='w'?'R':'r')&&!attacked(s.board,pos(5,rank),enemy)&&!attacked(s.board,pos(6,rank),enemy))out.push(pos(6,rank));
@@ -66,7 +66,6 @@ function legal(s:ChessState,from:number,to:number,promotion:string):boolean{
  return !inCheck(apply(s,from,to,promotion).board,s.turn);
 }
 function legalMoves(s:ChessState):Array<[number,number]>{const a:Array<[number,number]>=[];for(let i=0;i<64;i++)if(color(s.board[i])===s.turn)for(const to of pseudo(s,i))if(legal(s,i,to,'q'))a.push([i,to]);return a;}
-export function chessLegalMovesForDiagnostics(s: ChessState): string[] { return legalMoves(s).map(([from,to]) => algebraic(from)+'-'+algebraic(to)); }
 function finish(s:ChessState,ctx:DriverContext):ChessState{
  const check=inCheck(s.board,s.turn), moves=legalMoves(s), mate=check&&moves.length===0, stale=!check&&moves.length===0;
  if(mate){const winner=ctx.players.find(p=>p.position!==s.turnPosition);return {...s,check:true,checkmate:true,winnerPosition:winner?.position??null};}
