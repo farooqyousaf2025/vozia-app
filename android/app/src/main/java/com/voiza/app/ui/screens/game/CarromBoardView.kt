@@ -72,7 +72,7 @@ fun CarromBoardView(
             drawRoundRect(BoardWood, size = size, cornerRadius = CornerRadius(30f * sx))
             drawRoundRect(BoardBed, topLeft = p(62f, 62f), size = Size(876f * sx, 876f * sy), cornerRadius = CornerRadius(18f * sx))
             drawRoundRect(BoardLine, topLeft = p(112f, 112f), size = Size(776f * sx, 776f * sy), cornerRadius = CornerRadius(12f * sx), style = Stroke(3f * sx))
-            listOf(82f to 82f, 918f to 82f, 82f to 918f, 918f to 918f).forEach { (x, y) ->
+            listOf(110f to 110f, 890f to 110f, 110f to 890f, 890f to 890f).forEach { (x, y) ->
                 drawCircle(Color(0xFF211A22), 43f * sx, p(x, y))
                 drawCircle(Color(0xFF9A7656), 47f * sx, p(x, y), style = Stroke(4f * sx))
             }
