@@ -67,6 +67,7 @@ fun ConversationDto.toDomainOrNull(): Conversation? {
         id = id,
         partner = partner,
         lastMessageAt = lastMessageAt,
+        lastMessagePreview = lastMessagePreview?.takeIf { it.isNotBlank() },
         unreadCount = (unreadCount ?: 0).coerceAtLeast(0),
     )
 }

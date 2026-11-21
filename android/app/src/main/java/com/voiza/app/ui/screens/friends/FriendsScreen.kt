@@ -541,9 +541,12 @@ private fun ConversationRow(conversation: Conversation, onClick: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(partner.username, color = OnDarkHigh, fontWeight = FontWeight.SemiBold)
                 Text(
-                    text = if (conversation.lastMessageAt == null) "No messages yet" else "Last message ${conversation.lastMessageAt.take(10)}",
+                    text = conversation.lastMessagePreview
+                        ?: if (conversation.lastMessageAt == null) "No messages yet" else "Open to view messages",
                     color = OnDarkMuted,
                     fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             if (conversation.unreadCount > 0) {
