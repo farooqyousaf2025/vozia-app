@@ -82,6 +82,8 @@ class GameSessionViewModel(
 
     fun playCell(cell: Int) = act("MOVE", mapOf("cell" to cell))
 
+    fun chooseHand(choice: String) = act("CHOOSE", mapOf("choice" to choice))
+
     fun answer(optionIndex: Int) =
         act("ANSWER", mapOf("questionIndex" to (_state.value.session?.board as? QuizBoard)?.index, "optionIndex" to optionIndex))
 
