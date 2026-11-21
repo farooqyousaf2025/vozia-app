@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.voiza.app.domain.model.ChessBoard
 import com.voiza.app.domain.model.ConnectFourBoard
 import com.voiza.app.domain.model.GameBoard
 import com.voiza.app.domain.model.GameSession
@@ -89,6 +90,7 @@ fun GameScreen(
                     secondsLeft = state.secondsLeft,
                     busy = state.busy,
                     onCell = viewModel::playCell,
+                    onChessMove = viewModel::playChessMove,
                     onChoice = viewModel::chooseHand,
                     onAnswer = viewModel::answer,
                     onRoll = viewModel::rollDice,
@@ -113,6 +115,7 @@ private fun SessionBody(
     secondsLeft: Int?,
     busy: Boolean,
     onCell: (Int) -> Unit,
+    onChessMove: (Int, Int) -> Unit,
     onChoice: (String) -> Unit,
     onAnswer: (Int) -> Unit,
     onRoll: () -> Unit,
@@ -136,6 +139,7 @@ private fun SessionBody(
         busy = busy,
         secondsLeft = secondsLeft,
         onCell = onCell,
+        onChessMove = onChessMove,
         onChoice = onChoice,
         onAnswer = onAnswer,
         onRoll = onRoll,
@@ -163,6 +167,7 @@ private fun RenderBoard(
     busy: Boolean,
     secondsLeft: Int?,
     onCell: (Int) -> Unit,
+    onChessMove: (Int, Int) -> Unit,
     onChoice: (String) -> Unit,
     onAnswer: (Int) -> Unit,
     onRoll: () -> Unit,
@@ -170,6 +175,7 @@ private fun RenderBoard(
 ) {
     val mySeat = session.participant(myId)?.position
     when (val board = session.board) {
+        is ChessBoard -> ChessBoardView(board = board, myTurn = session.turnOwnerId == myId, locked = busy || session.isOver, onMove = onChessMove)
         is TicTacToeBoard -> TicTacToeBoardView(
             board = board,
             session = session,
@@ -320,6 +326,7 @@ private fun gameTitle(gameKey: String): String = when (gameKey) {
     "LUDO" -> "Ludo"
     "CONNECT_FOUR" -> "Connect Four"
     "ROCK_PAPER_SCISSORS" -> "Rock Paper Scissors"
+    "CHESS" -> "Chess"
     else -> gameKey.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
 }
 
