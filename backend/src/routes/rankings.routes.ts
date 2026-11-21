@@ -4,7 +4,7 @@ import { optionalUser, requireAuth } from '../middleware/auth';
 
 const router = Router();
 
-router.get('/', optionalUser, rankings.board);
+router.get('/discovery', rankings.discovery);\nrouter.get('/', optionalUser, rankings.board);
 router.post('/claim', requireAuth, rankings.claim);
 
 export default router;
