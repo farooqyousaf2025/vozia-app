@@ -196,7 +196,13 @@ fun HomeScreen(
                 }
             }
 
-            val tabs = listOf(RoomCategory.POPULAR, RoomCategory.PARTY, RoomCategory.MUSIC)
+            val tabs = listOf(
+                RoomCategory.POPULAR,
+                RoomCategory.PARTY,
+                RoomCategory.MUSIC,
+                RoomCategory.GAME,
+                RoomCategory.CHAT,
+            )
             TabRow(
                 selectedTabIndex = tabs.indexOf(state.category).coerceAtLeast(0),
                 containerColor = Color.Transparent,
