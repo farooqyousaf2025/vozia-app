@@ -6,6 +6,10 @@ port: 7880
 bind_addresses:
   - ""
 
+# Internal Prometheus scrape endpoint. Keep this port inside the Docker network;
+# the backend reads it for the Admin Operations page.
+prometheus_port: 6789
+
 # RTC signalling / media
 rtc:
   # WebSocket over TCP on the HTTP port, plus a dedicated TCP port for environments

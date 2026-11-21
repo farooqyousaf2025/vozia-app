@@ -71,6 +71,39 @@ export interface AdminStats {
 }
 
 export type OperationalDependencyState = 'HEALTHY' | 'DEGRADED' | 'DOWN';
+export type OperationalMetricQuality = 'MEASURED' | 'ESTIMATED' | 'CONFIGURED' | 'UNAVAILABLE';
+
+export interface OperationalResourceMetric {
+  value: number | null;
+  unit: string;
+  capacity: number | null;
+  available: number | null;
+  percent: number | null;
+  quality: OperationalMetricQuality;
+  source: string;
+  note?: string;
+}
+
+export interface OperationalResourceFact {
+  label: string;
+  value: string | number | null;
+  unit?: string;
+  quality: OperationalMetricQuality;
+  source: string;
+}
+
+export interface OperationalResourcePanel {
+  cpu: OperationalResourceMetric;
+  memory: OperationalResourceMetric;
+  networkIn: OperationalResourceMetric;
+  networkOut: OperationalResourceMetric;
+  diskRead: OperationalResourceMetric;
+  diskWrite: OperationalResourceMetric;
+  gpuUtilization: OperationalResourceMetric;
+  gpuMemory: OperationalResourceMetric;
+  facts: OperationalResourceFact[];
+  samples: Array<{ name: string; value: number }>;
+}
 
 export interface PlatformOperationsSnapshot {
   generatedAt: string;
@@ -83,6 +116,12 @@ export interface PlatformOperationsSnapshot {
     livekit: OperationalDependencyState;
   };
   liveMediaRooms: number | null;
+  resources: {
+    backend: OperationalResourcePanel;
+    postgres: OperationalResourcePanel;
+    redis: OperationalResourcePanel;
+    livekit: OperationalResourcePanel;
+  };
   queues: {
     withdrawalsPending: number | null;
     rechargesAwaitingVerification: number | null;

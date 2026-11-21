@@ -492,6 +492,25 @@ function loadLivekitService() {
     !('balance' in operations) && !('amount' in operations),
     { queues: operations.queues });
 
+  check('operations: resource telemetry is separated for all four platform services',
+    operationsSnapshot.status === 200 &&
+    operations.resources &&
+    ['backend', 'postgres', 'redis', 'livekit'].every((key) =>
+      operations.resources[key] &&
+      ['cpu', 'memory', 'networkIn', 'networkOut', 'diskRead', 'diskWrite', 'gpuUtilization', 'gpuMemory'].every((metric) =>
+        operations.resources[key][metric] &&
+        ['MEASURED', 'ESTIMATED', 'CONFIGURED', 'UNAVAILABLE'].includes(operations.resources[key][metric].quality) &&
+        typeof operations.resources[key][metric].source === 'string')),
+    { services: operations.resources ? Object.keys(operations.resources) : [] });
+  check('operations: PostgreSQL and Redis expose sourced capacity and runtime facts',
+    operationsSnapshot.status === 200 &&
+    Array.isArray(operations.resources.postgres.facts) &&
+    operations.resources.postgres.facts.some((fact) => fact.label === 'Connection capacity' && fact.quality === 'CONFIGURED') &&
+    Array.isArray(operations.resources.redis.facts) &&
+    operations.resources.redis.facts.some((fact) => fact.label === 'Connected clients' && fact.quality === 'MEASURED'),
+    { postgresFacts: operations.resources && operations.resources.postgres.facts && operations.resources.postgres.facts.length,
+      redisFacts: operations.resources && operations.resources.redis.facts && operations.resources.redis.facts.length });
+
   const systemRoomResponse = await api('POST', '/api/admin/rooms', {
     token: adminToken,
     body: { title: `E2E System Room ${stamp}`, category: 'PARTY', type: 'PUBLIC', seatCapacity: 3 },
