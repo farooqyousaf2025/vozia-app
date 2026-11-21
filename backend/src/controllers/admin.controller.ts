@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { one } from '../config/db';
+import { env } from '../config/env';
 import {
   createBubble,
   deleteBubble,
@@ -254,7 +255,11 @@ export const operationalAlertNotifications = asyncHandler(async (req: Request, r
 });
 
 export const operationalAlertNotificationSettings = asyncHandler(async (_req: Request, res: Response) => {
-  res.json(await getPlatformAlertNotificationSettings());
+  res.json({
+    ...(await getPlatformAlertNotificationSettings()),
+    emailConfigured: Boolean(env.alertDelivery.resendApiKey && env.alertDelivery.emailFrom),
+    webhookConfigured: Boolean(env.alertDelivery.webhookUrl && env.alertDelivery.webhookSecret),
+  });
 });
 
 export const operationalAlertDeliveryProfile = asyncHandler(async (req: Request, res: Response) => {
