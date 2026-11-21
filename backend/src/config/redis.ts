@@ -30,6 +30,8 @@ export const presenceKeys = {
   user: (userId: string) => `presence:user:${userId}`,
   roomListeners: (roomId: string) => `room:${roomId}:listeners`,
   roomUserSockets: (roomId: string, userId: string) => `presence:room:${roomId}:user:${userId}:sockets`,
+  roomUsers: (roomId: string) => `presence:room:${roomId}:users`,
+  activeRooms: 'presence:rooms:active',
 } as const;
 
 /**
