@@ -19,7 +19,7 @@ export const webhook = asyncHandler(async (req: Request, res: Response) => {
   reconcile(event).catch((err) => console.error('[livekit:webhook] reconcile failed', (err as Error).message));
 });
 
-async function reconcile(event: LivekitWebhookEvent): Promise<void> {
+export async function reconcile(event: LivekitWebhookEvent): Promise<void> {
   const roomName = event.room?.name;
   if (!roomName) return;
   const room = await one<RoomRow & { livekit_session_sid: string | null }>(
