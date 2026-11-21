@@ -198,13 +198,27 @@ export async function agencyOperationsReport(opts: {
         LIMIT $1`,
       [hostLimit, opts.inactiveDays],
     ),
-    many<{ agency_count: string | number; active_agency_count: string | number; host_count: string | number }>(
-      `SELECT COUNT(*)::int AS agency_count,
-              COUNT(*) FILTER (WHERE status = 'ACTIVE')::int AS active_agency_count,
-              (SELECT COUNT(*)::int FROM agency_hosts ah JOIN agencies a ON a.id = ah.agency_id
-                WHERE ah.status = 'ACTIVE' AND a.status = 'ACTIVE') AS host_count
-         FROM agencies`,
-      [],
+    many<{
+      agency_count: string | number; active_agency_count: string | number;
+      master_count: string | number; sub_count: string | number;
+      host_count: string | number; inactive_host_count: string | number;
+      earnings_7d: string | number; earnings_30d: string | number;
+    }>(
+      `${ROSTER_CTE}
+       SELECT
+         (SELECT COUNT(*)::int FROM agencies) AS agency_count,
+         (SELECT COUNT(*)::int FROM agencies WHERE status = 'ACTIVE') AS active_agency_count,
+         (SELECT COUNT(*)::int FROM agencies WHERE parent_agency_id IS NULL) AS master_count,
+         (SELECT COUNT(*)::int FROM agencies WHERE parent_agency_id IS NOT NULL) AS sub_count,
+         COUNT(*)::int AS host_count,
+         COUNT(*) FILTER (
+           WHERE last_checkin_at IS NULL
+              OR last_checkin_at < now() - ($1::int * INTERVAL '1 day')
+         )::int AS inactive_host_count,
+         COALESCE(SUM(earnings_7d_coins), 0)::bigint AS earnings_7d,
+         COALESCE(SUM(earnings_30d_coins), 0)::bigint AS earnings_30d
+       FROM roster`,
+      [opts.inactiveDays],
     ),
   ]);
 
@@ -243,30 +257,20 @@ export async function agencyOperationsReport(opts: {
   }));
 
   const counts = countRows[0];
-  const summary = agencies.reduce((acc, agency) => ({
-    agencies: acc.agencies + 1,
-    activeAgencies: acc.activeAgencies + (agency.status === 'ACTIVE' ? 1 : 0),
-    masterAgencies: acc.masterAgencies + (agency.kind === 'MASTER' ? 1 : 0),
-    subAgencies: acc.subAgencies + (agency.kind === 'SUB' ? 1 : 0),
-    activeHosts: acc.activeHosts + agency.activeHosts,
-    inactiveHosts: acc.inactiveHosts + agency.inactiveHosts,
-    hostsWithRecentAttendance: acc.hostsWithRecentAttendance + agency.hostsWithRecentAttendance,
-    earnings7dCoins: acc.earnings7dCoins + agency.earnings7dCoins,
-    earnings30dCoins: acc.earnings30dCoins + agency.earnings30dCoins,
-  }), {
-    agencies: 0, activeAgencies: 0, masterAgencies: 0, subAgencies: 0,
-    activeHosts: 0, inactiveHosts: 0, hostsWithRecentAttendance: 0,
-    earnings7dCoins: 0, earnings30dCoins: 0,
-  });
 
   return {
     generatedAt: new Date().toISOString(), timezone: 'UTC',
     windowDays: opts.windowDays, inactiveDays: opts.inactiveDays,
     summary: {
-      ...summary,
       agencies: number(counts?.agency_count),
       activeAgencies: number(counts?.active_agency_count),
+      masterAgencies: number(counts?.master_count),
+      subAgencies: number(counts?.sub_count),
       activeHosts: number(counts?.host_count),
+      inactiveHosts: number(counts?.inactive_host_count),
+      hostsWithRecentAttendance: Math.max(0, number(counts?.host_count) - number(counts?.inactive_host_count)),
+      earnings7dCoins: number(counts?.earnings_7d),
+      earnings30dCoins: number(counts?.earnings_30d),
     },
     agencies, hosts,
     truncated: {
