@@ -1369,6 +1369,25 @@ function loadLivekitService() {
     ]);
   };
 
+  const livekitWebhookController = require(path.join(BE_ROOT, 'dist', 'controllers', 'livekit.controller.js'));
+  const activateDiscoveryRoom = async (roomId, token, userId, label) => {
+    await api('POST', `/api/rooms/${roomId}/join`, { token, body: {} });
+    const roomSocket = socketFor(token);
+    await connected(roomSocket, label);
+    const roomAck = await new Promise((resolve) =>
+      roomSocket.emit('room:join', { roomId }, resolve));
+    if (roomAck?.ok !== true) throw new Error(`${label} socket room join failed: ${JSON.stringify(roomAck)}`);
+    const roomName = await sql(`select livekit_room_name from rooms where id='${roomId}'`);
+    const roomSid = await sql(`select livekit_session_sid from rooms where id='${roomId}'`);
+    await livekitWebhookController.reconcile({
+      event: 'participant_joined',
+      room: { name: roomName, sid: roomSid },
+      participant: { identity: userId },
+    });
+    await delay(250);
+    return roomSocket;
+  };
+
   // Home discovery requires both a real app room socket and a confirmed LiveKit participant.
   const liveDiscoveryRoom = await api('POST', '/api/rooms', {
     token: watcher.token,
@@ -1399,7 +1418,6 @@ function loadLivekitService() {
 
   const discoveryRoomName = await sql(`select livekit_room_name from rooms where id='${liveDiscoveryId}'`);
   const discoveryRoomSid = await sql(`select livekit_session_sid from rooms where id='${liveDiscoveryId}'`);
-  const livekitWebhookController = require(path.join(BE_ROOT, 'dist', 'controllers', 'livekit.controller.js'));
   await livekitWebhookController.reconcile({
     event: 'participant_joined',
     room: { name: discoveryRoomName, sid: discoveryRoomSid },
