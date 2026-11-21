@@ -62,6 +62,7 @@ import com.voiza.app.di.ServiceLocator
 import com.voiza.app.domain.model.RankingBoardKind
 import com.voiza.app.domain.model.RankingLeader
 import com.voiza.app.domain.model.RankingPeriod
+import com.voiza.app.domain.model.DiscoveryRankingKind
 import com.voiza.app.domain.usecase.compactScore
 import com.voiza.app.domain.usecase.podiumSlots
 import com.voiza.app.domain.usecase.rankingUnitLabel
@@ -100,6 +101,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun RankingsScreen(
     onBack: () -> Unit,
+    onOpenRoom: (String) -> Unit = {},
     viewModel: RankingsViewModel = viewModel(factory = voizaViewModelFactory { RankingsViewModel() }),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -108,6 +110,7 @@ fun RankingsScreen(
 
     val theme = boardTheme(state.board)
     val data = state.data
+    LaunchedEffect(user?.countryCode) { viewModel.useAccountRegionIfUnset(user?.countryCode) }
 
     LaunchedEffect(state.message) {
         if (state.message != null) {
@@ -153,6 +156,99 @@ fun RankingsScreen(
                             .clip(CircleShape)
                             .background(DangerRed),
                     )
+                }
+            }
+        }
+
+        // Live discovery rankings: separate from the financial podium below.
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Live Discovery", color = OnDarkHigh, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                Text("Room quality · live activity", color = OnDarkMuted, fontSize = 10.sp)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                DiscoveryRankingKind.entries.forEach { kind ->
+                    FilterChip(
+                        selected = state.discoveryKind == kind,
+                        onClick = { viewModel.selectDiscoveryKind(kind) },
+                        label = { Text(kind.label, fontSize = 10.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = VioletDiscovery.copy(alpha = 0.18f),
+                            selectedLabelColor = VioletDiscovery,
+                            labelColor = OnDarkMedium,
+                        ),
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(
+                    selected = state.discoveryRegion == null,
+                    onClick = { viewModel.selectDiscoveryRegion(null) },
+                    label = { Text("Global", fontSize = 10.sp) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = VioletDiscovery.copy(alpha = 0.18f),
+                        selectedLabelColor = VioletDiscovery,
+                        labelColor = OnDarkMedium,
+                    ),
+                )
+                user?.countryCode?.takeIf { it.length == 2 }?.let { code ->
+                    FilterChip(
+                        selected = state.discoveryRegion == code,
+                        onClick = { viewModel.selectDiscoveryRegion(code) },
+                        label = { Text(code.uppercase(), fontSize = 10.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = VioletDiscovery.copy(alpha = 0.18f),
+                            selectedLabelColor = VioletDiscovery,
+                            labelColor = OnDarkMedium,
+                        ),
+                    )
+                }
+            }
+            val discovery = state.discoveryData?.takeIf {
+                it.kind == state.discoveryKind && it.region == state.discoveryRegion
+            }
+            when {
+                state.discoveryLoading && discovery == null -> Text(
+                    "Loading live rankings…", color = OnDarkMuted, fontSize = 11.sp,
+                )
+                discovery == null && state.discoveryError != null -> Text(
+                    state.discoveryError.orEmpty(), color = DangerRed, fontSize = 11.sp,
+                )
+                discovery?.leaders.isNullOrEmpty() -> Text(
+                    "No qualifying live activity yet in this region.", color = OnDarkMuted, fontSize = 11.sp,
+                )
+                else -> discovery!!.leaders.take(3).forEach { leader ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(VoizaSurfaceHigh)
+                            .clickable(enabled = state.discoveryKind == DiscoveryRankingKind.ROOMS) { onOpenRoom(leader.id) }
+                            .padding(horizontal = 9.dp, vertical = 7.dp),
+                    ) {
+                        Text("#${leader.position}", color = WarningAmber, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(8.dp))
+                        Avatar(url = leader.avatarUrl, name = leader.name, size = 32.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(leader.name, color = OnDarkHigh, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            val detail = when (state.discoveryKind) {
+                                DiscoveryRankingKind.ROOMS -> "Host: ${leader.hostName ?: "Community"}"
+                                DiscoveryRankingKind.HOSTS -> "${leader.activeRooms} active rooms"
+                                DiscoveryRankingKind.AGENCIES -> "${leader.activeHostCount ?: 0} active hosts · ${leader.activeRooms} rooms"
+                            }
+                            Text(detail, color = OnDarkMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("${leader.listenerCount}", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("listeners", color = OnDarkMuted, fontSize = 9.sp)
+                        }
+                    }
                 }
             }
         }
@@ -368,6 +464,8 @@ private fun rewardWindowName(windowKey: String?, period: RankingPeriod?): String
 // The board themes ------------------------------------------------------------------
 
 private data class BoardTheme(val accent: Color, val wash: Color, val watermark: ImageVector)
+
+private val VioletDiscovery = Color(0xFFB69CFF)
 
 private fun boardTheme(kind: RankingBoardKind): BoardTheme = when (kind) {
     RankingBoardKind.HOST -> BoardTheme(WarningAmber, Color(0xFF2E2410), Icons.Default.EmojiEvents)

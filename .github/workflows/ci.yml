@@ -116,6 +116,10 @@ jobs:
             if [ "$i" = 40 ]; then cat api.log; exit 1; fi
           done
 
+      - name: Live discovery rankings smoke
+        working-directory: backend
+        run: npm run test:discovery-rankings
+
       - name: End-to-end suite
         working-directory: backend
         env:

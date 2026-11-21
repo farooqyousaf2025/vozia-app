@@ -64,3 +64,18 @@ data class RankingClaimResult(
     val amount: Int,
     val alreadyClaimed: Boolean,
 )
+
+/** Live quality-based discovery boards; unlike financial boards, these never pay rewards. */
+enum class DiscoveryRankingKind(val wire: String, val label: String) {
+    ROOMS("rooms", "Top Rooms"),
+    HOSTS("hosts", "Top Hosts"),
+    AGENCIES("agencies", "Top Agencies"),
+}
+
+data class DiscoveryLeader(
+    val position: Int, val id: String, val name: String, val avatarUrl: String?, val region: String?,
+    val score: Long, val activeRooms: Int, val listenerCount: Int,
+    val activeHostCount: Int? = null, val hostName: String? = null, val hostAvatarUrl: String? = null,
+)
+
+data class DiscoveryRanking(val kind: DiscoveryRankingKind, val region: String?, val leaders: List<DiscoveryLeader>)

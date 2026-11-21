@@ -71,6 +71,8 @@ import com.voiza.app.domain.model.RankingBoard
 import com.voiza.app.domain.model.RankingBoardKind
 import com.voiza.app.domain.model.RankingClaimResult
 import com.voiza.app.domain.model.RankingPeriod
+import com.voiza.app.domain.model.DiscoveryRanking
+import com.voiza.app.domain.model.DiscoveryRankingKind
 import com.voiza.app.domain.model.Transaction
 import com.voiza.app.domain.model.User
 import com.voiza.app.domain.model.WalletSnapshot
@@ -602,6 +604,9 @@ interface PartnerDeskRepository {
  * and paid once through the promotional rail.
  */
 interface RankingsRepository {
+    /** Live quality-based discovery podium, optionally scoped to a country code. */
+    suspend fun discovery(kind: DiscoveryRankingKind, region: String?, limit: Int = 10): ApiResult<DiscoveryRanking>
+
     /** One board over one window. `settled` reads the finished window; the default is the live one. */
     suspend fun board(board: RankingBoardKind, period: RankingPeriod, settled: Boolean = false): ApiResult<RankingBoard>
 

@@ -77,3 +77,24 @@ data class RankingGrantDto(
     @SerializedName("remaining") val remaining: Int? = null,
     @SerializedName("expiresAt") val expiresAt: String? = null,
 )
+
+/** /api/rankings/discovery — public live-quality ranking, optionally scoped to an ISO country. */
+data class DiscoveryLeaderDto(
+    @SerializedName("position") val position: Int? = null,
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("avatarUrl") val avatarUrl: String? = null,
+    @SerializedName("region") val region: String? = null,
+    @SerializedName("score") val score: Long? = null,
+    @SerializedName("activeRooms") val activeRooms: Int? = null,
+    @SerializedName("listenerCount") val listenerCount: Int? = null,
+    @SerializedName("activeHostCount") val activeHostCount: Int? = null,
+    @SerializedName("hostName") val hostName: String? = null,
+    @SerializedName("hostAvatarUrl") val hostAvatarUrl: String? = null,
+)
+
+data class DiscoveryRankingResponse(
+    @SerializedName("kind") val kind: String? = null,
+    @SerializedName("region") val region: String? = null,
+    @SerializedName("leaders") val leaders: List<DiscoveryLeaderDto>? = null,
+)
