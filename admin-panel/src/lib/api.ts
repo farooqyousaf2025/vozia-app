@@ -28,6 +28,8 @@ import type {
   Agency,
   AgencyDetailResult,
   AgencyListResult,
+  AgencyOperationsAuditEntry,
+  AgencyOperationsReport,
   AgencyRosterRow,
   AgencySettlement,
   AgencySettlementEntriesResult,
@@ -1418,6 +1420,21 @@ export const api = {  // ---- auth ---------------------------------------------
    * is what a lost response on a slow connection looks like, and the server replays its first answer
    * rather than raising a second batch over the same accruals.
    */
+  agencyOperations(params: { days?: 7 | 30; inactiveDays?: 7 | 14 | 30; agencyLimit?: number; hostLimit?: number } = {}): Promise<AgencyOperationsReport> {
+    return request<AgencyOperationsReport>(`/api/admin/agencies/operations${query({
+      days: params.days ?? 30,
+      inactiveDays: params.inactiveDays ?? 7,
+      agencyLimit: params.agencyLimit ?? 200,
+      hostLimit: params.hostLimit ?? 500,
+    })}`);
+  },
+
+  agencyOperationsAudit(id: string, limit = 50): Promise<{ entries: AgencyOperationsAuditEntry[] }> {
+    return request<{ entries: AgencyOperationsAuditEntry[] }>(
+      `/api/admin/agencies/${encodeURIComponent(id)}/audit${query({ limit })}`,
+    );
+  },
+
   agencies(
     params: { search?: string; status?: string; kind?: string; parentAgencyId?: string; page?: number; limit?: number } = {},
   ): Promise<AgencyListResult> {
