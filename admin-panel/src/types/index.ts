@@ -116,6 +116,23 @@ export interface PlatformOperationsAlert {
   source: string;
 }
 
+export interface PlatformAlertThreshold {
+  warning: number;
+  critical: number;
+}
+
+export interface PlatformAlertSettings {
+  thresholds: Record<string, PlatformAlertThreshold>;
+}
+
+export interface PlatformAlertEvent extends PlatformOperationsAlert {
+  fingerprint: string;
+  status: 'ACTIVE' | 'RESOLVED';
+  firstSeenAt: string;
+  lastSeenAt: string;
+  resolvedAt: string | null;
+}
+
 export interface PlatformOperationsSnapshot {
   generatedAt: string;
   alerts: PlatformOperationsAlert[];
