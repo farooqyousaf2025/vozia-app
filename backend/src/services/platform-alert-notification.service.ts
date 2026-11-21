@@ -151,7 +151,7 @@ async function deliverWebhook(row: DeliveryRow): Promise<void> {
   const signature = crypto.createHmac('sha256', secret).update(body).digest('hex');
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-voiza-signature': `sha256=${signature}`, 'x-voiza-event': 'platform.alert' },
+    headers: { 'content-type': 'application/json', 'x-voiza-signature': `sha256=${signature}`, 'x-voiza-event': 'platform.alert', 'x-voiza-notification-id': row.id },
     body, signal: AbortSignal.timeout(10_000), redirect: 'error',
   });
   if (!response.ok) throw new Error(`Webhook returned HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
@@ -169,14 +169,15 @@ export async function deliverPendingPlatformAlertNotifications(batchSize = 10): 
         `SELECT n.id, n.channel, a.email, n.severity, n.title, n.message, n.attempt_count AS "attemptCount"
            FROM platform_alert_notifications n
            JOIN admins a ON a.id = n.admin_id
-          WHERE n.channel <> 'IN_APP' AND n.delivery_status IN ('PENDING','RETRY')
+          WHERE n.channel <> 'IN_APP'
+            AND (n.delivery_status IN ('PENDING','RETRY') OR (n.delivery_status = 'SENDING' AND n.claimed_at < now() - interval '2 minutes'))
             AND n.next_attempt_at <= now()
           ORDER BY n.created_at
           LIMIT 1 FOR UPDATE OF n SKIP LOCKED`,
       );
       row = claimed.rows[0] ?? null;
       if (!row) { await client.query('COMMIT'); break; }
-      await client.query('UPDATE platform_alert_notifications SET attempt_count = attempt_count + 1 WHERE id = $1', [row.id]);
+      await client.query("UPDATE platform_alert_notifications SET attempt_count = attempt_count + 1, delivery_status = 'SENDING', claimed_at = now() WHERE id = $1", [row.id]);
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
@@ -187,7 +188,7 @@ export async function deliverPendingPlatformAlertNotifications(batchSize = 10): 
       if (row.channel === 'EMAIL') await deliverEmail(row);
       else await deliverWebhook(row);
       await pool.query(
-        "UPDATE platform_alert_notifications SET delivery_status = 'DELIVERED', delivered_at = now(), last_error = NULL WHERE id = $1",
+        "UPDATE platform_alert_notifications SET delivery_status = 'DELIVERED', delivered_at = now(), claimed_at = NULL, last_error = NULL WHERE id = $1",
         [row.id],
       );
       delivered += 1;
@@ -197,7 +198,7 @@ export async function deliverPendingPlatformAlertNotifications(batchSize = 10): 
       const delaySeconds = Math.min(3600, 15 * (2 ** Math.min(attempt - 1, 8)));
       await pool.query(
         `UPDATE platform_alert_notifications
-            SET delivery_status = $2, next_attempt_at = now() + ($3::text || ' seconds')::interval,
+            SET delivery_status = $2, claimed_at = NULL, next_attempt_at = now() + ($3::text || ' seconds')::interval,
                 last_error = $4
           WHERE id = $1`,
         [row.id, terminal ? 'FAILED' : 'RETRY', delaySeconds, (error as Error).message.slice(0, 1000)],
