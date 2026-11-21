@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as agency from '../controllers/agency-admin.controller';
+import * as operations from '../controllers/agency-operations.controller';
 import { requirePermission } from '../middleware/auth';
 
 /**
@@ -17,6 +18,10 @@ import { requirePermission } from '../middleware/auth';
  */
 
 const router = Router();
+
+// Operational reporting is read-only; its audit trail has the narrower audit:read gate.
+router.get('/operations', requirePermission('finance:read'), operations.operations);
+router.get('/:id/audit', requirePermission('audit:read'), operations.audit);
 
 // Registered before `/:id` so "settlements" is never read as an agency uuid.
 router.get('/settlements', requirePermission('finance:read'), agency.settlements);
