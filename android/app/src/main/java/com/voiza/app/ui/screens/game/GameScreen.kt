@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.voiza.app.domain.model.CarromBoard
+import com.voiza.app.domain.model.CheckersBoard
 import com.voiza.app.domain.model.ChessBoard
 import com.voiza.app.domain.model.ConnectFourBoard
 import com.voiza.app.domain.model.GameBoard
@@ -92,6 +93,7 @@ fun GameScreen(
                     busy = state.busy,
                     onCell = viewModel::playCell,
                     onChessMove = viewModel::playChessMove,
+                    onCheckersMove = viewModel::playCheckersMove,
                     onCarromShot = viewModel::playCarromShot,
                     onChoice = viewModel::chooseHand,
                     onAnswer = viewModel::answer,
@@ -118,6 +120,7 @@ private fun SessionBody(
     busy: Boolean,
     onCell: (Int) -> Unit,
     onChessMove: (Int, Int) -> Unit,
+    onCheckersMove: (Int, Int) -> Unit,
     onCarromShot: (Float, Float, Float) -> Unit,
     onChoice: (String) -> Unit,
     onAnswer: (Int) -> Unit,
@@ -143,6 +146,7 @@ private fun SessionBody(
         secondsLeft = secondsLeft,
         onCell = onCell,
         onChessMove = onChessMove,
+        onCheckersMove = onCheckersMove,
         onCarromShot = onCarromShot,
         onChoice = onChoice,
         onAnswer = onAnswer,
@@ -172,6 +176,7 @@ private fun RenderBoard(
     secondsLeft: Int?,
     onCell: (Int) -> Unit,
     onChessMove: (Int, Int) -> Unit,
+    onCheckersMove: (Int, Int) -> Unit,
     onCarromShot: (Float, Float, Float) -> Unit,
     onChoice: (String) -> Unit,
     onAnswer: (Int) -> Unit,
@@ -187,6 +192,7 @@ private fun RenderBoard(
             locked = busy || session.isOver,
             onShot = onCarromShot,
         )
+        is CheckersBoard -> CheckersBoardView(board = board, myTurn = session.turnOwnerId == myId, locked = busy || session.isOver, onMove = onCheckersMove)
         is ChessBoard -> ChessBoardView(board = board, myTurn = session.turnOwnerId == myId, locked = busy || session.isOver, onMove = onChessMove)
         is TicTacToeBoard -> TicTacToeBoardView(
             board = board,

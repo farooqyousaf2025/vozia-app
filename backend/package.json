@@ -32,7 +32,7 @@
     "test:qa": "node scripts/qa-e2e.cjs",
     "test:revenue": "node scripts/revenue-e2e.cjs",
     "test:concurrency": "node scripts/concurrency-e2e.cjs",
-    "test:games": "node scripts/games-e2e.cjs && node scripts/chess-driver-test.cjs && node scripts/carrom-driver-test.cjs",
+    "test:games": "node scripts/games-e2e.cjs && node scripts/chess-driver-test.cjs && node scripts/carrom-driver-test.cjs && node scripts/checkers-driver-test.cjs",
     "test:sms": "tsx scripts/sms-provider-contract.ts twilio && tsx scripts/sms-provider-contract.ts vonage && tsx scripts/sms-provider-contract.ts mock",
     "test:payments": "tsx scripts/payments-provider-contract.ts stripe && tsx scripts/payments-provider-contract.ts simulated",
     "test:social": "tsx scripts/social-contract.ts",

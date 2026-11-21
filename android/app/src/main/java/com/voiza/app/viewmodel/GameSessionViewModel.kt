@@ -84,6 +84,8 @@ class GameSessionViewModel(
 
     fun playChessMove(from: Int, to: Int) = act("MOVE", mapOf("from" to from, "to" to to))
 
+    fun playCheckersMove(from: Int, to: Int) = act("MOVE", mapOf("from" to from, "to" to to))
+
     /** The client submits aim only; the backend simulates striker and coin motion. */
     fun playCarromShot(angle: Float, power: Float, strikerX: Float) =
         act("SHOT", mapOf("angle" to angle, "power" to power, "strikerX" to strikerX))
