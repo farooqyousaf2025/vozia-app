@@ -129,7 +129,13 @@ export interface PlatformAlertNotificationSettings {
   enabled: boolean;
   warning: boolean;
   critical: boolean;
+  email: boolean;
+  webhook: boolean;
+  emailConfigured?: boolean;
+  webhookConfigured?: boolean;
 }
+
+export interface PlatformAlertDeliveryProfile { email: string | null; }
 
 export interface PlatformAlertNotification {
   id: string;
@@ -139,6 +145,11 @@ export interface PlatformAlertNotification {
   message: string;
   createdAt: string;
   readAt: string | null;
+  channel: 'IN_APP' | 'EMAIL' | 'WEBHOOK';
+  deliveryStatus: 'PENDING' | 'DELIVERED' | 'RETRY' | 'FAILED' | 'SKIPPED';
+  attemptCount: number;
+  deliveredAt: string | null;
+  lastError: string | null;
 }
 
 export interface PlatformAlertNotificationList {
