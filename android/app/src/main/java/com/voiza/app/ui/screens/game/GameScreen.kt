@@ -307,6 +307,7 @@ private fun gameTitle(gameKey: String): String = when (gameKey) {
     "TIC_TAC_TOE" -> "Tic-Tac-Toe"
     "QUIZ_BATTLE" -> "Quiz Battle"
     "LUDO" -> "Ludo"
+    "CONNECT_FOUR" -> "Connect Four"
     else -> gameKey.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
 }
 
