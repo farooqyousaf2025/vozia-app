@@ -308,6 +308,7 @@ export default function ApplicationsPage() {
           form={formFor(target)}
           agencyNames={agencyNames}
           canReview={can('application:review')}
+          canCreate={can('account:create')}
           canPickBd={can('business:manage')}
           onClose={() => setTarget(null)}
           onDecided={(updated) => {
@@ -339,6 +340,7 @@ interface ApplicationModalProps {
   form?: ApplicationFormSpec;
   agencyNames: Map<string, string>;
   canReview: boolean;
+  canCreate: boolean;
   canPickBd: boolean;
   onClose: () => void;
   onDecided: (application: RoleApplicationRow) => void;
@@ -349,11 +351,12 @@ function ApplicationModal({
   form,
   agencyNames,
   canReview,
+  canCreate,
   canPickBd,
   onClose,
   onDecided,
 }: ApplicationModalProps) {
-  const [decision, setDecision] = useState<'approve' | 'request_info' | 'reject'>('approve');
+  const [decision, setDecision] = useState<'approve' | 'request_info' | 'reject'>(canCreate ? 'approve' : 'request_info');
   const [note, setNote] = useState('');
   const [bdAccountId, setBdAccountId] = useState('');
   const [bdOptions, setBdOptions] = useState<Array<{ id: string; code: string; displayName: string }>>([]);
@@ -382,7 +385,7 @@ function ApplicationModal({
   const noteRequired = decision !== 'approve';
   const blockedByBd = needsBd && bdAccountId === '';
   const blockedByNote = noteRequired && note.trim().length < 3;
-  const canSubmit = !submitting && !blockedByBd && !blockedByNote;
+  const canSubmit = !submitting && !blockedByBd && !blockedByNote && (decision !== 'approve' || canCreate);
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -444,7 +447,7 @@ function ApplicationModal({
         canReview && (decidable || revokable) ? (
           <>
             <Button onClick={onClose}>Cancel</Button>
-            {decidable && (
+            {decidable && (decision !== 'approve' || canCreate) && (
               <Button
                 variant={decision === 'approve' ? 'success' : decision === 'reject' ? 'danger' : 'primary'}
                 onClick={() => void submit()}
@@ -532,7 +535,7 @@ function ApplicationModal({
             <div className="grid grid-cols-3 gap-2">
               {(
                 [
-                  ['approve', 'Approve', 'border-emerald-500/60 bg-emerald-500/15 text-emerald-300', <IconCheck className="h-4 w-4" />],
+                  ...(canCreate ? [['approve', 'Approve', 'border-emerald-500/60 bg-emerald-500/15 text-emerald-300', <IconCheck className="h-4 w-4" />] as const] : []),
                   ['request_info', 'Ask for info', 'border-sky-500/60 bg-sky-500/15 text-sky-300', <IconPartners className="h-4 w-4" />],
                   ['reject', 'Reject', 'border-rose-500/60 bg-rose-500/15 text-rose-300', <IconClose className="h-4 w-4" />],
                 ] as const
@@ -615,9 +618,14 @@ function ApplicationModal({
           </>
         )}
 
-        {!canReview && (
+        {!canReview && !canCreate && (
           <p className="rounded-lg border border-edge/60 bg-elevated/40 px-3 py-2 text-xs text-muted">
-            You can read this queue, but deciding it needs the application:review permission.
+            You can read this queue, but decisions require application review access; granting a role is reserved for the super-admin.
+          </p>
+        )}
+        {canReview && !canCreate && decidable && (
+          <p className="rounded-lg border border-edge/60 bg-elevated/40 px-3 py-2 text-xs text-muted">
+            You may request information or reject this application. Only the super-admin can approve and create the account.
           </p>
         )}
 
