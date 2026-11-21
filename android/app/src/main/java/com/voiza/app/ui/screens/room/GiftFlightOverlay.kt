@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
@@ -47,7 +48,9 @@ fun GiftFlightOverlay(
     seats: List<Seat>,
     modifier: Modifier = Modifier,
 ) {
-    val uniqueEvents = events.distinctBy { it.eventId ?: "${it.sender.id}:${it.receiver.id}:${it.gift.id}:${it.quantity}:${it.totalDiamonds}" }
+    val uniqueEvents = events.filterIndexed { index, event ->
+        event.eventId == null || events.indexOfFirst { it.eventId == event.eventId } == index
+    }
     BoxWithConstraints(modifier = modifier) {
         val width = maxWidth.value
         val height = maxHeight.value
@@ -60,7 +63,8 @@ fun GiftFlightOverlay(
         val gridHeight = rowCount * cell + (rowCount - 1).coerceAtLeast(0) * rowGap
         val gridTop = ((height - gridHeight) / 2f).coerceAtLeast(0f)
 
-        uniqueEvents.forEach { event ->
+        uniqueEvents.forEachIndexed { eventIndex, event ->
+            val eventKey = event.eventId ?: "legacy-$eventIndex"
             val senderSeat = ordered.firstOrNull { it.user?.id == event.sender.id }
             val receiverSeat = ordered.firstOrNull { it.user?.id == event.receiver.id }
                 ?: event.seatIndex?.let { index -> ordered.firstOrNull { it.seatIndex == index } }
@@ -70,10 +74,10 @@ fun GiftFlightOverlay(
             val end = receiverSeat?.let { seatCenter(it.seatIndex, ordered, columns, cell, rowGap, gridTop, width) }
                 ?: (width / 2f to height * 0.12f)
 
-            var visible by remember(event.eventId, event.sender.id, event.gift.id) { mutableStateOf(false) }
-            val progress = remember(event.eventId, event.sender.id, event.gift.id) { Animatable(0f) }
+            var visible by remember(eventKey) { mutableStateOf(false) }
+            val progress = remember(eventKey) { Animatable(0f) }
 
-            LaunchedEffect(event.eventId, event.sender.id, event.gift.id) {
+            LaunchedEffect(eventKey) {
                 visible = true
                 progress.snapTo(0f)
                 progress.animateTo(1f, tween(900, easing = LinearOutSlowInEasing))
@@ -139,7 +143,7 @@ private fun seatCenter(
     val rowStart = row * columns
     val rowSize = (seats.size - rowStart).coerceAtMost(columns).coerceAtLeast(1)
     val column = position - rowStart
-    val x = width * (column + 1f) / (rowSize + 1f)
+    val x = (width + cell) * (column + 1f) / (rowSize + 1f) - cell / 2f
     val y = gridTop + row * (cell + rowGap) + cell / 2f
     return x to y
 }
