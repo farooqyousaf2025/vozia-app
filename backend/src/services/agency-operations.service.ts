@@ -153,6 +153,7 @@ export async function agencyOperationsReport(opts: {
       active_hosts: string | number; inactive_hosts: string | number; last_checkin_at: DateValue;
       earnings_7d: string | number; earnings_30d: string | number;
       override_7d: string | number; override_30d: string | number;
+      received_override_7d: string | number; received_override_30d: string | number;
     }>(
       `${ROSTER_CTE}, agency_earnings AS (
          SELECT t.agency_id,
@@ -165,6 +166,16 @@ export async function agencyOperationsReport(opts: {
            FROM transactions t
           WHERE t.type = 'AGENCY_COMMISSION' AND t.status = 'COMPLETED'
           GROUP BY t.agency_id
+       ), agency_override_receipts AS (
+         SELECT (t.meta->>'parentAgencyId')::uuid AS agency_id,
+                COALESCE(SUM(COALESCE((t.meta->>'overrideCoins')::bigint, 0))
+                  FILTER (WHERE t.created_at >= now() - INTERVAL '7 days'), 0)::bigint AS received_7d,
+                COALESCE(SUM(COALESCE((t.meta->>'overrideCoins')::bigint, 0))
+                  FILTER (WHERE t.created_at >= now() - INTERVAL '30 days'), 0)::bigint AS received_30d
+           FROM transactions t
+          WHERE t.type = 'AGENCY_COMMISSION' AND t.status = 'COMPLETED'
+            AND t.meta->>'parentAgencyId' IS NOT NULL
+          GROUP BY (t.meta->>'parentAgencyId')::uuid
        )
        SELECT a.id, a.name, a.status, a.parent_agency_id, parent.name AS parent_agency_name,
               COUNT(r.host_user_id)::int AS active_hosts,
@@ -176,14 +187,18 @@ export async function agencyOperationsReport(opts: {
               COALESCE(financials.earnings_7d, 0)::bigint AS earnings_7d,
               COALESCE(financials.earnings_30d, 0)::bigint AS earnings_30d,
               COALESCE(financials.override_7d, 0)::bigint AS override_7d,
-              COALESCE(financials.override_30d, 0)::bigint AS override_30d
+              COALESCE(financials.override_30d, 0)::bigint AS override_30d,
+              COALESCE(receipts.received_7d, 0)::bigint AS received_override_7d,
+              COALESCE(receipts.received_30d, 0)::bigint AS received_override_30d
          FROM agencies a
          LEFT JOIN agencies parent ON parent.id = a.parent_agency_id
          LEFT JOIN roster r ON r.agency_id = a.id
          LEFT JOIN agency_earnings financials ON financials.agency_id = a.id
+         LEFT JOIN agency_override_receipts receipts ON receipts.agency_id = a.id
         GROUP BY a.id, a.name, a.status, a.parent_agency_id, parent.name,
                  financials.earnings_7d, financials.earnings_30d,
-                 financials.override_7d, financials.override_30d
+                 financials.override_7d, financials.override_30d,
+                 receipts.received_7d, receipts.received_30d
         ORDER BY a.status = 'ACTIVE' DESC, a.name
         LIMIT $1`,
       [agencyLimit, opts.inactiveDays],
@@ -254,6 +269,8 @@ export async function agencyOperationsReport(opts: {
     const earnings30dCoins = number(row.earnings_30d);
     const override7dCoins = number(row.override_7d);
     const override30dCoins = number(row.override_30d);
+    const receivedOverride7dCoins = number(row.received_override_7d);
+    const receivedOverride30dCoins = number(row.received_override_30d);
     return {
       id: row.id, name: row.name, status: row.status,
       kind: row.parent_agency_id ? 'SUB' : 'MASTER',
@@ -261,6 +278,7 @@ export async function agencyOperationsReport(opts: {
       activeHosts, inactiveHosts, hostsWithRecentAttendance: Math.max(0, activeHosts - inactiveHosts),
       lastVerifiedCheckInAt: iso(row.last_checkin_at),
       earnings7dCoins, earnings30dCoins, override7dCoins, override30dCoins,
+      receivedOverride7dCoins, receivedOverride30dCoins,
       retained7dCoins: Math.max(0, earnings7dCoins - override7dCoins),
       retained30dCoins: Math.max(0, earnings30dCoins - override30dCoins),
     };
