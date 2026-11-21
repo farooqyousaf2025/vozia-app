@@ -105,8 +105,20 @@ export interface OperationalResourcePanel {
   samples: Array<{ name: string; value: number }>;
 }
 
+export interface PlatformOperationsAlert {
+  id: string;
+  severity: 'WARNING' | 'CRITICAL';
+  service: string;
+  metric: string;
+  message: string;
+  value: number | null;
+  threshold: number | null;
+  source: string;
+}
+
 export interface PlatformOperationsSnapshot {
   generatedAt: string;
+  alerts: PlatformOperationsAlert[];
   uptimeSeconds: number;
   overall: OperationalDependencyState;
   dependencies: {
