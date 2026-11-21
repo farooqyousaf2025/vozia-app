@@ -329,8 +329,8 @@ export function initSocket(httpServer: HttpServer): Server {
     });
 
     socket.on('room:leave', async (payload: { roomId?: string }) => {
-      const roomId = payload?.roomId ?? me.roomId;
-      if (!roomId) return;
+      const roomId = me.roomId;
+      if (!roomId || (payload?.roomId && payload.roomId !== roomId)) return;
       socket.leave(chatRoom(roomId));
       me.roomId = null;
       if (admin) return;
