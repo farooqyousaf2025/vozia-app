@@ -1369,7 +1369,7 @@ function loadLivekitService() {
     ]);
   };
 
-  // Home discovery is driven by actual room sockets, not the participant row created with a room.
+  // Home discovery requires both a real app room socket and a confirmed LiveKit participant.
   const liveDiscoveryRoom = await api('POST', '/api/rooms', {
     token: watcher.token,
     body: { title: `E2E Live Discovery ${stamp}`, category: 'PARTY', type: 'PUBLIC', region: 'PK' },
@@ -1381,11 +1381,10 @@ function loadLivekitService() {
   const liveDiscoveryId = liveDiscoveryRoom.json?.room?.id;
   const idleDiscoveryId = idleDiscoveryRoom.json?.room?.id;
   const lobbyBeforeSocket = await api('GET', '/api/rooms?category=PARTY&region=PK&limit=100');
-  check('home discovery hides newly-created rooms until a real room socket is present',
+  check('home discovery hides newly-created rooms before a live socket connects',
     liveDiscoveryRoom.status === 201 && idleDiscoveryRoom.status === 201 &&
     !lobbyBeforeSocket.json?.rooms?.some((r) => r.id === liveDiscoveryId || r.id === idleDiscoveryId),
-    { liveCreated: liveDiscoveryRoom.status, idleCreated: idleDiscoveryRoom.status,
-      visible: lobbyBeforeSocket.json?.rooms?.filter((r) => [liveDiscoveryId, idleDiscoveryId].includes(r.id)).map((r) => r.id) });
+    { liveCreated: liveDiscoveryRoom.status, idleCreated: idleDiscoveryRoom.status });
 
   await api('POST', `/api/rooms/${liveDiscoveryId}/join`, { token: watcher.token, body: {} });
   const discoverySocket = socketFor(watcher.token);
@@ -1393,12 +1392,26 @@ function loadLivekitService() {
   const discoveryAck = await new Promise((resolve) =>
     discoverySocket.emit('room:join', { roomId: liveDiscoveryId }, resolve));
   await delay(250);
+  const lobbySocketOnly = await api('GET', '/api/rooms?category=PARTY&region=PK&limit=100');
+  check('home discovery does not promote a socket-only room without LiveKit media presence',
+    discoveryAck?.ok === true &&
+    !lobbySocketOnly.json?.rooms?.some((r) => r.id === liveDiscoveryId));
+
+  const discoveryRoomName = await sql(`select livekit_room_name from rooms where id='${liveDiscoveryId}'`);
+  const discoveryRoomSid = await sql(`select livekit_session_sid from rooms where id='${liveDiscoveryId}'`);
+  const livekitWebhookController = require(path.join(BE_ROOT, 'dist', 'controllers', 'livekit.controller.js'));
+  await livekitWebhookController.reconcile({
+    event: 'participant_joined',
+    room: { name: discoveryRoomName, sid: discoveryRoomSid },
+    participant: { identity: watcher.user.id },
+  });
+  await delay(250);
   const lobbyLive = await api('GET', '/api/rooms?category=PARTY&region=PK&limit=100');
   const liveCard = lobbyLive.json?.rooms?.find((r) => r.id === liveDiscoveryId);
-  check('home category shows a room only after its live socket joins and reports live listeners',
-    discoveryAck?.ok === true && !!liveCard && liveCard.listenerCount === 1 &&
+  check('home category shows only after both app socket and LiveKit participant are present',
+    !!liveCard && liveCard.listenerCount === 1 &&
     !lobbyLive.json?.rooms?.some((r) => r.id === idleDiscoveryId),
-    { ack: discoveryAck, liveCard: liveCard && { id: liveCard.id, listenerCount: liveCard.listenerCount } });
+    { liveCard: liveCard && { id: liveCard.id, listenerCount: liveCard.listenerCount } });
 
   const wrongRegionLobby = await api('GET', '/api/rooms?category=PARTY&region=US&limit=100');
   check('home category region filter excludes rooms assigned to another country',
