@@ -106,13 +106,14 @@ export default function AgencyOperationsPage() {
     downloadCsv('vozia-agency-performance.csv', [
       ['Agency', 'Status', 'Kind', 'Master agency', 'Active hosts', 'Inactive hosts',
        'Hosts with recent attendance', 'Last verified check-in UTC', 'Earnings (7d R-coins)',
-       'Earnings (30d R-coins)', 'Master override (7d R-coins)', 'Master override (30d R-coins)',
-       'Retained (7d R-coins)', 'Retained (30d R-coins)'],
+       'Earnings (30d R-coins)', 'Passed to master (7d R-coins)', 'Passed to master (30d R-coins)',
+       'Master share received (7d R-coins)', 'Master share received (30d R-coins)', 'Retained (7d R-coins)', 'Retained (30d R-coins)'],
       ...report.agencies.map(agency => [
         agency.name, agency.status, agency.kind, agency.parentAgencyName, agency.activeHosts,
         agency.inactiveHosts, agency.hostsWithRecentAttendance, agency.lastVerifiedCheckInAt,
         agency.earnings7dCoins, agency.earnings30dCoins, agency.override7dCoins,
-        agency.override30dCoins, agency.retained7dCoins, agency.retained30dCoins,
+        agency.override30dCoins, agency.receivedOverride7dCoins, agency.receivedOverride30dCoins,
+        agency.retained7dCoins, agency.retained30dCoins,
       ]),
     ]);
   };
@@ -176,7 +177,7 @@ export default function AgencyOperationsPage() {
               <Table>
                 <THead>
                   <Th>Agency</Th><Th>Hierarchy</Th><Th align="right">Hosts</Th><Th align="right">Inactive</Th>
-                  <Th align="right">Earnings · 7d</Th><Th align="right">Earnings · 30d</Th><Th align="right">Master share · 30d</Th>
+                  <Th align="right">Earnings · 7d</Th><Th align="right">Earnings · 30d</Th><Th align="right">Passed up · 30d</Th><Th align="right">Master received · 30d</Th>
                   {mayReadAudit && <Th align="right">Audit</Th>}
                 </THead>
                 <TBody>
@@ -197,6 +198,7 @@ export default function AgencyOperationsPage() {
                       <Td align="right" className="tabular-nums">{formatNumber(agency.earnings7dCoins)}</Td>
                       <Td align="right" className="tabular-nums">{formatNumber(agency.earnings30dCoins)}</Td>
                       <Td align="right" className="tabular-nums">{formatNumber(agency.override30dCoins)}</Td>
+                      <Td align="right" className="tabular-nums">{formatNumber(agency.receivedOverride30dCoins)}</Td>
                       {mayReadAudit && <Td align="right"><Button size="sm" onClick={() => void openAudit(agency.id)}>History</Button></Td>}
                     </Tr>
                   ))}
