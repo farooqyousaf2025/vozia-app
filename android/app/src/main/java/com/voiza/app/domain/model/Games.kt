@@ -105,6 +105,17 @@ data class TicTacToeBoard(
     fun isEmpty(cell: Int): Boolean = grid.getOrElse(cell) { 0 } == null
 }
 
+/** Connect Four cells contain the server-assigned seat position, or null. */
+data class ConnectFourBoard(
+    val grid: List<Int?>,
+    val turnPosition: Int,
+    val winnerPosition: Int?,
+    val winningCells: List<Int>,
+    val draw: Boolean,
+    val timeoutPosition: Int?,
+    val moveCount: Int,
+) : GameBoard
+
 data class QuizQuestionView(val id: Int, val prompt: String, val options: List<String>)
 
 /** One answer the server accepted, with the points it awarded. */
