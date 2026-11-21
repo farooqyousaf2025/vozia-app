@@ -28,6 +28,8 @@ import type {
   PlatformOperationsSnapshot,
   PlatformAlertEvent,
   PlatformAlertSettings,
+  PlatformAlertNotificationList,
+  PlatformAlertNotificationSettings,
   Agency,
   AgencyDetailResult,
   AgencyListResult,
@@ -431,6 +433,25 @@ export const api = {  // ---- auth ---------------------------------------------
 
   updateOperationalAlertSettings(settings: PlatformAlertSettings): Promise<PlatformAlertSettings> {
     return request<PlatformAlertSettings>('/api/admin/operational-alert-settings', { method: 'PUT', body: settings });
+  },
+  operationalAlertNotifications(limit = 50): Promise<PlatformAlertNotificationList> {
+    return request<PlatformAlertNotificationList>(`/api/admin/operational-alert-notifications?limit=${limit}`);
+  },
+
+  operationalAlertNotificationSettings(): Promise<PlatformAlertNotificationSettings> {
+    return request<PlatformAlertNotificationSettings>('/api/admin/operational-alert-notification-settings');
+  },
+
+  updateOperationalAlertNotificationSettings(settings: PlatformAlertNotificationSettings): Promise<PlatformAlertNotificationSettings> {
+    return request<PlatformAlertNotificationSettings>('/api/admin/operational-alert-notification-settings', { method: 'PUT', body: settings });
+  },
+
+  readOperationalAlertNotification(id: string): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>(`/api/admin/operational-alert-notifications/${id}/read`, { method: 'POST' });
+  },
+
+  readAllOperationalAlertNotifications(): Promise<{ updated: number }> {
+    return request<{ updated: number }>('/api/admin/operational-alert-notifications/read-all', { method: 'POST' });
   },
 
   // ---- users ------------------------------------------------------------------
