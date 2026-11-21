@@ -34,6 +34,9 @@ router.get('/me', admin.whoami);
 router.post('/change-password', admin.changePassword);
 router.get('/stats', requirePermission('dashboard:read'), admin.stats);
 router.get('/operational-health', requirePermission('dashboard:read'), admin.operationalHealth);
+router.get('/operational-alerts', requirePermission('dashboard:read'), admin.operationalAlertHistory);
+router.get('/operational-alert-settings', requirePermission('dashboard:read'), admin.operationalAlertSettings);
+router.put('/operational-alert-settings', requirePermission('config:manage'), admin.updateOperationalAlertSettings);
 
 router.get('/users', requirePermission('user:read'), admin.users);
 router.post('/users', requirePermission('user:moderate'), admin.createUser);
