@@ -19,7 +19,6 @@ const CENTER = 500;
 const POCKETS = [[110,110],[890,110],[110,890],[890,890]] as const;
 const RADIUS = 18;
 const STRIKER_RADIUS = 23;
-const clamp = (n:number,lo:number,hi:number) => Math.max(lo,Math.min(hi,n));
 const distance2 = (a:{x:number;y:number},b:{x:number;y:number}) => (a.x-b.x)**2+(a.y-b.y)**2;
 function makeCoins(players: DriverContext['players']): Coin[] {
   const coins: Coin[] = [];
@@ -116,6 +115,10 @@ export const carromDriver:GameDriver={
     for(const c of newlyPocketed){
       const original=coins.find(item=>item.id===c.id);
       if(original){c.pocketed=false;c.x=original.x;c.y=original.y;c.vx=0;c.vy=0;}
+    }
+    if(queenPendingFor===actor.position){
+      const queen=sim.coins.find(item=>item.kind==='queen')!;
+      queen.pocketed=false;queen.x=CENTER;queen.y=CENTER;queen.vx=0;queen.vy=0;
     }
     queenPendingFor=null;
     events.push({type:'FOUL',actorId,payload:{reason:'striker_pocketed'}});
