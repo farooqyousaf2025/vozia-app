@@ -492,6 +492,20 @@ function loadLivekitService() {
     !('balance' in operations) && !('amount' in operations),
     { queues: operations.queues });
 
+  check('operations: alert feed is typed, sourced and excludes fabricated readings',
+    operationsSnapshot.status === 200 &&
+    Array.isArray(operations.alerts) &&
+    operations.alerts.every((alert) =>
+      ['WARNING', 'CRITICAL'].includes(alert.severity) &&
+      typeof alert.id === 'string' &&
+      typeof alert.service === 'string' &&
+      typeof alert.metric === 'string' &&
+      typeof alert.message === 'string' &&
+      typeof alert.source === 'string' &&
+      (alert.value === null || typeof alert.value === 'number') &&
+      (alert.threshold === null || typeof alert.threshold === 'number')),
+    { alerts: operations.alerts });
+
   check('operations: resource telemetry is separated for all four platform services',
     operationsSnapshot.status === 200 &&
     operations.resources &&
