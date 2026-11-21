@@ -43,7 +43,7 @@ class RankingsViewModel(
         val rewardSheetOpen: Boolean = false,
         val error: String? = null,
         val message: String? = null,
-        val discoveryKind: DiscoveryRankingKind = DiscoveryRankingKind.ROOMS,
+        val discoveryKind: DiscoveryRankingKind = DiscoveryRankingKind.HOSTS,
         val discoveryRegion: String? = null,
         val discoveryData: DiscoveryRanking? = null,
         val discoveryLoading: Boolean = false,
