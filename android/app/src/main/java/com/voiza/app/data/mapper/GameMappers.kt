@@ -8,6 +8,7 @@ import com.voiza.app.data.remote.dto.GameParticipantDto
 import com.voiza.app.data.remote.dto.GameResultDto
 import com.voiza.app.data.remote.dto.GameSessionDto
 import com.voiza.app.data.remote.dto.GameSettlementDto
+import com.voiza.app.domain.model.ConnectFourBoard
 import com.voiza.app.domain.model.GameBoard
 import com.voiza.app.domain.model.GameDefinition
 import com.voiza.app.domain.model.GameHistoryRow
@@ -151,9 +152,20 @@ internal fun parseBoard(gameKey: String, raw: JsonElement?): GameBoard {
         "TIC_TAC_TOE" -> parseTicTacToe(obj)
         "QUIZ_BATTLE" -> parseQuiz(obj)
         "LUDO" -> parseLudo(obj)
+        "CONNECT_FOUR" -> parseConnectFour(obj)
         else -> GameBoard.Unsupported(gameKey)
     }
 }
+
+private fun parseConnectFour(obj: JsonObject): ConnectFourBoard = ConnectFourBoard(
+    grid = obj.optArray("grid").map { cell -> cell?.takeIf { it.isNumber }?.asInt },
+    turnPosition = obj.optInt("turnPosition"),
+    winnerPosition = obj.optNullableInt("winnerPosition"),
+    winningCells = obj.optArray("winningCells").mapNotNull { it?.takeIf { e -> e.isNumber }?.asInt },
+    draw = obj.optBoolean("draw"),
+    timeoutPosition = obj.optNullableInt("timeoutPosition"),
+    moveCount = obj.optInt("moveCount"),
+)
 
 private fun parseTicTacToe(obj: JsonObject): TicTacToeBoard = TicTacToeBoard(
     grid = obj.optArray("grid").map { cell -> cell?.takeIf { it.isNumber }?.asInt },

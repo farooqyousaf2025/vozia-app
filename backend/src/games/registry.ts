@@ -3,6 +3,7 @@ import { GameDriver } from './types';
 import { ticTacToeDriver } from './tic-tac-toe';
 import { quizBattleDriver } from './quiz-battle';
 import { ludoDriver } from './ludo';
+import { connectFourDriver } from './connect-four';
 
 /**
  * The game registry. Adding a game means writing a driver and listing it here; the
@@ -11,7 +12,7 @@ import { ludoDriver } from './ludo';
  * definitions of "paid".
  */
 const DRIVERS = new Map<string, GameDriver>(
-  [ticTacToeDriver, quizBattleDriver, ludoDriver].map((driver) => [driver.key, driver]),
+  [ticTacToeDriver, quizBattleDriver, ludoDriver, connectFourDriver].map((driver) => [driver.key, driver]),
 );
 
 export function driverFor(key: string): GameDriver {

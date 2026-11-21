@@ -101,7 +101,7 @@ const SHIPPED = `is_active = false, entry_fee_enabled = false, entry_fee_diamond
   entry_fee_max = 0, prize_enabled = false, commission_bps = 0, refund_policy = 'CANCELLED',
   promo_free_entry = false, promo_until = NULL, daily_entry_limit = 50,
   prize_rules = '[{"rank":1,"share_bps":10000}]'::jsonb`;
-const resetShipped = () => sql(`update game_definitions set ${SHIPPED} where key in ('TIC_TAC_TOE','QUIZ_BATTLE','LUDO')`);
+const resetShipped = () => sql(`update game_definitions set ${SHIPPED} where key in ('TIC_TAC_TOE','QUIZ_BATTLE','LUDO','CONNECT_FOUR')`);
 
 (async () => {
   await resetShipped();
@@ -597,6 +597,44 @@ const resetShipped = () => sql(`update game_definitions set ${SHIPPED} where key
 
   await api('PUT', '/api/admin/games/QUIZ_BATTLE/rules', { token: admin, body: { isActive: false } });
   await api('PUT', '/api/admin/games/LUDO/rules', { token: admin, body: { isActive: false } });
+
+  // ---- J2. Connect Four uses the same authoritative room-game lifecycle ----
+  const cfHost = await makeUser('cfh');
+  const cfGuest = await makeUser('cfg');
+  await api('PUT', '/api/admin/games/CONNECT_FOUR/rules', { token: admin, body: { isActive: true } });
+  const cfRoom = await api('POST', '/api/rooms', {
+    token: cfHost.token,
+    body: { title: `E2E Connect Four ${stamp}`, category: 'CHAT', type: 'PUBLIC', seatCapacity: 4 },
+  });
+  const cfOpen = await api('POST', '/api/games', {
+    token: cfHost.token,
+    body: { gameKey: 'CONNECT_FOUR', roomId: cfRoom.json.room.id },
+  });
+  const cfId = cfOpen.json.session.id;
+  await api('POST', `/api/games/${cfId}/join`, { token: cfGuest.token, body: {} });
+  await api('POST', `/api/games/${cfId}/ready`, { token: cfGuest.token, body: {} });
+  const cfStart = await api('POST', `/api/games/${cfId}/start`, { token: cfHost.token, body: {} });
+  const invalidColumn = await api('POST', `/api/games/${cfId}/action`, {
+    token: cfHost.token, body: { type: 'MOVE', payload: { column: 7 } },
+  });
+  const moves = [];
+  for (let turn = 0; turn < 7; turn += 1) {
+    const player = turn % 2 === 0 ? cfHost : cfGuest;
+    moves.push(await api('POST', `/api/games/${cfId}/action`, {
+      token: player.token, body: { type: 'MOVE', payload: { column: turn % 2 === 0 ? 0 : 1 } },
+    }));
+  }
+  const cfDone = moves[moves.length - 1].json.session;
+  check('connect four: server starts a free match and rejects an invalid column',
+    cfStart.status === 200 && cfStart.json.session.entryFeeDiamonds === 0 &&
+      invalidColumn.status === 400 && codeOf(invalidColumn) === 'bad_column',
+    { start: cfStart.status, fee: cfStart.json.session.entryFeeDiamonds, invalid: codeOf(invalidColumn) });
+  check('connect four: gravity, alternating turns and four-in-a-column produce a server win',
+    moves.every((move) => move.status === 200) && cfDone.status === 'COMPLETED' &&
+      cfDone.state.winnerPosition === 0 && cfDone.state.winningCells.length === 4 &&
+      cfDone.entryFeeDiamonds === 0,
+    { statuses: moves.map((move) => move.status), status: cfDone.status, winner: cfDone.state.winnerPosition });
+  await api('PUT', '/api/admin/games/CONNECT_FOUR/rules', { token: admin, body: { isActive: false } });
 
   // ---- K. leave the shipped posture as it was found ----
   const restore = await api('PUT', '/api/admin/games/TIC_TAC_TOE/rules', {

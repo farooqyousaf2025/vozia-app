@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.voiza.app.domain.model.ConnectFourBoard
 import com.voiza.app.domain.model.GameBoard
 import com.voiza.app.domain.model.GameSession
 import com.voiza.app.domain.model.GameStatus
@@ -172,6 +173,12 @@ private fun RenderBoard(
             locked = busy || session.isOver,
             onCell = onCell,
         )
+        is ConnectFourBoard -> ConnectFourBoardView(
+            board = board,
+            myTurn = session.turnOwnerId == myId,
+            locked = busy || session.isOver,
+            onColumn = onCell,
+        )
         is QuizBoard -> QuizBoardView(
             board = board,
             session = session,
@@ -300,6 +307,7 @@ private fun gameTitle(gameKey: String): String = when (gameKey) {
     "TIC_TAC_TOE" -> "Tic-Tac-Toe"
     "QUIZ_BATTLE" -> "Quiz Battle"
     "LUDO" -> "Ludo"
+    "CONNECT_FOUR" -> "Connect Four"
     else -> gameKey.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
 }
 
