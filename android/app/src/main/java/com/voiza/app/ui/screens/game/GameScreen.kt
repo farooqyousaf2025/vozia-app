@@ -176,6 +176,7 @@ private fun RenderBoard(
     secondsLeft: Int?,
     onCell: (Int) -> Unit,
     onChessMove: (Int, Int) -> Unit,
+    onCheckersMove: (Int, Int) -> Unit,
     onCarromShot: (Float, Float, Float) -> Unit,
     onChoice: (String) -> Unit,
     onAnswer: (Int) -> Unit,
