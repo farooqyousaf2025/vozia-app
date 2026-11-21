@@ -353,7 +353,7 @@ export default function OperationsPage() {
               <div className="mb-4 rounded-xl border border-line/70 p-3">
                 <p className="mb-2 text-sm font-semibold text-ink">Notification controls</p>
                 <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted">
-                  <label className="flex items-center gap-2"><input type="checkbox" checked={notificationSettings.enabled} onChange={(event) => setNotificationSettings({ ...notificationSettings, enabled: event.target.checked })} /> Enable in-app alerts</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={notificationSettings.enabled} onChange={(event) => setNotificationSettings({ ...notificationSettings, enabled: event.target.checked })} /> Enable alert notifications</label>
                   <label className="flex items-center gap-2"><input type="checkbox" checked={notificationSettings.critical} onChange={(event) => setNotificationSettings({ ...notificationSettings, critical: event.target.checked })} /> Critical alerts</label>
                   <label className="flex items-center gap-2"><input type="checkbox" checked={notificationSettings.warning} onChange={(event) => setNotificationSettings({ ...notificationSettings, warning: event.target.checked })} /> Warning alerts</label>
                   <label className="flex items-center gap-2"><input type="checkbox" checked={notificationSettings.email} disabled={!notificationSettings.emailConfigured} onChange={(event) => setNotificationSettings({ ...notificationSettings, email: event.target.checked })} /> Email {!notificationSettings.emailConfigured && '(provider not configured)'}</label>
