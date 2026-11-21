@@ -154,7 +154,18 @@ export async function agencyOperationsReport(opts: {
       earnings_7d: string | number; earnings_30d: string | number;
       override_7d: string | number; override_30d: string | number;
     }>(
-      `${ROSTER_CTE}
+      `${ROSTER_CTE}, agency_earnings AS (
+         SELECT t.agency_id,
+                COALESCE(SUM(t.amount_r_coins) FILTER (WHERE t.created_at >= now() - INTERVAL '7 days'), 0)::bigint AS earnings_7d,
+                COALESCE(SUM(t.amount_r_coins) FILTER (WHERE t.created_at >= now() - INTERVAL '30 days'), 0)::bigint AS earnings_30d,
+                COALESCE(SUM(COALESCE((t.meta->>'overrideCoins')::bigint, 0))
+                  FILTER (WHERE t.created_at >= now() - INTERVAL '7 days'), 0)::bigint AS override_7d,
+                COALESCE(SUM(COALESCE((t.meta->>'overrideCoins')::bigint, 0))
+                  FILTER (WHERE t.created_at >= now() - INTERVAL '30 days'), 0)::bigint AS override_30d
+           FROM transactions t
+          WHERE t.type = 'AGENCY_COMMISSION' AND t.status = 'COMPLETED'
+          GROUP BY t.agency_id
+       )
        SELECT a.id, a.name, a.status, a.parent_agency_id, parent.name AS parent_agency_name,
               COUNT(r.host_user_id)::int AS active_hosts,
               COUNT(r.host_user_id) FILTER (
@@ -162,14 +173,17 @@ export async function agencyOperationsReport(opts: {
                    OR r.last_checkin_at < now() - ($2::int * INTERVAL '1 day')
               )::int AS inactive_hosts,
               MAX(r.last_checkin_at) AS last_checkin_at,
-              COALESCE(SUM(r.earnings_7d_coins), 0)::bigint AS earnings_7d,
-              COALESCE(SUM(r.earnings_30d_coins), 0)::bigint AS earnings_30d,
-              COALESCE(SUM(r.override_7d_coins), 0)::bigint AS override_7d,
-              COALESCE(SUM(r.override_30d_coins), 0)::bigint AS override_30d
+              COALESCE(financials.earnings_7d, 0)::bigint AS earnings_7d,
+              COALESCE(financials.earnings_30d, 0)::bigint AS earnings_30d,
+              COALESCE(financials.override_7d, 0)::bigint AS override_7d,
+              COALESCE(financials.override_30d, 0)::bigint AS override_30d
          FROM agencies a
          LEFT JOIN agencies parent ON parent.id = a.parent_agency_id
          LEFT JOIN roster r ON r.agency_id = a.id
-        GROUP BY a.id, a.name, a.status, a.parent_agency_id, parent.name
+         LEFT JOIN agency_earnings financials ON financials.agency_id = a.id
+        GROUP BY a.id, a.name, a.status, a.parent_agency_id, parent.name,
+                 financials.earnings_7d, financials.earnings_30d,
+                 financials.override_7d, financials.override_30d
         ORDER BY a.status = 'ACTIVE' DESC, a.name
         LIMIT $1`,
       [agencyLimit, opts.inactiveDays],
@@ -204,7 +218,18 @@ export async function agencyOperationsReport(opts: {
       host_count: string | number; inactive_host_count: string | number;
       earnings_7d: string | number; earnings_30d: string | number;
     }>(
-      `${ROSTER_CTE}
+      `${ROSTER_CTE}, agency_earnings AS (
+         SELECT t.agency_id,
+                COALESCE(SUM(t.amount_r_coins) FILTER (WHERE t.created_at >= now() - INTERVAL '7 days'), 0)::bigint AS earnings_7d,
+                COALESCE(SUM(t.amount_r_coins) FILTER (WHERE t.created_at >= now() - INTERVAL '30 days'), 0)::bigint AS earnings_30d,
+                COALESCE(SUM(COALESCE((t.meta->>'overrideCoins')::bigint, 0))
+                  FILTER (WHERE t.created_at >= now() - INTERVAL '7 days'), 0)::bigint AS override_7d,
+                COALESCE(SUM(COALESCE((t.meta->>'overrideCoins')::bigint, 0))
+                  FILTER (WHERE t.created_at >= now() - INTERVAL '30 days'), 0)::bigint AS override_30d
+           FROM transactions t
+          WHERE t.type = 'AGENCY_COMMISSION' AND t.status = 'COMPLETED'
+          GROUP BY t.agency_id
+       )
        SELECT
          (SELECT COUNT(*)::int FROM agencies) AS agency_count,
          (SELECT COUNT(*)::int FROM agencies WHERE status = 'ACTIVE') AS active_agency_count,
@@ -215,8 +240,8 @@ export async function agencyOperationsReport(opts: {
            WHERE last_checkin_at IS NULL
               OR last_checkin_at < now() - ($1::int * INTERVAL '1 day')
          )::int AS inactive_host_count,
-         COALESCE(SUM(earnings_7d_coins), 0)::bigint AS earnings_7d,
-         COALESCE(SUM(earnings_30d_coins), 0)::bigint AS earnings_30d
+         (SELECT COALESCE(SUM(earnings_7d), 0)::bigint FROM agency_earnings) AS earnings_7d,
+         (SELECT COALESCE(SUM(earnings_30d), 0)::bigint FROM agency_earnings) AS earnings_30d
        FROM roster`,
       [opts.inactiveDays],
     ),
