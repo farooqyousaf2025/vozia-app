@@ -52,7 +52,7 @@ function simulate(coinsIn:Coin[], strikerIn:CarromState['striker']): {coins:Coin
       if(Math.abs(b.vx)+Math.abs(b.vy)<1.4){b.vx=0;b.vy=0;}
       if(POCKETS.some(([x,y])=>distance2(b,{x,y})<54**2)){
         b.pocketed=true;b.vx=0;b.vy=0;
-        if('id' in b)pocketed.push(b.id);
+        if(!isStriker(b))pocketed.push((b as Coin).id);
         continue;
       }
       const radius=isStriker(b)?STRIKER_RADIUS:RADIUS;
