@@ -262,6 +262,11 @@ fun PartyRoomScreen(
                         speakingLevels = state.speakingLevels,
                         onSeatClick = viewModel::onSeatTapped,
                     )
+                    GiftFlightOverlay(
+                        events = state.giftTicker + state.giftQueue,
+                        seats = state.seats,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                     BarrageOverlay(
                         messages = state.chat,
                         enabled = barrageOn,
