@@ -16,7 +16,7 @@ export type CarromState = {
   timeoutPosition: number | null;
 };
 const CENTER = 500;
-const POCKETS = [[82,82],[918,82],[82,918],[918,918]] as const;
+const POCKETS = [[110,110],[890,110],[110,890],[890,890]] as const;
 const RADIUS = 18;
 const STRIKER_RADIUS = 23;
 const clamp = (n:number,lo:number,hi:number) => Math.max(lo,Math.min(hi,n));
@@ -45,13 +45,13 @@ function simulate(coinsIn:Coin[], strikerIn:CarromState['striker']): {coins:Coin
   const bodies=[...coins.filter(c=>!c.pocketed),striker];
   const isStriker=(b:Coin|CarromState['striker']):b is CarromState['striker']=>b===striker;
   // Fixed-step, bounded server simulation. Clients submit aim/power, never positions or outcomes.
-  for(let step=0;step<360;step++){
+  for(let step=0;step<720;step++){
     for(const b of bodies){
       if(b.pocketed)continue;
-      b.x+=b.vx/60;b.y+=b.vy/60;
-      b.vx*=0.992;b.vy*=0.992;
+      b.x+=b.vx/120;b.y+=b.vy/120;
+      b.vx*=0.996;b.vy*=0.996;
       if(Math.abs(b.vx)+Math.abs(b.vy)<1.4){b.vx=0;b.vy=0;}
-      if(POCKETS.some(([x,y])=>distance2(b,{x,y})<48**2)){
+      if(POCKETS.some(([x,y])=>distance2(b,{x,y})<54**2)){
         b.pocketed=true;b.vx=0;b.vy=0;
         if(!isStriker(b))pocketed.push(b.id);
         continue;
