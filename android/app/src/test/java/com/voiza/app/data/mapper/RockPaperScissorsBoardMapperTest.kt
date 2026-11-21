@@ -11,7 +11,7 @@ class RockPaperScissorsBoardMapperTest {
     fun parsesChoicesAndServerResult() {
         val board = parseBoard(
             "ROCK_PAPER_SCISSORS",
-            JsonParser.parseString("""{"choices":{"0":"ROCK","1":"SCISSORS"},"winnerPosition":0,"draw":false,"timeoutPosition":null}"""),
+            JsonParser.parseString("""{"choices":{"0":"ROCK","1":"SCISSORS"},"committedPositions":[0,1],"winnerPosition":0,"draw":false,"timeoutPosition":null}"""),
         ) as RockPaperScissorsBoard
         assertEquals(mapOf(0 to "ROCK", 1 to "SCISSORS"), board.choices)
         assertEquals(0, board.winnerPosition)
