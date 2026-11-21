@@ -257,7 +257,7 @@ export const operationalAlertNotificationSettings = asyncHandler(async (_req: Re
 
 export const updateOperationalAlertNotificationSettings = asyncHandler(async (req: Request, res: Response) => {
   const input = req.body;
-  const keys = ['enabled', 'warning', 'critical', 'notifyOnResolved'] as const;
+  const keys = ['enabled', 'warning', 'critical'] as const;
   if (!input || typeof input !== 'object' || keys.some((key) => typeof input[key] !== 'boolean')) {
     throw ApiError.badRequest('All notification settings must be boolean values', 'invalid_alert_notification_settings');
   }
@@ -265,7 +265,6 @@ export const updateOperationalAlertNotificationSettings = asyncHandler(async (re
     enabled: input.enabled,
     warning: input.warning,
     critical: input.critical,
-    notifyOnResolved: input.notifyOnResolved,
   });
   await logAction(req, {
     action: 'PLATFORM_ALERT_NOTIFICATIONS_UPDATE',
