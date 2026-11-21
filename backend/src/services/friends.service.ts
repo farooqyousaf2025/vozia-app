@@ -261,6 +261,7 @@ export type ConversationDto = {
   id: string;
   partner: MiniUser;
   lastMessageAt: string | null;
+  lastMessagePreview: string | null;
   unreadCount: number;
 };
 
@@ -285,11 +286,14 @@ export async function getOrCreateConversation(a: string, b: string): Promise<Con
 }
 
 export async function listConversations(userId: string): Promise<ConversationDto[]> {
-  const rows = await many<ConversationRow & { partner_id: string; partner_username: string; partner_avatar_url: string | null; partner_vip_level: number; partner_xp: string | number }>(
+  const rows = await many<ConversationRow & { partner_id: string; partner_username: string; partner_avatar_url: string | null; partner_vip_level: number; partner_xp: string | number; last_message_preview: string | null }>(
     `SELECT c.*,
             CASE WHEN c.user_a_id = $1 THEN c.user_b_id ELSE c.user_a_id END AS partner_id,
             u.username AS partner_username, u.avatar_url AS partner_avatar_url,
-            u.vip_level AS partner_vip_level, u.xp AS partner_xp
+            u.vip_level AS partner_vip_level, u.xp AS partner_xp,
+            (SELECT LEFT(m.content, 120) FROM direct_messages m
+              WHERE m.conversation_id = c.id
+              ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message_preview
        FROM conversations c
        JOIN users u ON u.id = (CASE WHEN c.user_a_id = $1 THEN c.user_b_id ELSE c.user_a_id END)
       WHERE c.user_a_id = $1 OR c.user_b_id = $1
@@ -314,6 +318,7 @@ export async function listConversations(userId: string): Promise<ConversationDto
         xp: row.partner_xp,
       }),
       lastMessageAt: row.last_message_at ? new Date(row.last_message_at).toISOString() : null,
+      lastMessagePreview: row.last_message_preview,
       unreadCount: Number(unread?.n ?? 0),
     });
   }
