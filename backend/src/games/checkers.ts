@@ -89,7 +89,7 @@ export const checkersDriver: GameDriver = {
     if(!move)return {ok:false,code:'illegal_move',message:'That move is not legal; captures are mandatory'};
     const board=[...s.board],piece=board[from]!;
     board[from]=null;board[to]=piece;if(move.captured!==null)board[move.captured]=null;
-    const [tx,ty]=xy(to),promoted=!king(piece)&&((piece==='r'&&ty===0)||(piece==='b'&&ty===7));
+    const [,ty]=xy(to),promoted=!king(piece)&&((piece==='r'&&ty===0)||(piece==='b'&&ty===7));
     if(promoted)board[to]=piece==='r'?'R':'B';
     let next:CheckersState={...s,board,moveCount:s.moveCount+1,forcedFrom:null};
     const more=move.captured!==null&&!promoted?captureMovesFrom(board,to):[];
