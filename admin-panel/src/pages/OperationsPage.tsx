@@ -54,6 +54,14 @@ export default function OperationsPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Keep the operations snapshot current without polling in a background tab.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load();
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+
   const queueItems = snapshot ? [
     snapshot.queues.withdrawalsPending === null ? null : {
       label: 'Withdrawals awaiting action',
