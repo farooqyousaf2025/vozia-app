@@ -60,13 +60,14 @@ class FriendMappersTest {
     @Test
     fun `a conversation with a negative unread count cannot show a negative badge`() {
         val conversation = gson.fromJson(
-            """{"id":"c1","unreadCount":-4,"partner":{"id":"p1","username":"Bo"},"lastMessageAt":null}""",
+            """{"id":"c1","unreadCount":-4,"partner":{"id":"p1","username":"Bo"},"lastMessageAt":"2026-11-20T12:00:00.000Z","lastMessagePreview":"See you in the room"}""",
             com.voiza.app.data.remote.dto.ConversationDto::class.java,
         ).toDomainOrNull()
 
         assertNotNull(conversation)
         assertEquals(0, conversation!!.unreadCount)
         assertEquals("Bo", conversation.partner.username)
+        assertEquals("See you in the room", conversation.lastMessagePreview)
     }
 
     @Test
