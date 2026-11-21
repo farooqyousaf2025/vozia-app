@@ -250,7 +250,7 @@ class GameMappersTest {
         val pieces = listOf("r", "n", "b", "q", "k", "b", "n", "r", "p", "p", "p", "p", "p", "p", "p", "p") +
             List(32) { null } +
             listOf("P", "P", "P", "P", "P", "P", "P", "P", "R", "N", "B", "Q", "K", "B", "N", "R")
-        val boardJson = pieces.joinToString(",") { it?.let { piece -> "\\\"$piece\\\"" } ?: "null" }
+        val boardJson = pieces.joinToString(",") { it?.let { piece -> "\"$piece\"" } ?: "null" }
         val chess = """{"board":[$boardJson],"turn":"w","turnPosition":0,"winnerPosition":null,"draw":false,"check":false,"checkmate":false,"stalemate":false,"moveCount":0,"lastMove":null}"""
         val session = gson.fromJson(sessionJson("CHESS", chess), GameSessionDto::class.java).toDomain()
         val board = session.board as ChessBoard
