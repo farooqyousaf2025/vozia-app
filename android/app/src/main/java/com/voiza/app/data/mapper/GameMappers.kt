@@ -8,6 +8,7 @@ import com.voiza.app.data.remote.dto.GameParticipantDto
 import com.voiza.app.data.remote.dto.GameResultDto
 import com.voiza.app.data.remote.dto.GameSessionDto
 import com.voiza.app.data.remote.dto.GameSettlementDto
+import com.voiza.app.domain.model.ChessBoard
 import com.voiza.app.domain.model.ConnectFourBoard
 import com.voiza.app.domain.model.RockPaperScissorsBoard
 import com.voiza.app.domain.model.GameBoard
@@ -155,9 +156,25 @@ internal fun parseBoard(gameKey: String, raw: JsonElement?): GameBoard {
         "LUDO" -> parseLudo(obj)
         "CONNECT_FOUR" -> parseConnectFour(obj)
         "ROCK_PAPER_SCISSORS" -> parseRockPaperScissors(obj)
+        "CHESS" -> parseChess(obj)
         else -> GameBoard.Unsupported(gameKey)
     }
 }
+
+private fun parseChess(obj: JsonObject): ChessBoard = ChessBoard(
+    board = obj.optArray("board").map { it?.takeIf { e -> e.isText }?.asString },
+    turn = obj.optString("turn", "w"),
+    turnPosition = obj.optInt("turnPosition"),
+    winnerPosition = obj.optNullableInt("winnerPosition"),
+    draw = obj.optBoolean("draw"),
+    check = obj.optBoolean("check"),
+    checkmate = obj.optBoolean("checkmate"),
+    stalemate = obj.optBoolean("stalemate"),
+    moveCount = obj.optInt("moveCount"),
+    lastMove = obj.get("lastMove")?.takeIf { it.isJsonObject }?.asJsonObject?.let { move ->
+        mapOf("from" to move.optInt("from"), "to" to move.optInt("to"), "san" to move.optString("san"))
+    },
+)
 
 private fun parseRockPaperScissors(obj: JsonObject): RockPaperScissorsBoard {
     val choices = mutableMapOf<Int, String>()
