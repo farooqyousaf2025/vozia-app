@@ -182,7 +182,8 @@ fun RankingsScreen(
                         ),
                     )
                 }
-                Spacer(Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 FilterChip(
                     selected = state.discoveryRegion == null,
                     onClick = { viewModel.selectDiscoveryRegion(null) },
