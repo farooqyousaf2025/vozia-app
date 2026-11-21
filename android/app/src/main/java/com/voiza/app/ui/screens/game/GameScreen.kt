@@ -32,6 +32,7 @@ import com.voiza.app.domain.model.GameSession
 import com.voiza.app.domain.model.GameStatus
 import com.voiza.app.domain.model.LudoBoard
 import com.voiza.app.domain.model.QuizBoard
+import com.voiza.app.domain.model.RockPaperScissorsBoard
 import com.voiza.app.domain.model.TicTacToeBoard
 import com.voiza.app.ui.components.EmptyState
 import com.voiza.app.ui.components.LoadingProgress
@@ -88,6 +89,7 @@ fun GameScreen(
                     secondsLeft = state.secondsLeft,
                     busy = state.busy,
                     onCell = viewModel::playCell,
+                    onChoice = viewModel::chooseHand,
                     onAnswer = viewModel::answer,
                     onRoll = viewModel::rollDice,
                     onPiece = viewModel::movePiece,
@@ -173,7 +175,7 @@ private fun RenderBoard(
             locked = busy || session.isOver,
             onCell = onCell,
         )
-        is ConnectFourBoard -> ConnectFourBoardView(
+        is RockPaperScissorsBoard -> RockPaperScissorsBoardView(\n            board = board,\n            mySeat = mySeat,\n            locked = busy || session.isOver,\n            onChoose = onChoice,\n        )\n        is ConnectFourBoard -> ConnectFourBoardView(
             board = board,
             myTurn = session.turnOwnerId == myId,
             locked = busy || session.isOver,
@@ -307,7 +309,7 @@ private fun gameTitle(gameKey: String): String = when (gameKey) {
     "TIC_TAC_TOE" -> "Tic-Tac-Toe"
     "QUIZ_BATTLE" -> "Quiz Battle"
     "LUDO" -> "Ludo"
-    "CONNECT_FOUR" -> "Connect Four"
+    "CONNECT_FOUR" -> "Connect Four"\n    "ROCK_PAPER_SCISSORS" -> "Rock Paper Scissors"
     else -> gameKey.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
 }
 
