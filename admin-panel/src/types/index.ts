@@ -1,76 +1,37 @@
-// ---------------------------------------------------------------------------
-// Voiza Admin Panel — API contract DTOs
-// Field names mirror the backend's camelCase JSON (columns mirror the snake_case
-// Postgres schema in backend/database/schema.sql).
-// ---------------------------------------------------------------------------
-
-// ---- Enums (Postgres enum labels) -----------------------------------------
-export type UserType = 'HOST' | 'USER' | 'AGENCY_ADMIN';
-export type UserStatus = 'ACTIVE' | 'BANNED';
-export type RoomType = 'PUBLIC' | 'PRIVATE';
-export type RoomStatus = 'ACTIVE' | 'CLOSED';
-export type RoomCategory = 'POPULAR' | 'PARTY' | 'MUSIC' | 'GAME' | 'CHAT';
-export type SeatStatus = 'EMPTY' | 'OCCUPIED' | 'LOCKED';
-export type ParticipantRole = 'HOST' | 'SPEAKER' | 'AUDIENCE';
-export type WithdrawalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID';
-
-/**
- * How loud a gift plays in the room: `TICKER` scrolls it down the side column,
- * `FULLSCREEN` takes over the screen. Clients fall back to `TICKER` for anything
- * they do not recognise, so an unset tier is the quiet one.
- */
-export type GiftEffectKind = 'TICKER' | 'FULLSCREEN';
-
-/**
- * Which renderer the phone hands the file to: `LOTTIE` for the vector scenes the app already
- * plays, `SVGA` and `MP4` for the two file types an operator uploads as richer animations. The
- * format is what the upload guard matched against the bytes, so picking one here commits to
- * having uploaded a file of that container into the animation slot.
- */
-export type GiftAnimationFormat = 'LOTTIE' | 'SVGA' | 'MP4';
-
-// ---- Auth ------------------------------------------------------------------
-/**
- * The capabilities this operator holds, as the backend sees them. The panel uses them only to
- * decide which pages to show; every route is authorised again server-side from the database row,
- * so a stale list here can hide a page but never grant an action.
- */
-export type AdminPermission = string;
-
-export interface AdminIdentity {
-  id: string;
-  username: string;
-  displayName: string;
-  role: string; // 'SUPER_ADMIN' | 'FINANCE_ADMIN' | 'OPERATIONS_ADMIN' | 'MODERATOR'
-  permissions?: AdminPermission[];
-}
-
-export interface LoginResponse {
-  token: string;
-  admin: AdminIdentity;
-  permissions?: AdminPermission[];
-}
-
-// ---- Overview / stats ------------------------------------------------------
-export interface StatsSeriesPoint {
-  date: string; // ISO date (YYYY-MM-DD)
-  diamonds: number;
-  rooms: number;
-}
-
-export interface AdminStats {
-  activeRooms: number;
-  onlineUsers: number;
-  totalUsers: number;
-  newUsersToday: number;
-  diamondsSpentToday: number;
-  rCoinsIssuedToday: number;
-  giftsSentToday: number;
-  withdrawalsPending: number;
-  series: StatsSeriesPoint[];
-}
-
 export type OperationalDependencyState = 'HEALTHY' | 'DEGRADED' | 'DOWN';
+export type OperationalMetricQuality = 'MEASURED' | 'ESTIMATED' | 'CONFIGURED' | 'UNAVAILABLE';
+
+export interface OperationalResourceMetric {
+  value: number | null;
+  unit: string;
+  capacity: number | null;
+  available: number | null;
+  percent: number | null;
+  quality: OperationalMetricQuality;
+  source: string;
+  note?: string;
+}
+
+export interface OperationalResourceFact {
+  label: string;
+  value: string | number | null;
+  unit?: string;
+  quality: OperationalMetricQuality;
+  source: string;
+}
+
+export interface OperationalResourcePanel {
+  cpu: OperationalResourceMetric;
+  memory: OperationalResourceMetric;
+  networkIn: OperationalResourceMetric;
+  networkOut: OperationalResourceMetric;
+  diskRead: OperationalResourceMetric;
+  diskWrite: OperationalResourceMetric;
+  gpuUtilization: OperationalResourceMetric;
+  gpuMemory: OperationalResourceMetric;
+  facts: OperationalResourceFact[];
+  samples: Array<{ name: string; value: number }>;
+}
 
 export interface PlatformOperationsSnapshot {
   generatedAt: string;
@@ -83,6 +44,12 @@ export interface PlatformOperationsSnapshot {
     livekit: OperationalDependencyState;
   };
   liveMediaRooms: number | null;
+  resources: {
+    backend: OperationalResourcePanel;
+    postgres: OperationalResourcePanel;
+    redis: OperationalResourcePanel;
+    livekit: OperationalResourcePanel;
+  };
   queues: {
     withdrawalsPending: number | null;
     rechargesAwaitingVerification: number | null;
@@ -91,6 +58,7 @@ export interface PlatformOperationsSnapshot {
 }
 
 // ---- Users -----------------------------------------------------------------
+
 export interface UserRow {
   id: string;
   phone: string;
