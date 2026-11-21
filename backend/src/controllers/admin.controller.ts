@@ -57,6 +57,7 @@ import { UserRow } from '../types/db';
 import {
   ApiError,
   asyncHandler,
+  normalizePhone,
   optionalInt,
   optionalString,
   optionalEnum,
