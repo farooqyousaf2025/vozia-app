@@ -30,6 +30,7 @@ import type {
   PlatformAlertSettings,
   PlatformAlertNotificationList,
   PlatformAlertNotificationSettings,
+  PlatformAlertDeliveryProfile,
   Agency,
   AgencyDetailResult,
   AgencyListResult,
@@ -440,6 +441,13 @@ export const api = {  // ---- auth ---------------------------------------------
 
   operationalAlertNotificationSettings(): Promise<PlatformAlertNotificationSettings> {
     return request<PlatformAlertNotificationSettings>('/api/admin/operational-alert-notification-settings');
+  },
+  operationalAlertDeliveryProfile(): Promise<PlatformAlertDeliveryProfile> {
+    return request<PlatformAlertDeliveryProfile>('/api/admin/operational-alert-delivery-profile');
+  },
+
+  updateOperationalAlertDeliveryProfile(email: string | null): Promise<PlatformAlertDeliveryProfile> {
+    return request<PlatformAlertDeliveryProfile>('/api/admin/operational-alert-delivery-profile', { method: 'PUT', body: { email } });
   },
 
   updateOperationalAlertNotificationSettings(settings: PlatformAlertNotificationSettings): Promise<PlatformAlertNotificationSettings> {
