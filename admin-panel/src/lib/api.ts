@@ -25,6 +25,7 @@ import type {
   ApplicationMutationResult,
   AdminRoomTheme,
   AdminStats,
+  PlatformOperationsSnapshot,
   Agency,
   AgencyDetailResult,
   AgencyListResult,
@@ -412,6 +413,10 @@ export const api = {  // ---- auth ---------------------------------------------
 
   stats(): Promise<AdminStats> {
     return request<AdminStats>('/api/admin/stats');
+  },
+
+  operationalHealth(): Promise<PlatformOperationsSnapshot> {
+    return request<PlatformOperationsSnapshot>('/api/admin/operational-health');
   },
 
   // ---- users ------------------------------------------------------------------

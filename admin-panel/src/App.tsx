@@ -21,6 +21,7 @@ import LoginPage from './pages/LoginPage';
 import MediaPage from './pages/MediaPage';
 import ModerationPage from './pages/ModerationPage';
 import OverviewPage from './pages/OverviewPage';
+import OperationsPage from './pages/OperationsPage';
 import OperatorsPage from './pages/OperatorsPage';
 import PartnersPage from './pages/PartnersPage';
 import QuestsPage from './pages/QuestsPage';
@@ -73,6 +74,7 @@ export default function App() {
         }
       >
         <Route index element={<RequirePermission permission="dashboard:read"><OverviewPage /></RequirePermission>} />
+        <Route path="operations" element={<RequirePermission permission="dashboard:read"><OperationsPage /></RequirePermission>} />
         <Route path="users" element={<RequirePermission permission="user:read"><UsersPage /></RequirePermission>} />
         <Route path="moderation" element={<RequirePermission permission="user:read"><ModerationPage /></RequirePermission>} />
         <Route path="rooms" element={<RequirePermission permission="room:read"><RoomsPage /></RequirePermission>} />

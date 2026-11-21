@@ -55,6 +55,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Workspace',
     items: [
       { to: '/', label: 'Overview', icon: <IconDashboard className="h-5 w-5" />, end: true, permission: 'dashboard:read' },
+      { to: '/operations', label: 'Platform operations', icon: <IconShieldCheck className="h-5 w-5" />, permission: 'dashboard:read' },
       { to: '/users', label: 'Users', icon: <IconUsers className="h-5 w-5" />, permission: 'user:read' },
       { to: '/moderation', label: 'Moderation', icon: <IconShieldCheck className="h-5 w-5" />, permission: 'user:read' },
       { to: '/rooms', label: 'Rooms', icon: <IconMic className="h-5 w-5" />, permission: 'room:read' },

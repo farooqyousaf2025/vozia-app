@@ -474,6 +474,24 @@ function loadLivekitService() {
   const adminToken = adminLogin.json && adminLogin.json.token;
   check('admin: the operator bootstrap OTP mints an admin token', adminLogin.status === 200 && !!adminToken, { status: adminLogin.status, code: adminLogin.json && adminLogin.json.error && adminLogin.json.error.code });
 
+  const operationsSnapshot = await api('GET', '/api/admin/operational-health', { token: adminToken });
+  const operations = operationsSnapshot.json || {};
+  check('operations: admin health snapshot reports backend dependencies and live media count',
+    operationsSnapshot.status === 200 &&
+    ['HEALTHY', 'DEGRADED', 'DOWN'].includes(operations.overall) &&
+    ['backend', 'postgres', 'redis', 'livekit'].every((key) =>
+      ['HEALTHY', 'DEGRADED', 'DOWN'].includes(operations.dependencies && operations.dependencies[key])) &&
+    typeof operations.uptimeSeconds === 'number' &&
+    (operations.liveMediaRooms === null || typeof operations.liveMediaRooms === 'number'),
+    { status: operationsSnapshot.status, overall: operations.overall, dependencies: operations.dependencies });
+  check('operations: queue counters are permission-filtered and never return financial amounts',
+    operationsSnapshot.status === 200 &&
+    operations.queues &&
+    ['withdrawalsPending', 'rechargesAwaitingVerification', 'applicationsPending'].every((key) =>
+      operations.queues[key] === null || (Number.isInteger(operations.queues[key]) && operations.queues[key] >= 0)) &&
+    !('balance' in operations) && !('amount' in operations),
+    { queues: operations.queues });
+
   const systemRoomResponse = await api('POST', '/api/admin/rooms', {
     token: adminToken,
     body: { title: `E2E System Room ${stamp}`, category: 'PARTY', type: 'PUBLIC', seatCapacity: 3 },

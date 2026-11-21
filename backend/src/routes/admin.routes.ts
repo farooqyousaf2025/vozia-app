@@ -33,6 +33,7 @@ router.use(requireAdminOperator);
 router.get('/me', admin.whoami);
 router.post('/change-password', admin.changePassword);
 router.get('/stats', requirePermission('dashboard:read'), admin.stats);
+router.get('/operational-health', requirePermission('dashboard:read'), admin.operationalHealth);
 
 router.get('/users', requirePermission('user:read'), admin.users);
 router.post('/users', requirePermission('user:moderate'), admin.createUser);

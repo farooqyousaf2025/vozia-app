@@ -151,6 +151,7 @@ import {
 import { setAnnouncement } from '../services/room-community.service';
 import { AuditEntry, listAudit, recordAudit } from '../services/audit.service';
 import { adminPermissions } from '../services/rbac.service';
+import { platformOperationsSnapshot } from '../services/platform-operations.service';
 
 /**
  * Whether `?includeTest=true` is honoured (migration 0039).
@@ -180,6 +181,14 @@ async function logAction(req: Request, entry: Omit<AuditEntry, 'adminId'>): Prom
 
 export const stats = asyncHandler(async (req: Request, res: Response) => {
   res.json(await dashboardStats({ includeTest: maySeeTestMoney(req) }));
+});
+
+export const operationalHealth = asyncHandler(async (req: Request, res: Response) => {
+  const permissions = adminPermissions(req.adminRow?.role ?? 'MODERATOR');
+  res.json(await platformOperationsSnapshot({
+    finance: permissions.includes('finance:read'),
+    applications: permissions.includes('application:read'),
+  }));
 });
 
 
