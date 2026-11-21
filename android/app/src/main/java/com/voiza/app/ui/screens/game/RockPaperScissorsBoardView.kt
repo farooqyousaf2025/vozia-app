@@ -41,7 +41,7 @@ fun RockPaperScissorsBoardView(
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
         )
-        if (!board.draw && board.winnerPosition == null && !submitted) {
+        if (!board.draw && board.winnerPosition == null && !submitted && !locked) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 listOf("ROCK", "PAPER", "SCISSORS").forEach { choice ->
                     VoizaSecondaryButton(
