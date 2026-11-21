@@ -67,6 +67,7 @@ import com.voiza.app.data.remote.dto.JoinRoomBody
 import com.voiza.app.data.remote.dto.JoinRoomResponse
 import com.voiza.app.data.remote.dto.LeaderboardResponse
 import com.voiza.app.data.remote.dto.RankingBoardResponse
+import com.voiza.app.data.remote.dto.DiscoveryRankingResponse
 import com.voiza.app.data.remote.dto.RankingClaimBody
 import com.voiza.app.data.remote.dto.RankingClaimResponse
 import com.voiza.app.data.remote.dto.LiveKitTokenDto
