@@ -415,12 +415,15 @@ export async function listRooms(opts: {
  */
 export async function quickJoinRoom(userId: string): Promise<RoomDto> {
   const row = await one<RoomRow>(
-    `${ROOM_SELECT}
+    `${ROOM_SELECT.replace('SELECT r.*,', 'SELECT r.*, COALESCE(live.present_count, 0)::int AS listener_count,')}
+      ${ROOM_ACTIVITY_JOINS}
       WHERE r.status = 'ACTIVE' AND r.type = 'PUBLIC' AND r.host_id IS DISTINCT FROM $1
+        AND (r.owner_type = 'SYSTEM' OR (u.id IS NOT NULL AND u.status = 'ACTIVE' AND NOT u.is_test))
+        AND COALESCE(live.present_count, 0) > 0
         AND NOT EXISTS (SELECT 1 FROM room_bans b WHERE b.room_id = r.id AND b.user_id = $1)
         AND NOT EXISTS (SELECT 1 FROM room_participants p
                          WHERE p.room_id = r.id AND p.user_id = $1 AND p.left_at IS NULL)
-      ORDER BY r.listener_count DESC, r.created_at DESC
+      ORDER BY live.present_count DESC, live.speaker_count DESC, ${activityScore} DESC, r.created_at DESC
       LIMIT 1`,
     [userId],
   );
