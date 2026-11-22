@@ -93,19 +93,18 @@ class VoizaNotifier(
      * already showing the same thing.
      */
     private fun shouldNotify(): Boolean =
-        !ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && canPost()
-
-    private fun canPost(): Boolean {
-        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) return false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            manager.getNotificationChannel(CHANNEL_ACTIVITY)?.importance == NotificationManager.IMPORTANCE_NONE
-        ) return false
-        return true
-    }
+        NotificationTargetPolicy.shouldDisplay(
+            appInForeground = ProcessLifecycleOwner.get().lifecycle.currentState
+                .isAtLeast(Lifecycle.State.STARTED),
+            appNotificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled(),
+            // Android 13+ has a runtime notification permission; older versions do not.
+            runtimePermissionGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED,
+            // A missing channel is treated as enabled, matching Android's current default behavior.
+            activityChannelEnabled = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                manager.getNotificationChannel(CHANNEL_ACTIVITY)?.importance != NotificationManager.IMPORTANCE_NONE,
+        )
 
     private fun isForMe(event: GiftAnimatedEvent): Boolean {
         val me = session.user.value?.id ?: return false
@@ -115,12 +114,12 @@ class VoizaNotifier(
     /** Local Docker mock transport: render the same Android notification without Firebase. */
     fun showMockPush(title: String, body: String, data: Map<String, String>) {
         if (!shouldNotify()) return
-        val partnerId = NotificationTargetPolicy.partnerIdFrom(data["type"], data["partnerId"])
+        val presentation = NotificationTargetPolicy.mockPushPresentation(title, body, data)
         notify(
             id = ("mock:${System.nanoTime()}").hashCode(),
-            title = title.ifBlank { "Vozia notification" },
-            body = body.ifBlank { "You have a new update." },
-            partnerId = partnerId,
+            title = presentation.title,
+            body = presentation.body,
+            partnerId = presentation.partnerId,
         )
     }
 
