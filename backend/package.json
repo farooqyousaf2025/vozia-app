@@ -18,6 +18,7 @@
     "db:seed": "psql \"$DATABASE_URL\" -f database/seed.sql",
     "assets:generate": "node scripts/generate-placeholder-assets.cjs",
     "test:e2e": "node scripts/e2e-live.cjs",
+    "test:device-tokens": "node scripts/device-tokens-e2e.cjs",
     "test:discovery-rankings": "node scripts/discovery-rankings-smoke.cjs",
     "test:business": "node scripts/business-e2e.cjs",
     "test:accounts": "node scripts/account-e2e.cjs",
