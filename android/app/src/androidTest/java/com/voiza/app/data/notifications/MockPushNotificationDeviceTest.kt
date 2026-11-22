@@ -15,6 +15,7 @@ import androidx.test.rule.GrantPermissionRule
 import androidx.test.uiautomator.UiDevice
 import androidx.test.platform.app.InstrumentationRegistry
 import com.voiza.app.MainActivity
+import com.voiza.app.data.remote.SessionManager
 import com.voiza.app.data.remote.dto.UserDto
 import com.voiza.app.di.ServiceLocator
 import org.junit.After
@@ -68,9 +69,9 @@ class MockPushNotificationDeviceTest {
 
     @After
     fun tearDown() {
-        if (!device.isScreenOn) device.wakeUp()
-        postedIds.forEach(notificationManager::cancel)
-        ServiceLocator.sessionManager.clear()
+        if (::device.isInitialized && !device.isScreenOn) device.wakeUp()
+        if (::notificationManager.isInitialized) postedIds.forEach(notificationManager::cancel)
+        if (ServiceLocatorInitialized()) ServiceLocator.sessionManager.clear()
         if (::scenario.isInitialized) scenario.close()
     }
 
@@ -132,7 +133,7 @@ class MockPushNotificationDeviceTest {
 
     @Test
     fun logoutAndLoginOnTheSameInstallationReplaceTheEncryptedSessionIdentity() {
-        val session = ServiceLocator.sessionManager
+        val session = SessionManager(context)
         session.clear()
 
         val firstUser = UserDto(
@@ -160,6 +161,8 @@ class MockPushNotificationDeviceTest {
         assertEquals("device-test-token-two", session.token.value)
         assertEquals(secondUser.id, session.user.value?.id)
     }
+
+    private fun ServiceLocatorInitialized(): Boolean = runCatching { ServiceLocator.sessionManager }.isSuccess
 
     private fun activeNotification(title: String): android.service.notification.StatusBarNotification? =
         notificationManager.activeNotifications.firstOrNull {
