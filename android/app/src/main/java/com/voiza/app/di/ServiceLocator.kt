@@ -159,6 +159,7 @@ object ServiceLocator {
             if (stripeConfigured) PaymentConfiguration.init(appContext, publishableKey)
 
             sessionManager = SessionManager(appContext)
+            FcmTokenRegistrar.initialize(appContext)
             apiService = NetworkModule.buildRetrofit(
                 NetworkModule.buildOkHttp(sessionManager)
             ).create(VoizaApiService::class.java)
