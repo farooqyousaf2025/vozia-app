@@ -491,7 +491,7 @@ private fun HomeTopBar(
                 maxLines = 1,
             )
             Text(
-                text = user?.let { "Room #${it.id.take(4)} \u2726" } ?: "Welcome to Voiza",
+                text = if (user == null) "Welcome to Voiza" else "Welcome back to Voiza",
                 color = OnDarkMedium,
                 fontSize = 11.sp,
             )
@@ -636,6 +636,7 @@ fun RoomCard(
                     color = OnDarkMedium,
                     fontSize = 11.sp,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             val roomDetails = buildList {
