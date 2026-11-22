@@ -35,7 +35,7 @@ class VoizaApp : Application(), ImageLoaderFactory {
                     .setProjectId(BuildConfig.FCM_ANDROID_PROJECT_ID)
                     .setGcmSenderId(BuildConfig.FCM_ANDROID_SENDER_ID)
                     .build())
-            if (app != null) FirebaseMessaging.getInstance(app).token
+            if (app != null) FirebaseMessaging.getInstance().token
                 .addOnSuccessListener { token -> FcmTokenRegistrar.persistAndSync(this, token) }
         }.onFailure { android.util.Log.w("VoizaPush", "Firebase push is not configured; socket notifications remain active", it) }
     }
