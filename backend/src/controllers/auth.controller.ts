@@ -9,7 +9,7 @@ import { toAdmin, toUser } from '../utils/serialize';
 import { issueOtp, verifyOtpAndResolve } from '../services/otp.service';
 import { signAdminToken, signUserToken } from '../services/token.service';
 import { adminPermissions } from '../services/rbac.service';
-import { registerDeviceToken } from '../services/push.service';
+import { clearDeviceToken, registerDeviceToken } from '../services/push.service';
 import { findAdminByUsername } from '../services/admin.service';
 
 export const requestOtp = asyncHandler(async (req: Request, res: Response) => {
@@ -124,6 +124,11 @@ export const me = asyncHandler(async (req: Request, res: Response) => {
 export const setDeviceToken = asyncHandler(async (req: Request, res: Response) => {
   const token = requireString(req.body?.deviceToken, 'deviceToken', { min: 20, max: 600 });
   await registerDeviceToken(req.user!.sub, token);
+  res.json({ ok: true });
+});
+
+export const clearMyDeviceToken = asyncHandler(async (req: Request, res: Response) => {
+  await clearDeviceToken(req.user!.sub);
   res.json({ ok: true });
 });
 
