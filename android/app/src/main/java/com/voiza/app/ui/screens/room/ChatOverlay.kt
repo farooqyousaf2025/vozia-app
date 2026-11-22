@@ -20,6 +20,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CardGiftcard
@@ -38,11 +40,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -91,11 +96,27 @@ fun ChatOverlay(
     val listState = rememberLazyListState()
     var input by remember { mutableStateOf("") }
     var pickerOpen by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val sendDraft = {
+        val message = input.trim()
+        if (message.isNotEmpty()) {
+            onSend(message)
+            input = ""
+            pickerOpen = false
+            focusManager.clearFocus()
+            keyboardController?.hide()
+        }
+    }
 
-    // Keep pinned to the newest message.
+    // Follow new messages only while the reader is already near the bottom.
+    // This keeps incoming chat from yanking someone away from older messages.
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem((messages.size - 1).coerceAtLeast(0))
+        val visibleLast = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+        val total = listState.layoutInfo.totalItemsCount
+        val wasFollowing = visibleLast == null || visibleLast >= total - 2
+        if (messages.isNotEmpty() && wasFollowing) {
+            listState.animateScrollToItem(messages.lastIndex)
         }
     }
 
@@ -146,6 +167,8 @@ fun ChatOverlay(
                 onValueChange = { input = it.take(MAX_INPUT) },
                 placeholder = { Text("Say something\u2026", fontSize = 13.sp, color = OnDarkMedium) },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { sendDraft() }),
                 shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Fuchsia.copy(alpha = 0.7f),
@@ -167,12 +190,8 @@ fun ChatOverlay(
                 )
             }
             IconButton(
-                onClick = {
-                    if (input.isNotBlank()) {
-                        onSend(input)
-                        input = ""
-                    }
-                },
+                enabled = input.isNotBlank(),
+                onClick = { sendDraft() },
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Send,

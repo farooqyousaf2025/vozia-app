@@ -18,9 +18,15 @@ import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.PersonOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +62,7 @@ fun HostControlsSheet(
     onToggleMute: (Seat, Boolean) -> Unit,
     onKick: (Seat) -> Unit,
 ) {
+    var confirmKick by remember(seat?.seatIndex) { mutableStateOf(false) }
     if (seat == null || !isHost) return
     VoizaSheet(
         visible = true,
@@ -117,12 +124,27 @@ fun HostControlsSheet(
                 title = "Kick from seat",
                 subtitle = "Back to the audience, seat freed",
                 danger = true,
-                onClick = {
-                    onKick(seat)
-                    onDismiss()
-                },
+                onClick = { confirmKick = true },
             )
         }
+    }
+
+    if (confirmKick && seat != null) {
+        AlertDialog(
+            onDismissRequest = { confirmKick = false },
+            title = { Text("Kick " + (seat.user?.username ?: "this member") + "?") },
+            text = { Text("They will return to the audience. Their account and room history are not deleted.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmKick = false
+                    onKick(seat)
+                    onDismiss()
+                }) { Text("Kick") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmKick = false }) { Text("Cancel") }
+            },
+        )
     }
 }
 
