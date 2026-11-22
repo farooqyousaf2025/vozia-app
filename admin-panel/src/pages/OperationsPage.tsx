@@ -366,7 +366,7 @@ export default function OperationsPage() {
                   </label>
                   <Button size="sm" variant="secondary" onClick={() => void saveAlertEmail()} disabled={savingAlertEmail}>{savingAlertEmail ? 'Saving…' : 'Save email'}</Button>
                 </div>
-                <p className="mt-2 text-[10px] text-muted">Email uses the configured Resend provider; webhook uses a signed HTTPS POST. Provider credentials are deployment secrets. Mobile push to admin accounts is not available because admin identities do not currently register FCM device tokens.</p>
+                <p className="mt-2 text-[10px] text-muted">Email uses the configured SMTP provider (Gmail supports OAuth2 or an app password) or Resend; webhook uses a signed HTTPS POST. Provider credentials are deployment secrets. Mobile push to admin accounts is not available because admin identities do not currently register FCM device tokens.</p>
               </div>
             )}
             <div className="mb-3 flex justify-end">
