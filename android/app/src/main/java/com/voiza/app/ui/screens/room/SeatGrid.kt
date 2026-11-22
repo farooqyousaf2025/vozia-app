@@ -106,7 +106,10 @@ private fun SeatCell(
     val outer = if (isHostSeat) cell - 28.dp else cell - 40.dp
     val isSpeaking = level > 0.03 && seat.status == SeatStatus.OCCUPIED && !seat.isMuted
 
-    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(cell)) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.size(cell).clickable(onClick = onClick),
+    ) {
         // Speaking pulse sits behind everything.
         if (isSpeaking) {
             SpeakingRing(level = level, modifier = Modifier.size(outer + 20.dp))
@@ -134,7 +137,7 @@ private fun SeatCell(
                     SeatStatus.LOCKED -> VoizaSurfaceVariant
                     SeatStatus.OCCUPIED -> MaterialTheme.colorScheme.surfaceVariant
                 },
-                modifier = Modifier.clickable(onClick = onClick),
+                modifier = Modifier,
             )
 
             // Overlays
