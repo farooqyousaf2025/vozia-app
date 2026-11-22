@@ -17,6 +17,7 @@ SELECT id, device_token
   FROM users
  WHERE device_token IS NOT NULL
    AND btrim(device_token) <> ''
+ ORDER BY updated_at ASC, id ASC
 ON CONFLICT (token) DO UPDATE
   SET user_id = EXCLUDED.user_id,
       updated_at = now(),
