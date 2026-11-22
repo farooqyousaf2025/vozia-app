@@ -52,6 +52,14 @@
           why android:usesCleartextTraffic is NOT set to true here.
         -->
 
+        <service
+            android:name=".data.notifications.VoizaFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
