@@ -20,8 +20,10 @@ object Routes {
     // The shell's Discover tab: the full search surface (server-side search across open rooms).
     const val DISCOVER = "discover"
 
-    // The shell's Messages tab: the friends route with its conversation pane preselected.
+    // The shell's Messages tab; a validated partner id is optional for notification deep links.
     const val MESSAGES = "messages"
+    const val MESSAGE_PARTNER_ARG = "partnerId"
+    const val MESSAGES_PATTERN = "$MESSAGES?$MESSAGE_PARTNER_ARG={$MESSAGE_PARTNER_ARG}"
 
     const val ROOM_ARG = "roomId"
     const val ROOM_BASE = "room"
@@ -64,6 +66,9 @@ object Routes {
 
     // Same nesting for the PK desk: leaving it returns to the room still connected.
     const val PK_PATTERN = "$ROOM_PATTERN/pk"
+
+    fun messages(partnerId: String? = null) =
+        if (partnerId.isNullOrBlank()) MESSAGES else "$MESSAGES?$MESSAGE_PARTNER_ARG=$partnerId"
 
     fun room(roomId: String) = "$ROOM_BASE/$roomId"
 
