@@ -166,17 +166,17 @@ interface VoizaApiService {
     @GET("api/auth/me")
     suspend fun me(): UserEnvelope
 
-    @PUT("api/auth/me/device-token")
+    @PUT("api/auth/me/device-tokens")
     suspend fun setDeviceToken(@Body body: Map<String, String>): OkResponse
 
-    @HTTP(method = "DELETE", path = "api/auth/me/device-token", hasBody = true)
+    @HTTP(method = "DELETE", path = "api/auth/me/device-tokens", hasBody = true)
     suspend fun clearDeviceToken(
         @Body body: Map<String, String>,
         @Header("Authorization") authorization: String,
     ): OkResponse
 
     /** Compatibility fallback for registrations made by a pre-multi-device app version. */
-    @DELETE("api/auth/me/device-token")
+    @DELETE("api/auth/me/device-tokens")
     suspend fun clearAllDeviceTokens(@Header("Authorization") authorization: String): OkResponse
 
     @PATCH("api/auth/me")
