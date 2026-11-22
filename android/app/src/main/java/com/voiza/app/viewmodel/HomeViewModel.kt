@@ -66,6 +66,8 @@ class HomeViewModel(
 
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
+    // Ignore late responses when a newer category, sort, region or search request has started.
+    private var roomsRequestVersion = 0L
 
     init {
         loadRooms()
@@ -109,25 +111,26 @@ class HomeViewModel(
     }
 
     fun loadRooms() {
+        val requestVersion = ++roomsRequestVersion
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
-            fetch()
+            _state.update { it.copy(loading = true, refreshing = false, error = null) }
+            fetch(requestVersion)
         }
     }
 
     fun refresh() {
+        val requestVersion = ++roomsRequestVersion
         viewModelScope.launch {
-            _state.update { it.copy(refreshing = true) }
+            _state.update { it.copy(refreshing = true, error = null) }
             // The strip above the grid is the platform's campaign list rather than this member's
             // content, so a pull that re-reads the rooms re-reads it as well: a campaign an operator
             // switched on while the member was scrolling arrives on the same gesture the rooms do.
             banners.refresh()
-            fetch()
-            _state.update { it.copy(refreshing = false) }
+            if (requestVersion == roomsRequestVersion) fetch(requestVersion)
         }
     }
 
-    private suspend fun fetch() {
+    private suspend fun fetch(requestVersion: Long) {
         val request = _state.value
         // Both branches answer with rooms the *server* selected and ordered; this client never
         // filters or sorts the list it already has.
@@ -142,12 +145,14 @@ class HomeViewModel(
                 region = request.region,
             )
         }
+        // A slower response for an earlier filter must never replace the newest result.
+        if (requestVersion != roomsRequestVersion) return
         when (result) {
             is ApiResult.Success -> _state.update {
-                it.copy(rooms = result.data, loading = false, error = null)
+                it.copy(rooms = result.data, loading = false, refreshing = false, error = null)
             }
             is ApiResult.Failure -> _state.update {
-                it.copy(loading = false, error = result.message)
+                it.copy(loading = false, refreshing = false, error = result.message)
             }
         }
     }
@@ -179,6 +184,13 @@ class HomeViewModel(
     /** My Room: the caller's own rooms, straight from `GET /api/rooms/mine`. */
     fun toggleMyRooms() {
         _state.update { it.copy(showingMyRooms = !_state.value.showingMyRooms) }
+        loadRooms()
+    }
+
+    /** Discover always browses the lobby, not the Home-only My Room view. */
+    fun showAllRooms() {
+        if (!_state.value.showingMyRooms) return
+        _state.update { it.copy(showingMyRooms = false) }
         loadRooms()
     }
 

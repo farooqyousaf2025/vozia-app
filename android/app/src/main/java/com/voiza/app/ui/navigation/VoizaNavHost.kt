@@ -1,6 +1,8 @@
 package com.voiza.app.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -28,6 +30,8 @@ import com.voiza.app.ui.screens.room.PartyRoomScreen
 import com.voiza.app.ui.screens.store.StoreScreen
 import com.voiza.app.ui.screens.wallet.WalletScreen
 import com.voiza.app.viewmodel.FriendsTab
+import com.voiza.app.viewmodel.HomeViewModel
+import com.voiza.app.viewmodel.voizaViewModelFactory
 
 /**
  * App graph. Start destination is decided by MainActivity from the persisted
@@ -70,9 +74,20 @@ fun VoizaNavHost(
         // The shell's Discover tab. Pushed rather than swapped so the lobby's
         // state (and the room under it, if any) survives the visit.
         composable(Routes.DISCOVER) {
+            // Reuse Home's ViewModel so category, sort, region and search stay in sync.
+            val homeEntry = remember(navController) { navController.getBackStackEntry(Routes.HOME) }
+            val homeViewModel: HomeViewModel = viewModel(
+                viewModelStoreOwner = homeEntry,
+                factory = voizaViewModelFactory { HomeViewModel() },
+            )
             DiscoverScreen(
                 onBack = { navController.popBackStack() },
+                onHome = { navController.popBackStack(Routes.HOME, false) },
+                onCreateRoom = { navController.navigate(Routes.CREATE_ROOM) },
+                onOpenMessages = { navController.navigate(Routes.MESSAGES) },
+                onOpenProfile = { navController.navigate(Routes.PROFILE) },
                 onOpenRoom = { roomId -> navController.navigate(Routes.room(roomId)) },
+                viewModel = homeViewModel,
             )
         }
 

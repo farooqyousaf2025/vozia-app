@@ -7,7 +7,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,7 +25,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -46,10 +44,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabPosition
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -83,7 +77,6 @@ import com.voiza.app.domain.model.MiniUser
 import com.voiza.app.domain.model.RankingLeader
 import com.voiza.app.domain.model.RankingPeriod
 import com.voiza.app.domain.model.RoomCategory
-import com.voiza.app.domain.model.RoomSort
 import com.voiza.app.domain.model.RoomStatus
 import com.voiza.app.domain.model.RoomSummary
 import com.voiza.app.domain.model.RoomType
@@ -118,8 +111,8 @@ import com.voiza.app.viewmodel.voizaViewModelFactory
 
 /**
  * Home lobby with a Voiza bottom bar (Rooms only — Wallet/Profile are
- * separate routes reached from the bar), category tabs driving the API
- * filter, and a pull-to-refresh room grid.
+ * separate routes reached from the bar), shared category/sort/region filters,
+ * and a pull-to-refresh room grid.
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -174,7 +167,7 @@ fun HomeScreen(
             )
         },
     ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding)) {
+        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             HomeTopBar(
                 user = state.user,
                 onWalletClick = onOpenWallet,
@@ -196,50 +189,9 @@ fun HomeScreen(
                 }
             }
 
-            val tabs = listOf(
-                RoomCategory.POPULAR,
-                RoomCategory.PARTY,
-                RoomCategory.MUSIC,
-                RoomCategory.GAME,
-                RoomCategory.CHAT,
-            )
-            TabRow(
-                selectedTabIndex = tabs.indexOf(state.category).coerceAtLeast(0),
-                containerColor = Color.Transparent,
-                contentColor = OnDarkHigh,
-                divider = {},
-                indicator = { tabPositions ->
-                    Box(
-                        Modifier
-                            .tabIndicatorOffsetCompat(tabPositions, tabs.indexOf(state.category))
-                            .height(3.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(VoizaAccentGradient),
-                    )
-                },
-            ) {
-                tabs.forEach { cat ->
-                    Tab(
-                        selected = state.category == cat,
-                        onClick = { viewModel.selectCategory(cat) },
-                        text = {
-                            Text(
-                                text = cat.label(),
-                                fontSize = 13.sp,
-                                fontWeight = if (state.category == cat) FontWeight.Bold else FontWeight.Medium,
-                                color = if (state.category == cat) OnDarkHigh else OnDarkMedium,
-                            )
-                        },
-                    )
-                }
-            }
-
             DiscoveryRow(
                 search = state.search,
                 searchOpen = searchOpen || state.search.isNotBlank(),
-                sort = state.sort,
-                region = state.region,
-                accountRegion = state.user?.countryCode,
                 showingMyRooms = state.showingMyRooms,
                 quickJoinPending = state.quickJoinPending,
                 quickJoinError = state.quickJoinError,
@@ -248,10 +200,19 @@ fun HomeScreen(
                     searchOpen = false
                     viewModel.setSearch("")
                 },
-                onSelectSort = viewModel::selectSort,
-                onSelectRegion = viewModel::selectRegion,
                 onToggleMyRooms = viewModel::toggleMyRooms,
                 onQuickJoin = viewModel::quickJoin,
+            )
+
+            RoomBrowseFilters(
+                category = state.category,
+                sort = state.sort,
+                region = state.region,
+                accountRegion = state.user?.countryCode,
+                showingMyRooms = state.showingMyRooms,
+                onSelectCategory = viewModel::selectCategory,
+                onSelectSort = viewModel::selectSort,
+                onSelectRegion = viewModel::selectRegion,
             )
 
             RankingsEntryCard(
@@ -267,42 +228,43 @@ fun HomeScreen(
                 modifier = Modifier.padding(start = 12.dp, end = 12.dp),
             )
 
-            Box(modifier = Modifier.fillMaxSize()) {
-                when {
-                    state.loading && state.rooms.isEmpty() -> RoomGridSkeleton(
-                        count = 6,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    )
+            Box(modifier = Modifier.weight(1f)) {
+                PullToRefreshBox(
+                    isRefreshing = state.refreshing,
+                    onRefresh = viewModel::refresh,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    when {
+                        state.loading && state.rooms.isEmpty() -> RoomGridSkeleton(
+                            count = 6,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        )
 
-                    state.error != null && state.rooms.isEmpty() -> EmptyState(
-                        icon = Icons.Default.Search,
-                        title = state.error ?: "Could not load rooms",
-                        subtitle = "Pull down to try again",
-                    )
+                        state.error != null && state.rooms.isEmpty() -> EmptyState(
+                            icon = Icons.Default.Search,
+                            title = state.error ?: "Could not load rooms",
+                            subtitle = "Pull down to try again",
+                        )
 
-                    state.rooms.isEmpty() && state.search.isNotBlank() -> EmptyState(
-                        icon = Icons.Default.Search,
-                        title = "Nothing matches \"${state.search.trim()}\"",
-                        subtitle = "The server searched every open room it knows about, not just this screen",
-                    )
+                        state.rooms.isEmpty() && state.search.isNotBlank() -> EmptyState(
+                            icon = Icons.Default.Search,
+                            title = "Nothing matches \"${state.search.trim()}\"",
+                            subtitle = "The server searched every open room it knows about, not just this screen",
+                        )
 
-                    state.rooms.isEmpty() && state.showingMyRooms -> EmptyState(
-                        icon = Icons.Default.Home,
-                        title = "You are not hosting a room",
-                        subtitle = "Open one below and it will appear here",
-                    )
+                        state.rooms.isEmpty() && state.showingMyRooms -> EmptyState(
+                            icon = Icons.Default.Home,
+                            title = "You are not hosting a room",
+                            subtitle = "Open one below and it will appear here",
+                        )
 
-                    state.rooms.isEmpty() -> EmptyState(
-                        icon = Icons.Default.Home,
-                        title = "No rooms here yet",
-                        subtitle = "Be the first — open your own room below",
-                    )
+                        state.rooms.isEmpty() -> EmptyState(
+                            icon = Icons.Default.Home,
+                            title = "No rooms here yet",
+                            subtitle = "Be the first — open your own room below",
+                        )
 
-                    else -> PullToRefreshBox(
-                        isRefreshing = state.refreshing,
-                        onRefresh = viewModel::refresh,
-                    ) {
-                        LazyVerticalGrid(
+                        else -> LazyVerticalGrid(
                             columns = GridCells.Adaptive(minSize = 160.dp),
                             contentPadding = PaddingValues(12.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -321,26 +283,19 @@ fun HomeScreen(
 }
 
 /**
- * Discovery controls. Every choice here becomes a query parameter for the server: search runs
- * against all open rooms, "Trending" is the last 24h of gift value on the ledger, and "My Room"
- * is `GET /api/rooms/mine`. Nothing is filtered from the rows already on screen, because a room
- * ranked 200th is invisible to a client-side filter.
+ * Lobby search and quick-join controls. Category, sort and region filters are shared with Discover
+ * in RoomBrowseFilters, and search is sent to the server rather than filtering the visible page.
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun DiscoveryRow(
     search: String,
     searchOpen: Boolean,
-    sort: RoomSort,
-    region: String?,
-    accountRegion: String?,
     showingMyRooms: Boolean,
     quickJoinPending: Boolean,
     quickJoinError: String?,
     onSearch: (String) -> Unit,
     onCloseSearch: () -> Unit,
-    onSelectSort: (RoomSort) -> Unit,
-    onSelectRegion: (String?) -> Unit,
     onToggleMyRooms: () -> Unit,
     onQuickJoin: () -> Unit,
 ) {
@@ -433,47 +388,6 @@ private fun DiscoveryRow(
                 fontSize = 11.sp,
                 modifier = Modifier.padding(top = 6.dp),
             )
-        }
-
-        // `mine` answers with the caller's rooms in a fixed order, so sort chips would promise a
-        // filter the endpoint does not offer.
-        if (!showingMyRooms) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .padding(top = 8.dp)
-                    .horizontalScroll(rememberScrollState()),
-            ) {
-                RoomSort.entries.forEach { option ->
-                    FilterChip(
-                        selected = sort == option,
-                        onClick = { onSelectSort(option) },
-                        label = { Text(option.label, fontSize = 12.sp) },
-                        colors = voizaChipColors(),
-                    )
-                }
-            }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .padding(top = 6.dp)
-                    .horizontalScroll(rememberScrollState()),
-            ) {
-                FilterChip(
-                    selected = region == null,
-                    onClick = { onSelectRegion(null) },
-                    label = { Text("Global", fontSize = 12.sp) },
-                    colors = voizaChipColors(),
-                )
-                accountRegion?.uppercase()?.takeIf { it.matches(Regex("[A-Z]{2}")) }?.let { code ->
-                    FilterChip(
-                        selected = region == code,
-                        onClick = { onSelectRegion(code) },
-                        label = { Text("Region · $code", fontSize = 12.sp) },
-                        colors = voizaChipColors(),
-                    )
-                }
-            }
         }
     }
 }
@@ -577,7 +491,7 @@ private fun HomeTopBar(
                 maxLines = 1,
             )
             Text(
-                text = user?.let { "Room #${it.id.take(4)} \u2726" } ?: "Welcome to Voiza",
+                text = if (user == null) "Welcome to Voiza" else "Welcome back to Voiza",
                 color = OnDarkMedium,
                 fontSize = 11.sp,
             )
@@ -722,6 +636,7 @@ fun RoomCard(
                     color = OnDarkMedium,
                     fontSize = 11.sp,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             val roomDetails = buildList {
@@ -741,14 +656,6 @@ fun RoomCard(
     }
     }
 }
-
-/** Gradient tab indicator. */
-private fun Modifier.tabIndicatorOffsetCompat(
-    tabPositions: List<TabPosition>,
-    selectedIndex: Int,
-): Modifier = this.tabIndicatorOffset(
-    tabPositions[selectedIndex.coerceIn(0, (tabPositions.size - 1).coerceAtLeast(0))]
-)
 
 private val WarningTint = WarningAmber
 
@@ -817,16 +724,11 @@ private fun DiscoveryRowPreview() {
             DiscoveryRow(
                 search = "",
                 searchOpen = false,
-                sort = RoomSort.DEFAULT,
-                region = null,
-                accountRegion = null,
                 showingMyRooms = false,
                 quickJoinPending = false,
                 quickJoinError = null,
                 onSearch = {},
                 onCloseSearch = {},
-                onSelectSort = {},
-                onSelectRegion = {},
                 onToggleMyRooms = {},
                 onQuickJoin = {},
             )
@@ -842,16 +744,11 @@ private fun DiscoveryRowSearchOpenPreview() {
             DiscoveryRow(
                 search = "",
                 searchOpen = true,
-                sort = RoomSort.TRENDING,
-                region = null,
-                accountRegion = null,
                 showingMyRooms = false,
                 quickJoinPending = false,
                 quickJoinError = null,
                 onSearch = {},
                 onCloseSearch = {},
-                onSelectSort = {},
-                onSelectRegion = {},
                 onToggleMyRooms = {},
                 onQuickJoin = {},
             )
