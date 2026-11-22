@@ -9,5 +9,6 @@ router.post('/verify-otp', auth.verifyOtp);
 router.get('/me', requireAuth, auth.me);
 router.patch('/me', requireAuth, auth.updateMe);
 router.put('/me/device-token', requireAuth, auth.setDeviceToken);
+router.delete('/me/device-token', requireAuth, auth.clearMyDeviceToken);
 
 export default router;

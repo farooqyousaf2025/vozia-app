@@ -76,6 +76,11 @@ android {
         // Stripe's publishable key is public by design; it still comes from config rather than
         // source. An empty value keeps the simulated top-up path active for dev stacks that have
         // no Stripe account (and for CI), so a release does not need a real key just to compile.
+        buildConfigField("String", "FCM_ANDROID_API_KEY", "\"${prop("FCM_ANDROID_API_KEY", "")}\"")
+        buildConfigField("String", "FCM_ANDROID_APP_ID", "\"${prop("FCM_ANDROID_APP_ID", "")}\"")
+        buildConfigField("String", "FCM_ANDROID_PROJECT_ID", "\"${prop("FCM_ANDROID_PROJECT_ID", "")}\"")
+        buildConfigField("String", "FCM_ANDROID_SENDER_ID", "\"${prop("FCM_ANDROID_SENDER_ID", "")}\"")
+
         buildConfigField(
             "String",
             "VOIZA_STRIPE_PUBLISHABLE_KEY",
@@ -213,6 +218,9 @@ dependencies {
 
     // Lottie playback for the generated gift/effect animations (Apache-2.0)
     implementation("com.airbnb.android:lottie-compose:6.4.1")
+
+    // Optional Firebase Cloud Messaging; disabled until Android Firebase values are configured.
+    implementation("com.google.firebase:firebase-messaging:24.1.0")
 
     // LiveKit real-time audio
     implementation("io.livekit:livekit-android:2.13.0")
