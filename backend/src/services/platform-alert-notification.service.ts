@@ -142,13 +142,24 @@ export function emailDeliveryIsConfigured(): boolean {
   const config = env.alertDelivery;
   const smtpReady = smtpAuthAvailable() && Boolean(config.emailFrom || config.smtpUser);
   const resendReady = Boolean(config.resendApiKey && config.emailFrom);
-  return smtpReady || resendReady;
+  return env.notificationDeliveryMode === 'mock' || smtpReady || resendReady;
 }
 
 async function deliverEmail(row: DeliveryRow): Promise<void> {
   if (!row.email) throw new Error('Admin alert recipient email is missing');
 
   const config = env.alertDelivery;
+  if (env.notificationDeliveryMode === 'mock') {
+    console.info('[notifications:mock-email]', JSON.stringify({
+      notificationId: row.id,
+      severity: row.severity,
+      subject: row.title,
+      recipientConfigured: Boolean(row.email),
+      message: row.message,
+      sent: false,
+    }));
+    return;
+  }
   if (smtpAuthAvailable()) {
     const oauthReady = Boolean(
       config.smtpOAuthClientId && config.smtpOAuthClientSecret && config.smtpOAuthRefreshToken,
@@ -246,8 +257,13 @@ export async function deliverPendingPlatformAlertNotifications(batchSize = 10): 
       if (row.channel === 'EMAIL') await deliverEmail(row);
       else await deliverWebhook(row);
       await pool.query(
-        "UPDATE platform_alert_notifications SET delivery_status = 'DELIVERED', delivered_at = now(), claimed_at = NULL, last_error = NULL WHERE id = $1",
-        [row.id],
+        `UPDATE platform_alert_notifications
+            SET delivery_status = 'DELIVERED', delivered_at = now(), claimed_at = NULL,
+                last_error = $2
+          WHERE id = $1`,
+        [row.id, row.channel === 'EMAIL' && env.notificationDeliveryMode === 'mock'
+          ? 'MOCKED: captured locally; no email was sent'
+          : null],
       );
       delivered += 1;
     } catch (error) {
