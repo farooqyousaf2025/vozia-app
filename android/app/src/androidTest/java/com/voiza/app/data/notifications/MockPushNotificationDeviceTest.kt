@@ -5,6 +5,7 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.os.PowerManager
 import android.os.SystemClock
 import android.view.KeyEvent
 import androidx.lifecycle.Lifecycle
@@ -77,7 +78,7 @@ class MockPushNotificationDeviceTest {
         if (::scenario.isInitialized) scenario.close()
     }
 
-    @Test
+    @Test(timeout = 60_000)
     fun mockPushIsSuppressedInForegroundAndPostedAfterHomeThenSuppressedAgainOnResume() {
         val foregroundTitle = "Device test foreground ${SystemClock.elapsedRealtime()}"
         ServiceLocator.notifier.showMockPush(foregroundTitle, "Must not appear while Vozia is open", emptyMap())
@@ -114,26 +115,34 @@ class MockPushNotificationDeviceTest {
         assertNull("Resumed app must not post another system notification", activeNotification(resumedTitle))
     }
 
-    @Test
+    @Test(timeout = 60_000)
     fun mockPushIsPostedWhileDisplayIsOffAndRemainsInTheSystemNotificationQueue() {
-        device.pressHome()
-        assertTrue(
-            "Process did not enter the background before screen-off",
-            awaitCondition { !ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) },
-        )
+        val wakeLock = context.getSystemService(PowerManager::class.java)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Voiza:MockPushDeviceTest")
+            .apply { setReferenceCounted(false) }
+        wakeLock.acquire(30_000)
+        try {
+            device.pressHome()
+            assertTrue(
+                "Process did not enter the background before screen-off",
+                awaitCondition { !ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) },
+            )
 
-        if (device.isScreenOn) device.pressKeyCode(KeyEvent.KEYCODE_POWER)
-        assertTrue("Emulator display did not turn off", awaitCondition { !device.isScreenOn })
+            if (device.isScreenOn) device.pressKeyCode(KeyEvent.KEYCODE_POWER)
+            assertTrue("Emulator display did not turn off", awaitCondition { !device.isScreenOn })
 
-        val title = "Device test screen off ${SystemClock.elapsedRealtime()}"
-        ServiceLocator.notifier.showMockPush(title, "Notification queued while display is off", emptyMap())
+            val title = "Device test screen off ${SystemClock.elapsedRealtime()}"
+            ServiceLocator.notifier.showMockPush(title, "Notification queued while display is off", emptyMap())
 
-        val notification = awaitNotification(title)
-        assertNotNull("Notification was not queued while the display was off", notification)
-        assertEquals(title, notification?.extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString())
+            val notification = awaitNotification(title)
+            assertNotNull("Notification was not queued while the display was off", notification)
+            assertEquals(title, notification?.extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString())
+        } finally {
+            if (wakeLock.isHeld) wakeLock.release()
+        }
     }
 
-    @Test
+    @Test(timeout = 60_000)
     fun logoutAndLoginOnTheSameInstallationReplaceTheEncryptedSessionIdentity() {
         val session = SessionManager(context)
         session.clear()
