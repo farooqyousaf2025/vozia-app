@@ -123,6 +123,22 @@ class FriendsViewModelTest {
     }
 
     @Test
+    fun `closing while messages are loading keeps the conversation list clear`() {
+        val delayed = CompletableDeferred<ApiResult<MessagePage>>()
+        repository.messagesHandler = { _, _, _ -> delayed.await() }
+        val vm = viewModel()
+
+        vm.openConversation(friend)
+        assertTrue(vm.state.value.loadingMessages)
+        vm.closeConversation()
+        delayed.complete(ApiResult.Success(MessagePage(listOf(message), 1, 1, 50)))
+
+        assertEquals(null, vm.state.value.openPartner)
+        assertTrue(vm.state.value.messages.isEmpty())
+        assertTrue(!vm.state.value.loadingMessages)
+    }
+
+    @Test
     fun `a slower previous conversation cannot replace the newly opened thread`() {
         val delayedFirst = CompletableDeferred<ApiResult<MessagePage>>()
         val secondMessage = message.copy(id = "m2", senderId = "f2", content = "second")
