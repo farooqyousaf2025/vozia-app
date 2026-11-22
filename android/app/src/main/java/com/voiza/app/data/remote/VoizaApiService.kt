@@ -141,6 +141,7 @@ import com.voiza.app.data.remote.dto.WithdrawResponse
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
@@ -166,6 +167,9 @@ interface VoizaApiService {
 
     @PUT("api/auth/me/device-token")
     suspend fun setDeviceToken(@Body body: Map<String, String>): OkResponse
+
+    @DELETE("api/auth/me/device-token")
+    suspend fun clearDeviceToken(@Header("Authorization") authorization: String): OkResponse
 
     @PATCH("api/auth/me")
     suspend fun updateProfile(@Body body: UpdateProfileBody): UserEnvelope
