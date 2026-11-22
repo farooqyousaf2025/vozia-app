@@ -270,6 +270,41 @@ class FriendsViewModel(
         }
     }
 
+    /** Resolve a notification deep link against the server's conversation list before opening it. */
+    fun openConversationById(partnerId: String) {
+        if (partnerId.isBlank()) return
+        val requestVersion = ++conversationRequestVersion
+        _state.update {
+            it.copy(
+                tab = FriendsTab.MESSAGES,
+                openPartner = null,
+                messages = emptyList(),
+                loadingMessages = true,
+                draft = "",
+                error = null,
+            )
+        }
+        viewModelScope.launch {
+            when (val result = friendsRepository.conversations()) {
+                is ApiResult.Success -> {
+                    if (requestVersion != conversationRequestVersion) return@launch
+                    val partner = result.data.firstOrNull { it.partner.id == partnerId }?.partner
+                    _state.update { it.copy(conversations = result.data, loadingMessages = false) }
+                    if (partner == null) {
+                        _state.update { it.copy(error = "Conversation not found") }
+                    } else {
+                        openConversation(partner)
+                    }
+                }
+                is ApiResult.Failure -> {
+                    if (requestVersion == conversationRequestVersion) {
+                        _state.update { it.copy(loadingMessages = false, error = result.message) }
+                    }
+                }
+            }
+        }
+    }
+
     /** Return from a direct-message thread to the conversation list without leaving Friends. */
     fun closeConversation() {
         conversationRequestVersion++
