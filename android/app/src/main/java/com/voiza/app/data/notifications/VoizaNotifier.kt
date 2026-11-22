@@ -99,9 +99,19 @@ class VoizaNotifier(
         return event.receiver.id == me
     }
 
-    private fun notify(id: Int, title: String, body: String) {
+    /** Post a private-message alert only when the app is backgrounded; the live socket updates an active session. */
+    fun showDirectMessagePush(title: String, body: String, partnerId: String) {
+        if (!partnerId.matches(UUID_PATTERN) || !shouldNotify()) return
+        notify(id = "dm:$partnerId".hashCode(), title = title, body = body, partnerId = partnerId)
+    }
+
+    private fun notify(id: Int, title: String, body: String, partnerId: String? = null) {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            if (!partnerId.isNullOrBlank()) {
+                putExtra("type", "direct_message")
+                putExtra("partnerId", partnerId)
+            }
         }
         // FLAG_IMMUTABLE is mandatory on Android 12+, and minSdk is already 24.
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -118,6 +128,7 @@ class VoizaNotifier(
 
     companion object {
         const val CHANNEL_ACTIVITY = "voiza_activity"
+        private val UUID_PATTERN = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
         private const val NOTIFICATION_WARNING = 9_001
         private const val NOTIFICATION_KICKED = 9_002
     }
