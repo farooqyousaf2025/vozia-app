@@ -12,6 +12,7 @@ import com.voiza.app.domain.model.MiniUser
 import com.voiza.app.domain.model.User
 import com.voiza.app.domain.repository.AuthRepository
 import com.voiza.app.domain.repository.FriendsRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -109,6 +110,42 @@ class FriendsViewModelTest {
     }
 
     @Test
+    fun `closing a conversation returns to the message list`() {
+        val vm = viewModel()
+        vm.openConversation(friend)
+
+        vm.closeConversation()
+
+        assertEquals(FriendsTab.MESSAGES, vm.state.value.tab)
+        assertEquals(null, vm.state.value.openPartner)
+        assertTrue(vm.state.value.messages.isEmpty())
+        assertTrue(!vm.state.value.loadingMessages)
+    }
+
+    @Test
+    fun `a slower previous conversation cannot replace the newly opened thread`() {
+        val delayedFirst = CompletableDeferred<ApiResult<MessagePage>>()
+        val secondMessage = message.copy(id = "m2", senderId = "f2", content = "second")
+        repository.messagesHandler = { userId, page, limit ->
+            if (userId == friend.id) delayedFirst.await()
+            else ApiResult.Success(MessagePage(listOf(secondMessage), 1, page, limit))
+        }
+        val vm = viewModel()
+        val secondFriend = MiniUser(id = "f2", username = "Second friend", avatarUrl = null)
+
+        vm.openConversation(friend)
+        assertTrue(vm.state.value.loadingMessages)
+        vm.openConversation(secondFriend)
+
+        assertEquals("f2", vm.state.value.openPartner?.id)
+        assertEquals(listOf("m2"), vm.state.value.messages.map { it.id })
+        delayedFirst.complete(ApiResult.Success(MessagePage(listOf(message), 1, 1, 50)))
+
+        assertEquals("f2", vm.state.value.openPartner?.id)
+        assertEquals(listOf("m2"), vm.state.value.messages.map { it.id })
+    }
+
+    @Test
     fun `a message from somebody else refreshes conversations instead of entering the thread`() {
         val vm = viewModel()
         vm.openConversation(friend)
@@ -129,6 +166,9 @@ class FriendsViewModelTest {
         var declineResult: ApiResult<Boolean> = ApiResult.Success(true)
         var requestResult: ApiResult<FriendRequest> = ApiResult.Success(request)
         var sendResult: ApiResult<DirectMessage> = ApiResult.Success(message)
+        var messagesHandler: suspend (String, Int, Int) -> ApiResult<MessagePage> = { _, page, limit ->
+            ApiResult.Success(MessagePage(emptyList(), 0, page, limit))
+        }
 
         var incomingCalls = 0
         var conversationsCalls = 0
@@ -148,7 +188,7 @@ class FriendsViewModelTest {
             return conversationsResult
         }
         override suspend fun messages(userId: String, page: Int, limit: Int): ApiResult<MessagePage> =
-            ApiResult.Success(MessagePage(emptyList(), 0, page, limit))
+            messagesHandler(userId, page, limit)
         override suspend fun sendMessage(userId: String, content: String) = sendResult
         override suspend fun markRead(userId: String): ApiResult<Boolean> = ApiResult.Success(true)
     }
