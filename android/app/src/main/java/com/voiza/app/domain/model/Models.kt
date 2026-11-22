@@ -174,9 +174,9 @@ enum class RoomCategory { POPULAR, PARTY, MUSIC, GAME, CHAT }
  */
 enum class RoomSort(val apiValue: String?, val label: String) {
     DEFAULT(null, "Default"),
-    POPULAR("popular", "Popular"),
+    POPULAR("popular", "Most popular"),
     TRENDING("trending", "Trending"),
-    RECENT("recent", "New"),
+    RECENT("recent", "Newest"),
 }
 
 enum class RoomType { PUBLIC, PRIVATE }
