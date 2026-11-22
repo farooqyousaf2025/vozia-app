@@ -14,18 +14,15 @@ class VoizaFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
-        if (message.data["type"] != TYPE_DIRECT_MESSAGE) return
-        val partnerId = message.data["partnerId"]?.takeIf(UUID_PATTERN::matches) ?: return
+        val partnerId = NotificationTargetPolicy.partnerIdFrom(
+            type = message.data["type"],
+            partnerId = message.data["partnerId"],
+        ) ?: return
         ServiceLocator.init(applicationContext)
         ServiceLocator.notifier.showDirectMessagePush(
             title = message.notification?.title?.takeIf(String::isNotBlank) ?: "New message",
             body = message.notification?.body?.takeIf(String::isNotBlank) ?: "Open Vozia to read and reply.",
             partnerId = partnerId,
         )
-    }
-
-    companion object {
-        private const val TYPE_DIRECT_MESSAGE = "direct_message"
-        private val UUID_PATTERN = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
     }
 }
