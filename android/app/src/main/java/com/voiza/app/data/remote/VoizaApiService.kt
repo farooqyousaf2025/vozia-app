@@ -164,6 +164,9 @@ interface VoizaApiService {
     @GET("api/auth/me")
     suspend fun me(): UserEnvelope
 
+    @PUT("api/auth/me/device-token")
+    suspend fun setDeviceToken(@Body body: Map<String, String>): OkResponse
+
     @PATCH("api/auth/me")
     suspend fun updateProfile(@Body body: UpdateProfileBody): UserEnvelope
 
