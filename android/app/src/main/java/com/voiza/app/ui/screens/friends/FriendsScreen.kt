@@ -8,6 +8,7 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.material3.Switch
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -112,6 +114,9 @@ fun FriendsScreen(
     ),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    BackHandler(enabled = state.tab == FriendsTab.MESSAGES && state.openPartner != null) {
+        viewModel.closeConversation()
+    }
     var newFriendId by remember { mutableStateOf("") }
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -272,6 +277,7 @@ fun FriendsScreen(
                         onDraft = viewModel::onDraftChange,
                         onSend = viewModel::sendMessage,
                         onOpen = viewModel::openConversation,
+                        onCloseConversation = viewModel::closeConversation,
                     )
                 }
             }
@@ -471,6 +477,7 @@ private fun MessagesPane(
     onDraft: (String) -> Unit,
     onSend: () -> Unit,
     onOpen: (MiniUser) -> Unit,
+    onCloseConversation: () -> Unit,
 ) {
     val partner = state.openPartner
     if (partner == null) {
@@ -497,20 +504,38 @@ private fun MessagesPane(
         return
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().imePadding().padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            IconButton(onClick = onCloseConversation) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back to conversations",
+                    tint = OnDarkHigh,
+                )
+            }
             Avatar(url = partner.avatarUrl, name = partner.username, size = 36.dp)
             Spacer(Modifier.width(10.dp))
-            Text(partner.username, color = OnDarkHigh, fontWeight = FontWeight.Bold)
+            Text(
+                partner.username,
+                color = OnDarkHigh,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
         }
-        LazyColumn(
-            reverseLayout = true,
-            contentPadding = PaddingValues(vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.fillMaxWidth().weight(1f),
-        ) {
-            items(state.messages, key = { it.id }) { message ->
-                MessageBubble(message = message, mine = message.senderId == state.user?.id)
+        if (state.loadingMessages) {
+            LoadingProgress(modifier = Modifier.fillMaxWidth().weight(1f))
+        } else {
+            LazyColumn(
+                reverseLayout = true,
+                contentPadding = PaddingValues(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            ) {
+                items(state.messages, key = { it.id }) { message ->
+                    MessageBubble(message = message, mine = message.senderId == state.user?.id)
+                }
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -523,7 +548,7 @@ private fun MessagesPane(
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(8.dp))
-            IconButton(onClick = onSend, enabled = state.draft.isNotBlank() && !state.busy) {
+            IconButton(onClick = onSend, enabled = state.draft.isNotBlank() && !state.busy && !state.loadingMessages) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = if (state.busy) OnDarkMuted else Violet)
             }
         }

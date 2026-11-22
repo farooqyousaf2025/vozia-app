@@ -48,6 +48,7 @@ class FriendsViewModel(
         val conversations: List<Conversation> = emptyList(),
         val openPartner: MiniUser? = null,
         val messages: List<DirectMessage> = emptyList(),
+        val loadingMessages: Boolean = false,
         val draft: String = "",
         val loading: Boolean = false,
         val busy: Boolean = false,
@@ -59,6 +60,7 @@ class FriendsViewModel(
 
     private val _state = MutableStateFlow(FriendsUiState())
     val state: StateFlow<FriendsUiState> = _state.asStateFlow()
+    private var conversationRequestVersion = 0L
 
     init {
         load()
@@ -133,7 +135,24 @@ class FriendsViewModel(
         }
     }
 
-    fun selectTab(tab: FriendsTab) = _state.update { it.copy(tab = tab, error = null) }
+    fun selectTab(tab: FriendsTab) {
+        if (tab == FriendsTab.MESSAGES) {
+            _state.update { it.copy(tab = tab, error = null) }
+            return
+        }
+        // Leaving Messages closes the selected thread; coming back opens the list, not stale chat.
+        conversationRequestVersion++
+        _state.update {
+            it.copy(
+                tab = tab,
+                openPartner = null,
+                messages = emptyList(),
+                loadingMessages = false,
+                draft = "",
+                error = null,
+            )
+        }
+    }
 
     fun sendFriendRequest(targetUserId: String) {
         if (_state.value.busy) return
@@ -185,12 +204,15 @@ class FriendsViewModel(
             when (val result = friendsRepository.unfriend(userId)) {
                 is ApiResult.Success -> {
                     val close = _state.value.openPartner?.id == userId
+                    if (close) conversationRequestVersion++
                     _state.update {
                         it.copy(
                             busy = false,
                             friends = it.friends.filter { f -> f.id != userId },
                             openPartner = if (close) null else it.openPartner,
                             messages = if (close) emptyList() else it.messages,
+                            loadingMessages = if (close) false else it.loadingMessages,
+                            draft = if (close) "" else it.draft,
                             message = "Friend removed",
                         )
                     }
@@ -219,16 +241,46 @@ class FriendsViewModel(
 
     /** Read a friend's messages and ask the server to mark their side read. */
     fun openConversation(partner: MiniUser) {
+        val requestVersion = ++conversationRequestVersion
         _state.update {
-            it.copy(tab = FriendsTab.MESSAGES, openPartner = partner, messages = emptyList(), error = null)
+            it.copy(
+                tab = FriendsTab.MESSAGES,
+                openPartner = partner,
+                messages = emptyList(),
+                loadingMessages = true,
+                draft = "",
+                error = null,
+            )
         }
         viewModelScope.launch {
             when (val result = friendsRepository.messages(partner.id)) {
-                is ApiResult.Success -> _state.update { it.copy(messages = result.data.messages) }
-                is ApiResult.Failure -> _state.update { it.copy(error = result.message) }
+                is ApiResult.Success -> _state.update {
+                    if (requestVersion == conversationRequestVersion && it.openPartner?.id == partner.id) {
+                        it.copy(messages = result.data.messages, loadingMessages = false)
+                    } else it
+                }
+                is ApiResult.Failure -> _state.update {
+                    if (requestVersion == conversationRequestVersion && it.openPartner?.id == partner.id) {
+                        it.copy(error = result.message, loadingMessages = false)
+                    } else it
+                }
             }
             friendsRepository.markRead(partner.id)
             refreshConversations()
+        }
+    }
+
+    /** Return from a direct-message thread to the conversation list without leaving Friends. */
+    fun closeConversation() {
+        conversationRequestVersion++
+        _state.update {
+            it.copy(
+                openPartner = null,
+                messages = emptyList(),
+                loadingMessages = false,
+                draft = "",
+                error = null,
+            )
         }
     }
 
@@ -242,15 +294,22 @@ class FriendsViewModel(
             _state.update { it.copy(busy = true, error = null, message = null) }
             when (val result = friendsRepository.sendMessage(partner.id, text)) {
                 is ApiResult.Success -> _state.update {
-                    val sent = result.data
-                    val already = it.messages.any { m -> m.id == sent.id }
-                    it.copy(
-                        busy = false,
-                        draft = "",
-                        messages = if (already) it.messages else it.messages + sent,
-                    )
+                    if (it.openPartner?.id != partner.id) {
+                        it.copy(busy = false)
+                    } else {
+                        val sent = result.data
+                        val already = it.messages.any { m -> m.id == sent.id }
+                        it.copy(
+                            busy = false,
+                            draft = "",
+                            messages = if (already) it.messages else it.messages + sent,
+                        )
+                    }
                 }
-                is ApiResult.Failure -> _state.update { it.copy(busy = false, error = result.message) }
+                is ApiResult.Failure -> _state.update {
+                    if (it.openPartner?.id == partner.id) it.copy(busy = false, error = result.message)
+                    else it.copy(busy = false)
+                }
             }
             refreshConversations()
         }
