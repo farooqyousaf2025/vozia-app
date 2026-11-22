@@ -30,8 +30,8 @@ class NotificationTargetPolicyTest {
         assertTrue(NotificationTargetPolicy.canOpenPartner(true, partnerId))
         assertFalse(NotificationTargetPolicy.canOpenPartner(false, partnerId))
         assertFalse(NotificationTargetPolicy.canOpenPartner(true, null))
+        assertTrue(NotificationTargetPolicy.canOpenPartner(true, partnerId.uppercase()))
         assertFalse(NotificationTargetPolicy.canOpenPartner(false, partnerId.uppercase()))
-            .also { /* uppercase UUID remains structurally valid, but no session may open it */ }
     }
 
     @Test
@@ -60,16 +60,10 @@ class NotificationTargetPolicyTest {
 
     @Test
     fun `mock push is suppressed when any Android notification gate is disabled`() {
-        val allowed = mapOf(
-            "notifications" to true,
-            "permission" to true,
-            "channel" to true,
-        )
-
         assertFalse(
             NotificationTargetPolicy.shouldPostNotification(
                 isAppForeground = false,
-                notificationsEnabled = !allowed.getValue("notifications"),
+                notificationsEnabled = false,
                 postNotificationsPermissionGranted = true,
                 channelEnabled = true,
             ),
