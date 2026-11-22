@@ -173,6 +173,31 @@ class FriendsViewModelTest {
         assertTrue(vm.state.value.messages.isEmpty())
     }
 
+    @Test
+    fun `a message notification opens only a conversation returned by the server`() {
+        repository.conversationsResult = ApiResult.Success(
+            listOf(Conversation("c1", friend, "2026-11-01T00:00:00.000Z", "hello", 1)),
+        )
+        val vm = viewModel()
+
+        vm.openConversationById(friend.id)
+
+        assertEquals(FriendsTab.MESSAGES, vm.state.value.tab)
+        assertEquals(friend.id, vm.state.value.openPartner?.id)
+        assertTrue(!vm.state.value.loadingMessages)
+    }
+
+    @Test
+    fun `an unknown message notification target does not open an arbitrary member`() {
+        repository.conversationsResult = ApiResult.Success(emptyList())
+        val vm = viewModel()
+
+        vm.openConversationById("unknown")
+
+        assertEquals(null, vm.state.value.openPartner)
+        assertEquals("Conversation not found", vm.state.value.error)
+    }
+
     private class FakeFriendsRepository : FriendsRepository {
         var friendsResult: ApiResult<FriendPage> = ApiResult.Success(FriendPage(listOf(friend), 1, 1, 50))
         var incomingResult: ApiResult<FriendRequestPage> = ApiResult.Success(FriendRequestPage(listOf(request), 1, 1, 20))
