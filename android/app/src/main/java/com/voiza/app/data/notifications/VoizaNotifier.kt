@@ -65,7 +65,7 @@ class VoizaNotifier(
                 notify(
                     id = event.hashCode(),
                     title = "${event.sender.username} sent you ${event.gift.name}",
-                    body = "\\u2756 ${event.totalDiamonds} \\u2192 you earned \\u25C9 ${event.totalRCoins}",
+                    body = "❖ ${event.totalDiamonds} → you earned ◉ ${event.totalRCoins}",
                 )
             }
         }
