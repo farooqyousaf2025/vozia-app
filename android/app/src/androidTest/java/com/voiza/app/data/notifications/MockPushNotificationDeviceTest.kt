@@ -11,6 +11,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import androidx.test.rule.GrantPermissionRule
 import androidx.test.uiautomator.UiDevice
 import androidx.test.platform.app.InstrumentationRegistry
@@ -36,6 +37,7 @@ import org.junit.runner.RunWith
  * notification entry point used by authenticated Socket.IO push events.
  */
 @RunWith(AndroidJUnit4::class)
+@SdkSuppress(minSdkVersion = 33)
 class MockPushNotificationDeviceTest {
     @get:Rule
     val notificationPermission: GrantPermissionRule =
@@ -71,7 +73,7 @@ class MockPushNotificationDeviceTest {
     fun tearDown() {
         if (::device.isInitialized && !device.isScreenOn) device.wakeUp()
         if (::notificationManager.isInitialized) postedIds.forEach(notificationManager::cancel)
-        if (ServiceLocatorInitialized()) ServiceLocator.sessionManager.clear()
+        if (serviceLocatorInitialized()) ServiceLocator.sessionManager.clear()
         if (::scenario.isInitialized) scenario.close()
     }
 
@@ -162,7 +164,7 @@ class MockPushNotificationDeviceTest {
         assertEquals(secondUser.id, session.user.value?.id)
     }
 
-    private fun ServiceLocatorInitialized(): Boolean = runCatching { ServiceLocator.sessionManager }.isSuccess
+    private fun serviceLocatorInitialized(): Boolean = runCatching { ServiceLocator.sessionManager }.isSuccess
 
     private fun activeNotification(title: String): android.service.notification.StatusBarNotification? =
         notificationManager.activeNotifications.firstOrNull {
