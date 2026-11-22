@@ -35,10 +35,15 @@ function bool(name: string, fallback: boolean): boolean {
 
 const nodeEnv = str('NODE_ENV', 'development');
 const isProduction = nodeEnv === 'production';
+const notificationDeliveryMode = str('NOTIFICATION_DELIVERY_MODE', 'mock');
+if (notificationDeliveryMode !== 'mock' && notificationDeliveryMode !== 'live') {
+  throw new Error('[config] NOTIFICATION_DELIVERY_MODE must be mock or live');
+}
 
 export const env = {
   nodeEnv,
   isProduction,
+  notificationDeliveryMode,
   port: int('PORT', 4000),
 
   databaseUrl: str('DATABASE_URL', 'postgres://voiza:voiza@localhost:5432/voiza'),
@@ -150,6 +155,7 @@ export function assertSecretsAreSafe(): void {
   // `mock` SMS means nobody ever receives a login code, and `simulated` payments
   // means /api/wallet/recharge mints diamonds for free.
   if (env.sms.provider === 'mock') unsafe.push('SMS_PROVIDER (mock never delivers an OTP)');
+  if (env.notificationDeliveryMode !== 'live') unsafe.push('NOTIFICATION_DELIVERY_MODE (mock never sends external notifications)');
   if (env.payments.provider === 'simulated') unsafe.push('PAYMENTS_PROVIDER (simulated credits diamonds with no money)');
   if (env.payments.stripeWebhookSecret === 'whsec_development_only_not_a_real_secret') unsafe.push('STRIPE_WEBHOOK_SECRET');
   const smsIncomplete =
