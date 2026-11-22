@@ -46,7 +46,8 @@
     "test:gift:e2e": "node scripts/gift-e2e.cjs",
     "test:bubbles": "node scripts/bubbles-e2e.cjs",
     "test:agency:announcements": "node scripts/agency-announcements-e2e.cjs",
-    "test:partner:desk": "node scripts/partner-desk-e2e.cjs"
+    "test:partner:desk": "node scripts/partner-desk-e2e.cjs",
+    "test:mock-push": "node scripts/mock-push-e2e.cjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
