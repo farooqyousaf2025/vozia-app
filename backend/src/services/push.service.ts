@@ -90,6 +90,13 @@ export async function registerDeviceToken(userId: string, token: string): Promis
     const owner = await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
     if (!owner.rowCount) throw new Error('Cannot register a device token for a missing member');
 
+    // A token identifies one installation. When that installation changes accounts,
+    // remove any legacy column copy held by its previous owner before moving it.
+    await client.query(
+      'UPDATE users SET device_token = NULL WHERE device_token = $1 AND id <> $2',
+      [token, userId],
+    );
+
     await client.query(
       `INSERT INTO user_device_tokens (user_id, token, last_seen_at, updated_at)
        VALUES ($1, $2, now(), now())
@@ -111,6 +118,20 @@ export async function registerDeviceToken(userId: string, token: string): Promis
              LIMIT $2
           )`,
       [userId, MAX_DEVICE_TOKENS_PER_USER],
+    );
+
+    // The rolling-upgrade fallback must not silently keep a token that was pruned
+    // from the account's capped active-device set.
+    await client.query(
+      `UPDATE users
+          SET device_token = NULL
+        WHERE id = $1
+          AND device_token IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM user_device_tokens
+             WHERE user_id = $1 AND token = users.device_token
+          )`,
+      [userId],
     );
   });
 }
