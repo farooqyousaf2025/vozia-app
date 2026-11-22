@@ -4,6 +4,8 @@ x-app-env: &app-env
   # .env and rotate every secret below: the backend then refuses to start while
   # any development default is still in place.
   NODE_ENV: ${NODE_ENV:-development}
+  # mock captures email/push locally; switch to live only during final provider setup.
+  NOTIFICATION_DELIVERY_MODE: ${NOTIFICATION_DELIVERY_MODE:-mock}
   PORT: "4000"
   DATABASE_URL: postgres://voiza:${POSTGRES_PASSWORD:-voiza}@postgres:5432/voiza
   REDIS_URL: redis://redis:6379
