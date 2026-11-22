@@ -109,6 +109,7 @@ import com.voiza.app.viewmodel.voizaViewModelFactory
 fun FriendsScreen(
     onBack: () -> Unit,
     initialTab: FriendsTab = FriendsTab.FRIENDS,
+    initialPartnerId: String? = null,
     viewModel: FriendsViewModel = viewModel(
         factory = voizaViewModelFactory { FriendsViewModel() },
     ),
@@ -164,8 +165,11 @@ fun FriendsScreen(
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.load() }
 
     // The shell's Messages tab lands straight on the conversation list.
-    LaunchedEffect(initialTab) {
+    LaunchedEffect(initialTab, initialPartnerId) {
         if (state.tab != initialTab) viewModel.selectTab(initialTab)
+        if (initialTab == FriendsTab.MESSAGES && !initialPartnerId.isNullOrBlank()) {
+            viewModel.openConversationById(initialPartnerId)
+        }
     }
 
     LaunchedEffect(state.message) {
