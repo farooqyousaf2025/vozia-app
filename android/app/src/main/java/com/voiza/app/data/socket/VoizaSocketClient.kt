@@ -70,6 +70,14 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
+data class MockPushEvent(val title: String, val body: String, val data: Map<String, String> = emptyMap())
+
+private data class SocketMockPushDto(
+    val title: String = "",
+    val body: String = "",
+    val data: Map<String, String> = emptyMap(),
+)
+
 /**
  * Owns exactly one Socket.IO connection, authenticated with the current JWT.
  *
@@ -103,6 +111,11 @@ class VoizaSocketClient(
 
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
+
+    private val _mockPushes = MutableSharedFlow<MockPushEvent>(
+        replay = 0, extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val mockPushes: SharedFlow<MockPushEvent> = _mockPushes.asSharedFlow()
 
     // ---- Server event flows -------------------------------------------------
 
@@ -454,6 +467,11 @@ class VoizaSocketClient(
         bindHandler(newSocket, EVENT_DIRECT_MESSAGE) { args ->
             parse<MessageEnvelope>(args)?.message?.toDomainOrNull()?.let { _directMessages.tryEmit(it) }
         }
+        bindHandler(newSocket, EVENT_MOCK_PUSH) { args ->
+            parse<SocketMockPushDto>(args)?.let { payload ->
+                _mockPushes.tryEmit(MockPushEvent(payload.title, payload.body, payload.data))
+            }
+        }
 
         dialledToken = token
         socket = newSocket
@@ -558,6 +576,7 @@ class VoizaSocketClient(
         const val EVENT_WALLET = "wallet:update"
         const val EVENT_FRIEND_REQUEST = "friend:request"
         const val EVENT_DIRECT_MESSAGE = "dm:message"
+        const val EVENT_MOCK_PUSH = "push:mock"
         const val EVENT_GAME_UPDATE = "game:update"
         const val EVENT_GAME_ENDED = "game:ended"
         const val EVENT_PK_STATE = "pk:state"
