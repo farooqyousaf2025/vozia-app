@@ -34,7 +34,7 @@ fun GiftEffectOverlay(
         onDismissRequest = { onFinished(current) },
         properties = DialogProperties(
             dismissOnBackPress = true,
-            dismissOnClickOutside = true,
+            dismissOnClickOutside = false,
             usePlatformDefaultWidth = false,
         ),
     ) {
