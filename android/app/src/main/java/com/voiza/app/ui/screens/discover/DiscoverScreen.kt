@@ -99,8 +99,7 @@ fun DiscoverScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(VoizaBackground)
-                .padding(innerPadding)
-                .statusBarsPadding(),
+                .padding(innerPadding),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
