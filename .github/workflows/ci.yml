@@ -270,6 +270,18 @@ jobs:
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug
 
+      # Run the production notification path against Android's real NotificationManager
+      # and process lifecycle on an API 35 emulator; no backend or Firebase credentials.
+      - name: Android notification device smoke (API 35 emulator)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: cd android && ./gradlew --no-daemon connectedDebugAndroidTest
+
       # Release configuration requires the real production API origin. Do not invent
       # a domain or bake a development URL into a release artifact: when the repository
       # secret is configured, build the unsigned release variant; otherwise report the
