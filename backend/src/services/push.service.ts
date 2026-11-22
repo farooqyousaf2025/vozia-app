@@ -85,6 +85,25 @@ async function oauthAccessToken(): Promise<string | null> {
  * unique and can move between member accounts when a device signs into another account.
  * Each member is capped at ten active registrations to prevent unbounded token growth.
  */
+export async function registerLegacyDeviceToken(userId: string, token: string): Promise<void> {
+  await withTransaction(async (client) => {
+    const owner = await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
+    if (!owner.rowCount) throw new Error('Cannot register a device token for a missing member');
+
+    // The legacy API can describe only one installation per member. Keep it in the
+    // compatibility column, separate from the plural multi-device registrations.
+    await client.query(
+      'DELETE FROM user_device_tokens WHERE token = $1 AND user_id <> $2',
+      [token, userId],
+    );
+    await client.query(
+      'UPDATE users SET device_token = NULL WHERE device_token = $1 AND id <> $2',
+      [token, userId],
+    );
+    await client.query('UPDATE users SET device_token = $2 WHERE id = $1', [userId, token]);
+  });
+}
+
 export async function registerDeviceToken(userId: string, token: string): Promise<void> {
   await withTransaction(async (client) => {
     const owner = await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
@@ -136,29 +155,32 @@ export async function registerDeviceToken(userId: string, token: string): Promis
   });
 }
 
-/**
- * With expectedToken, remove only the installation that signed out or failed at FCM.
- * Without it, preserve the legacy endpoint contract and remove all registrations for
- * that member (used by older app versions which did not send a token in DELETE).
- */
-export async function clearDeviceToken(userId: string, expectedToken?: string): Promise<void> {
-  if (expectedToken) {
-    await query(
-      `WITH removed AS (
-         DELETE FROM user_device_tokens WHERE user_id = $1 AND token = $2
-       )
-       UPDATE users SET device_token = NULL
-        WHERE id = $1 AND device_token = $2`,
-      [userId, expectedToken],
-    );
-    return;
-  }
-
+/** Remove only one multi-device registration, including its legacy-column copy if present. */
+export async function clearDeviceToken(userId: string, expectedToken: string): Promise<void> {
   await query(
     `WITH removed AS (
-       DELETE FROM user_device_tokens WHERE user_id = $1
+       DELETE FROM user_device_tokens WHERE user_id = $1 AND token = $2
      )
-     UPDATE users SET device_token = NULL WHERE id = $1`,
+     UPDATE users SET device_token = NULL
+      WHERE id = $1 AND device_token = $2`,
+    [userId, expectedToken],
+  );
+}
+
+/**
+ * The pre-multi-device Android API does not identify an installation on DELETE.
+ * Remove only its legacy column target and any migrated copy of that same token,
+ * leaving registrations made through the new plural endpoint intact.
+ */
+export async function clearLegacyDeviceToken(userId: string): Promise<void> {
+  await query(
+    `WITH previous AS (
+       UPDATE users SET device_token = NULL WHERE id = $1 RETURNING device_token
+     )
+     DELETE FROM user_device_tokens AS registrations
+      USING previous
+      WHERE registrations.user_id = $1
+        AND registrations.token = previous.device_token`,
     [userId],
   );
 }
