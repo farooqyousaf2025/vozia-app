@@ -76,10 +76,10 @@ android {
         // Stripe's publishable key is public by design; it still comes from config rather than
         // source. An empty value keeps the simulated top-up path active for dev stacks that have
         // no Stripe account (and for CI), so a release does not need a real key just to compile.
-        buildConfigField("String", "FCM_ANDROID_API_KEY", "\"${prop(\"FCM_ANDROID_API_KEY\", \"\")}\"")
-        buildConfigField("String", "FCM_ANDROID_APP_ID", "\"${prop(\"FCM_ANDROID_APP_ID\", \"\")}\"")
-        buildConfigField("String", "FCM_ANDROID_PROJECT_ID", "\"${prop(\"FCM_ANDROID_PROJECT_ID\", \"\")}\"")
-        buildConfigField("String", "FCM_ANDROID_SENDER_ID", "\"${prop(\"FCM_ANDROID_SENDER_ID\", \"\")}\"")
+        buildConfigField("String", "FCM_ANDROID_API_KEY", "\"${prop("FCM_ANDROID_API_KEY", "")}\"")
+        buildConfigField("String", "FCM_ANDROID_APP_ID", "\"${prop("FCM_ANDROID_APP_ID", "")}\"")
+        buildConfigField("String", "FCM_ANDROID_PROJECT_ID", "\"${prop("FCM_ANDROID_PROJECT_ID", "")}\"")
+        buildConfigField("String", "FCM_ANDROID_SENDER_ID", "\"${prop("FCM_ANDROID_SENDER_ID", "")}\"")
 
         buildConfigField(
             "String",
