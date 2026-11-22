@@ -77,7 +77,6 @@ import com.voiza.app.domain.model.MiniUser
 import com.voiza.app.domain.model.RankingLeader
 import com.voiza.app.domain.model.RankingPeriod
 import com.voiza.app.domain.model.RoomCategory
-import com.voiza.app.domain.model.RoomSort
 import com.voiza.app.domain.model.RoomStatus
 import com.voiza.app.domain.model.RoomSummary
 import com.voiza.app.domain.model.RoomType
@@ -168,7 +167,7 @@ fun HomeScreen(
             )
         },
     ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding)) {
+        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             HomeTopBar(
                 user = state.user,
                 onWalletClick = onOpenWallet,
@@ -284,10 +283,8 @@ fun HomeScreen(
 }
 
 /**
- * Discovery controls. Every choice here becomes a query parameter for the server: search runs
- * against all open rooms, "Trending" is the last 24h of gift value on the ledger, and "My Room"
- * is `GET /api/rooms/mine`. Nothing is filtered from the rows already on screen, because a room
- * ranked 200th is invisible to a client-side filter.
+ * Lobby search and quick-join controls. Category, sort and region filters are shared with Discover
+ * in RoomBrowseFilters, and search is sent to the server rather than filtering the visible page.
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -392,8 +389,6 @@ private fun DiscoveryRow(
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
-
-
     }
 }
 
@@ -753,8 +748,6 @@ private fun DiscoveryRowSearchOpenPreview() {
                 quickJoinError = null,
                 onSearch = {},
                 onCloseSearch = {},
-                onSelectSort = {},
-                onSelectRegion = {},
                 onToggleMyRooms = {},
                 onQuickJoin = {},
             )
