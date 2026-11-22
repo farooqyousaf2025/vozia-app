@@ -39,7 +39,6 @@ class VoizaApp : Application(), ImageLoaderFactory {
                 .addOnSuccessListener { token -> FcmTokenRegistrar.persistAndSync(this, token) }
         }.onFailure { android.util.Log.w("VoizaPush", "Firebase push is not configured; socket notifications remain active", it) }
     }
-    }
 
     /**
      * Coil's default loader decodes the first frame of an animated GIF or WebP and stops there, which
