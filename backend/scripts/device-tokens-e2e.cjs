@@ -5,7 +5,7 @@ const { Pool } = require('pg');
 
 const BE_ROOT = path.resolve(__dirname, '..');
 const API = process.env.E2E_API_URL || 'http://127.0.0.1:4000';
-const stamp = Date.now().toString().slice(-9);
+const stamp = Date.now().toString().slice(-7);
 let pool;
 
 function db() {
