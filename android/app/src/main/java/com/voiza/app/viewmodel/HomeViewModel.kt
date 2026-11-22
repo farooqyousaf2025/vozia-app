@@ -126,7 +126,7 @@ class HomeViewModel(
             // content, so a pull that re-reads the rooms re-reads it as well: a campaign an operator
             // switched on while the member was scrolling arrives on the same gesture the rooms do.
             banners.refresh()
-            fetch(requestVersion)
+            if (requestVersion == roomsRequestVersion) fetch(requestVersion)
         }
     }
 
