@@ -10,7 +10,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,7 +23,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
+import com.voiza.app.data.notifications.NotificationTargetPolicy
 import com.voiza.app.di.ServiceLocator
 import com.voiza.app.ui.components.banner.BannerNavigator
 import com.voiza.app.ui.components.banner.LocalBannerNavigator
@@ -44,12 +49,12 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     private var pendingMessagePartnerId by mutableStateOf<String?>(null)
-    private val messagePartnerIdPattern = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
-    private fun messagePartnerFrom(intent: Intent?): String? {
-        if (intent?.getStringExtra("type") != "direct_message") return null
-        return intent.getStringExtra("partnerId")?.takeIf(messagePartnerIdPattern::matches)
-    }
+    private fun messagePartnerFrom(intent: Intent?): String? =
+        NotificationTargetPolicy.partnerIdFrom(
+            type = intent?.getStringExtra("type"),
+            partnerId = intent?.getStringExtra("partnerId"),
+        )
 
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* the notifier re-checks on each event */ }
@@ -72,25 +77,63 @@ class MainActivity : ComponentActivity() {
             ServiceLocator.ensureSessionValid()
         }
 
-        // Android 13+ needs an explicit grant before any heads-up room notification
-        // can be posted; below that the permission is granted at install.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            !hasNotificationPermission()
-        ) {
-            notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
-
         setContent {
             VoizaTheme {
                 val navController = rememberNavController()
                 val notificationPartnerId = pendingMessagePartnerId
+                val sessionToken by ServiceLocator.sessionManager.token.collectAsStateWithLifecycle()
+                var showNotificationPermissionRationale by remember { mutableStateOf(false) }
+
                 LaunchedEffect(navController, notificationPartnerId) {
-                    if (!notificationPartnerId.isNullOrBlank()) {
+                    if (NotificationTargetPolicy.canOpenPartner(
+                            hasSession = ServiceLocator.sessionManager.hasSession,
+                            partnerId = notificationPartnerId,
+                        )
+                    ) {
                         navController.navigate(Routes.messages(notificationPartnerId)) {
                             launchSingleTop = true
                         }
                         pendingMessagePartnerId = null
                     }
+                }
+
+                // Ask only after a member signs in, with a clear explanation rather than
+                // interrupting the first launch before the user has seen the app.
+                LaunchedEffect(sessionToken) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        !sessionToken.isNullOrBlank() &&
+                        !hasNotificationPermission() &&
+                        !getSharedPreferences(NOTIFICATION_PREFS, MODE_PRIVATE)
+                            .getBoolean(KEY_NOTIFICATION_PROMPT_SHOWN, false)
+                    ) {
+                        showNotificationPermissionRationale = true
+                    }
+                }
+
+                if (showNotificationPermissionRationale) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            markNotificationPromptShown()
+                            showNotificationPermissionRationale = false
+                        },
+                        title = { Text("Stay in the loop") },
+                        text = {
+                            Text("Allow notifications for private messages and important room activity. You can change this anytime in Android Settings.")
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                markNotificationPromptShown()
+                                showNotificationPermissionRationale = false
+                                notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            }) { Text("Enable notifications") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = {
+                                markNotificationPromptShown()
+                                showNotificationPermissionRationale = false
+                            }) { Text("Not now") }
+                        },
+                    )
                 }
                 // The banner list belongs to the process rather than to a route, so it is handed to
                 // every surface from here: four screens, one request, and a tap that navigates through
@@ -112,6 +155,17 @@ class MainActivity : ComponentActivity() {
                             VoizaNavHost(
                                 startOnHome = startOnHome,
                                 onLogout = { /* nav graph already reset to auth */ },
+                                onAuthenticated = {
+                                    // Keep a notification target pending while the user is on
+                                    // the auth screen; open it only after sign-in succeeds.
+                                    val partnerId = pendingMessagePartnerId
+                                    if (!partnerId.isNullOrBlank()) {
+                                        navController.navigate(Routes.messages(partnerId)) {
+                                            launchSingleTop = true
+                                        }
+                                        pendingMessagePartnerId = null
+                                    }
+                                },
                                 navController = navController,
                             )
                         }
@@ -131,6 +185,17 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         pendingMessagePartnerId = messagePartnerFrom(intent)
+    }
+
+    private fun markNotificationPromptShown() {
+        getSharedPreferences(NOTIFICATION_PREFS, MODE_PRIVATE).edit()
+            .putBoolean(KEY_NOTIFICATION_PROMPT_SHOWN, true)
+            .apply()
+    }
+
+    private companion object {
+        const val NOTIFICATION_PREFS = "voiza_notification_preferences"
+        const val KEY_NOTIFICATION_PROMPT_SHOWN = "permission_rationale_shown"
     }
 
     override fun onDestroy() {
