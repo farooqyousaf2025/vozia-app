@@ -138,7 +138,7 @@ function smtpAuthAvailable(): boolean {
   return oauth.every(Boolean) || Boolean(config.smtpPassword);
 }
 
-function emailDeliveryIsConfigured(): boolean {
+export function emailDeliveryIsConfigured(): boolean {
   const config = env.alertDelivery;
   const smtpReady = smtpAuthAvailable() && Boolean(config.emailFrom || config.smtpUser);
   const resendReady = Boolean(config.resendApiKey && config.emailFrom);
