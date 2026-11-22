@@ -19,11 +19,15 @@ let accessToken: { value: string; expiresAtMs: number } | null = null;
 function readServiceAccount(): ServiceAccount | null {
   if (account === undefined) {
     const file = env.push.serviceAccountFile;
-    if (!file) {
+    if (!file && !env.push.serviceAccountJsonBase64) {
       account = null;
     } else {
       try {
-        const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<ServiceAccount>;
+        const encoded = env.push.serviceAccountJsonBase64;
+        const raw = encoded
+          ? Buffer.from(encoded, 'base64').toString('utf8')
+          : fs.readFileSync(file, 'utf8');
+        const parsed = JSON.parse(raw) as Partial<ServiceAccount>;
         account =
           typeof parsed.client_email === 'string' && typeof parsed.private_key === 'string'
             ? { client_email: parsed.client_email, private_key: parsed.private_key }
