@@ -98,6 +98,14 @@ jobs:
         # still carries, and the e2e seat-policy checks fail against a baseline-only schema.
         run: npm run db:migrate
 
+      - name: Mock email outbox isolation suite
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://voiza:voiza@localhost:5432/voiza
+          NOTIFICATION_DELIVERY_MODE: mock
+        timeout-minutes: 5
+        run: npm run test:mock-email
+
       - name: Generate placeholder assets
         working-directory: backend
         run: node scripts/generate-placeholder-assets.cjs
