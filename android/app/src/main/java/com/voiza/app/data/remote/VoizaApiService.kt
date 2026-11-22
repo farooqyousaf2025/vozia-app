@@ -169,7 +169,6 @@ interface VoizaApiService {
     @PUT("api/auth/me/device-token")
     suspend fun setDeviceToken(@Body body: Map<String, String>): OkResponse
 
-    @DELETE("api/auth/me/device-token")
     @HTTP(method = "DELETE", path = "api/auth/me/device-token", hasBody = true)
     suspend fun clearDeviceToken(
         @Body body: Map<String, String>,
