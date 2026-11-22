@@ -52,13 +52,13 @@ async function loginMember(suffix) {
 }
 
 async function register(auth, deviceToken) {
-  return api('PUT', '/api/auth/me/device-token', {
+  return api('PUT', '/api/auth/me/device-tokens', {
     token: auth.token, body: { deviceToken },
   });
 }
 
 async function unregister(auth, deviceToken) {
-  return api('DELETE', '/api/auth/me/device-token', {
+  return api('DELETE', '/api/auth/me/device-tokens', {
     token: auth.token, body: { deviceToken },
   });
 }
@@ -112,7 +112,9 @@ async function registeredTokens(userId) {
       && (await registeredTokens(second.userId))[0] === firstA,
     { status: removeOne.status, remaining: await registeredTokens(second.userId) });
 
-  await sql('UPDATE users SET device_token = $2 WHERE id = $1', [second.userId, legacy]);
+  const legacyRegistration = await api('PUT', '/api/auth/me/device-token', {
+    token: second.token, body: { deviceToken: legacy },
+  });
   const recipients = await sql(
     `SELECT token FROM user_device_tokens WHERE user_id = $1
      UNION
@@ -125,20 +127,25 @@ async function registeredTokens(userId) {
       && recipients.rows.some((row) => row.token === firstA),
     recipients.rows);
 
-  const removeLegacyExact = await unregister(second, legacy);
-  check('a stale legacy token can be removed without dropping another device',
-    removeLegacyExact.status === 200
-      && (await registeredTokens(second.userId)).length === 1
-      && (await registeredTokens(second.userId))[0] === firstA,
-    { status: removeLegacyExact.status, remaining: await registeredTokens(second.userId) });
+  check('legacy single-token registrations remain eligible during rolling upgrades',
+    legacyRegistration.status === 200
+      && recipients.rows.some((row) => row.token === legacy)
+      && recipients.rows.some((row) => row.token === firstA),
+    { registration: legacyRegistration.status, recipients: recipients.rows });
 
   const oldClientLogout = await api('DELETE', '/api/auth/me/device-token', { token: second.token });
   const legacyColumn = await sql('SELECT device_token FROM users WHERE id = $1', [second.userId]);
-  check('older app versions without a DELETE body can still clear all their registrations',
+  check('older app logout clears only its legacy slot and keeps new app devices registered',
     oldClientLogout.status === 200
-      && (await registeredTokens(second.userId)).length === 0
+      && (await registeredTokens(second.userId)).length === 1
+      && (await registeredTokens(second.userId))[0] === firstA
       && legacyColumn.rows[0].device_token === null,
     { status: oldClientLogout.status, tokens: await registeredTokens(second.userId), legacy: legacyColumn.rows[0].device_token });
+
+  const removeOneNew = await unregister(second, firstA);
+  check('new app logout removes only the selected device registration',
+    removeOneNew.status === 200 && (await registeredTokens(second.userId)).length === 0,
+    { status: removeOneNew.status, remaining: await registeredTokens(second.userId) });
 
   const limitTokens = Array.from(
     { length: 12 },
@@ -152,8 +159,10 @@ async function registeredTokens(userId) {
     (await registeredTokens(first.userId)).length === 10,
     await registeredTokens(first.userId));
 
-  const cleanup = await api('DELETE', '/api/auth/me/device-token', { token: first.token });
-  if (cleanup.status !== 200) throw new Error(`cleanup failed: ${JSON.stringify(cleanup.json)}`);
+  for (const token of await registeredTokens(first.userId)) {
+    const cleanup = await unregister(first, token);
+    if (cleanup.status !== 200) throw new Error(`cleanup failed: ${JSON.stringify(cleanup.json)}`);
+  }
 })().catch((error) => {
   output.push(`FAIL  suite completed without an unexpected exception :: ${error && error.message}`);
   failures += 1;
