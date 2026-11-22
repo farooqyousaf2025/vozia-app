@@ -1,5 +1,6 @@
 package com.voiza.app
 
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -11,7 +12,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -22,6 +27,7 @@ import com.voiza.app.ui.components.banner.LocalBannerNavigator
 import com.voiza.app.ui.components.banner.LocalBannerStore
 import com.voiza.app.ui.components.announcement.AnnouncementTicker
 import com.voiza.app.ui.components.banner.SplashBannerOverlay
+import com.voiza.app.ui.navigation.Routes
 import com.voiza.app.ui.navigation.VoizaNavHost
 import com.voiza.app.ui.theme.VoizaTheme
 import kotlinx.coroutines.launch
@@ -37,6 +43,14 @@ import kotlinx.coroutines.launch
  */
 class MainActivity : ComponentActivity() {
 
+    private var pendingMessagePartnerId by mutableStateOf<String?>(null)
+    private val messagePartnerIdPattern = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+    private fun messagePartnerFrom(intent: Intent?): String? {
+        if (intent?.getStringExtra("type") != "direct_message") return null
+        return intent.getStringExtra("partnerId")?.takeIf(messagePartnerIdPattern::matches)
+    }
+
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* the notifier re-checks on each event */ }
 
@@ -46,6 +60,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingMessagePartnerId = messagePartnerFrom(intent)
         enableEdgeToEdge()
 
         // Auth-gated start destination: snapshot the session once at cold
@@ -68,6 +83,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             VoizaTheme {
                 val navController = rememberNavController()
+                val notificationPartnerId = pendingMessagePartnerId
+                LaunchedEffect(navController, notificationPartnerId) {
+                    if (!notificationPartnerId.isNullOrBlank()) {
+                        navController.navigate(Routes.messages(notificationPartnerId)) {
+                            launchSingleTop = true
+                        }
+                        pendingMessagePartnerId = null
+                    }
+                }
                 // The banner list belongs to the process rather than to a route, so it is handed to
                 // every surface from here: four screens, one request, and a tap that navigates through
                 // the graph this activity already owns instead of a navController passed down by hand.
@@ -101,6 +125,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingMessagePartnerId = messagePartnerFrom(intent)
     }
 
     override fun onDestroy() {

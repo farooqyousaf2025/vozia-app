@@ -6,6 +6,7 @@ import {
   sendMessage,
 } from '../services/friends.service';
 import { emitToUser } from '../services/socket.service';
+import { pushToUser } from '../services/push.service';
 import { asyncHandler, optionalInt, requireString } from '../utils/http';
 
 export const conversations = asyncHandler(async (req: Request, res: Response) => {
@@ -24,6 +25,15 @@ export const send = asyncHandler(async (req: Request, res: Response) => {
   const message = await sendMessage(req.user!.sub, partnerId, req.body?.content);
   // Notify the partner live; the sender already has the returned row.
   emitToUser(partnerId, 'dm:message', { message });
+  // FCM is a best-effort companion to Socket.IO: never hold the message response open
+  // or fail a message that has already been committed because a push provider is down.
+  void pushToUser(partnerId, {
+    title: 'New Vozia message',
+    body: 'Open Vozia to read and reply.',
+    data: { type: 'direct_message', partnerId: req.user!.sub },
+  }).catch((error: unknown) => {
+    console.error('[dm] push delivery failed', error);
+  });
   res.status(201).json({ message });
 });
 

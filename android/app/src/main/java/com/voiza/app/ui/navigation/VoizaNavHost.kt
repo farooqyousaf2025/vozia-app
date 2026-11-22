@@ -67,7 +67,7 @@ fun VoizaNavHost(
                 onOpenProfile = { navController.navigate(Routes.PROFILE) },
                 onOpenRankings = { navController.navigate(Routes.RANKINGS) },
                 onOpenDiscover = { navController.navigate(Routes.DISCOVER) },
-                onOpenMessages = { navController.navigate(Routes.MESSAGES) },
+                onOpenMessages = { navController.navigate(Routes.messages()) },
             )
         }
 
@@ -84,7 +84,7 @@ fun VoizaNavHost(
                 onBack = { navController.popBackStack() },
                 onHome = { navController.popBackStack(Routes.HOME, false) },
                 onCreateRoom = { navController.navigate(Routes.CREATE_ROOM) },
-                onOpenMessages = { navController.navigate(Routes.MESSAGES) },
+                onOpenMessages = { navController.navigate(Routes.messages()) },
                 onOpenProfile = { navController.navigate(Routes.PROFILE) },
                 onOpenRoom = { roomId -> navController.navigate(Routes.room(roomId)) },
                 viewModel = homeViewModel,
@@ -92,10 +92,20 @@ fun VoizaNavHost(
         }
 
         // The shell's Messages tab: friends route with the conversation pane preselected.
-        composable(Routes.MESSAGES) {
+        composable(
+            route = Routes.MESSAGES_PATTERN,
+            arguments = listOf(
+                navArgument(Routes.MESSAGE_PARTNER_ARG) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
             FriendsScreen(
                 onBack = { navController.popBackStack() },
                 initialTab = FriendsTab.MESSAGES,
+                initialPartnerId = entry.arguments?.getString(Routes.MESSAGE_PARTNER_ARG),
             )
         }
 
