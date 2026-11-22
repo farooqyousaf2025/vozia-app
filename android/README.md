@@ -46,7 +46,22 @@ device attached. `ui/screens/home/HomeScreen.kt` carries the first set — top b
 that calls its stateless composables with sample models the same way; screens whose whole body
 is a `viewModel()` call cannot render statically because their state arrives from the API.
 
-### Release signing
+### Firebase Cloud Messaging (optional)
+
+Android push registration is enabled when all four Firebase Android app values are supplied at build time. Create an Android app in the Firebase project that matches application ID `com.voiza.app`, then pass these Gradle properties (or same-named environment variables):
+
+```properties
+FCM_ANDROID_API_KEY=...
+FCM_ANDROID_APP_ID=1:...:android:...
+FCM_ANDROID_PROJECT_ID=...
+FCM_ANDROID_SENDER_ID=...
+```
+
+For example, add them to an untracked `~/.gradle/gradle.properties` file or your local Gradle user properties; do not commit credentials or Firebase service-account JSON. The Android API key/app ID/sender ID are Firebase client configuration, while the backend service-account file remains server-only and is configured with `FCM_PROJECT_ID` and `FCM_SERVICE_ACCOUNT_FILE`.
+
+When Firebase values are absent, app startup skips Firebase initialization and existing socket-based room notifications continue to work. With Firebase configured, the app registers and refreshes its FCM token against the authenticated `/api/auth/me/device-token` endpoint, queues the token until sign-in, and unregisters it on logout. Android 13+ notification permission is still required for visible notifications.
+
+## Release signing
 
 Copy `keystore.properties.example` → `android/keystore.properties` and point it at
 a `.jks` you generated (the file is git ignored, and `*.jks` / `*.keystore` are too).
