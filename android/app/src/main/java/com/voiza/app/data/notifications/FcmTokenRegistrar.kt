@@ -99,10 +99,19 @@ object FcmTokenRegistrar {
      */
     fun unregister(api: VoizaApiService, authorization: String) {
         val app = appContext ?: return
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        // Capture before the logout caller clears local session state or a token rotates.
+        val tokenToRemove = currentToken(prefs)
         unregisterInProgress = true
         scope.launch {
             registrationMutex.withLock {
-                runCatching { api.clearDeviceToken(authorization) }
+                runCatching {
+                    if (tokenToRemove.isNullOrBlank()) {
+                        api.clearAllDeviceTokens(authorization)
+                    } else {
+                        api.clearDeviceToken(mapOf("deviceToken" to tokenToRemove), authorization)
+                    }
+                }
                     .onFailure { Log.w(TAG, "FCM unregister failed; the next login will register again", it) }
                 app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                     .edit()
