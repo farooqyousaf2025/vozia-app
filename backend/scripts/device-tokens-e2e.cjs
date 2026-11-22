@@ -123,11 +123,6 @@ async function registeredTokens(userId) {
     [second.userId],
   );
   check('legacy single-token registrations remain eligible during rolling upgrades',
-    recipients.rows.some((row) => row.token === legacy)
-      && recipients.rows.some((row) => row.token === firstA),
-    recipients.rows);
-
-  check('legacy single-token registrations remain eligible during rolling upgrades',
     legacyRegistration.status === 200
       && recipients.rows.some((row) => row.token === legacy)
       && recipients.rows.some((row) => row.token === firstA),
