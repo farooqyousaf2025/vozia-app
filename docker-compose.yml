@@ -29,10 +29,19 @@ x-app-env: &app-env
   # at that path (see .env.example).
   FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
   FCM_SERVICE_ACCOUNT_FILE: ${FCM_SERVICE_ACCOUNT_FILE:-}
+  FCM_SERVICE_ACCOUNT_JSON_BASE64: ${FCM_SERVICE_ACCOUNT_JSON_BASE64:-}
   PUSH_ANDROID_CHANNEL: ${PUSH_ANDROID_CHANNEL:-voiza_activity}
   # Optional external platform alert delivery. Secrets are mounted as environment variables only.
   RESEND_API_KEY: ${RESEND_API_KEY:-}
   ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_SECURE: ${SMTP_SECURE:-false}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASS: ${SMTP_PASS:-}
+  SMTP_OAUTH_CLIENT_ID: ${SMTP_OAUTH_CLIENT_ID:-}
+  SMTP_OAUTH_CLIENT_SECRET: ${SMTP_OAUTH_CLIENT_SECRET:-}
+  SMTP_OAUTH_REFRESH_TOKEN: ${SMTP_OAUTH_REFRESH_TOKEN:-}
   ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
   ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-}
   # OTP delivery. `mock` never sends a text: the backend logs the code instead.

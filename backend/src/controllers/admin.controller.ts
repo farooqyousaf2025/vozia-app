@@ -167,6 +167,7 @@ import {
   markAllPlatformAlertNotificationsRead,
   getAdminAlertEmail,
   updateAdminAlertEmail,
+  emailDeliveryIsConfigured,
 } from '../services/platform-alert-notification.service';
 
 /**
@@ -257,7 +258,7 @@ export const operationalAlertNotifications = asyncHandler(async (req: Request, r
 export const operationalAlertNotificationSettings = asyncHandler(async (_req: Request, res: Response) => {
   res.json({
     ...(await getPlatformAlertNotificationSettings()),
-    emailConfigured: Boolean(env.alertDelivery.resendApiKey && env.alertDelivery.emailFrom),
+    emailConfigured: emailDeliveryIsConfigured(),
     webhookConfigured: Boolean(env.alertDelivery.webhookUrl && env.alertDelivery.webhookSecret),
   });
 });
@@ -305,7 +306,7 @@ export const updateOperationalAlertNotificationSettings = asyncHandler(async (re
   });
   res.json({
     ...settings,
-    emailConfigured: Boolean(env.alertDelivery.resendApiKey && env.alertDelivery.emailFrom),
+    emailConfigured: emailDeliveryIsConfigured(),
     webhookConfigured: Boolean(env.alertDelivery.webhookUrl && env.alertDelivery.webhookSecret),
   });
 });

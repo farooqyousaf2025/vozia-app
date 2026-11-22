@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 import { many, one, pool } from '../config/db';
 import type { PlatformOperationsSnapshot } from './platform-operations.service';
@@ -71,7 +72,7 @@ export async function enqueuePlatformAlertNotifications(
     if (alert.severity === 'CRITICAL' ? !settings.critical : !settings.warning) continue;
     const title = `Platform ${alert.severity.toLowerCase()} alert: ${alert.service}`;
     const channels: Array<'IN_APP' | 'EMAIL' | 'WEBHOOK'> = ['IN_APP'];
-    if (settings.email && env.alertDelivery.resendApiKey && env.alertDelivery.emailFrom) channels.push('EMAIL');
+    if (settings.email && emailDeliveryIsConfigured()) channels.push('EMAIL');
     if (settings.webhook && env.alertDelivery.webhookUrl && env.alertDelivery.webhookSecret) channels.push('WEBHOOK');
     for (const channel of channels) {
       await pool.query(
@@ -128,15 +129,72 @@ export async function markAllPlatformAlertNotificationsRead(adminId: string): Pr
 
 type DeliveryRow = { id: string; channel: 'EMAIL' | 'WEBHOOK'; email: string | null; severity: string; title: string; message: string; attemptCount: number };
 
+function smtpAuthAvailable(): boolean {
+  const config = env.alertDelivery;
+  if (!config.smtpHost || !config.smtpUser) return false;
+  const oauth = [config.smtpOAuthClientId, config.smtpOAuthClientSecret, config.smtpOAuthRefreshToken];
+  const hasAnyOAuth = oauth.some(Boolean);
+  if (hasAnyOAuth && !oauth.every(Boolean)) return false;
+  return oauth.every(Boolean) || Boolean(config.smtpPassword);
+}
+
+export function emailDeliveryIsConfigured(): boolean {
+  const config = env.alertDelivery;
+  const smtpReady = smtpAuthAvailable() && Boolean(config.emailFrom || config.smtpUser);
+  const resendReady = Boolean(config.resendApiKey && config.emailFrom);
+  return smtpReady || resendReady;
+}
+
 async function deliverEmail(row: DeliveryRow): Promise<void> {
-  if (!row.email || !env.alertDelivery.resendApiKey || !env.alertDelivery.emailFrom) throw new Error('Email delivery is not configured or admin email is missing');
+  if (!row.email) throw new Error('Admin alert recipient email is missing');
+
+  const config = env.alertDelivery;
+  if (smtpAuthAvailable()) {
+    const oauthReady = Boolean(
+      config.smtpOAuthClientId && config.smtpOAuthClientSecret && config.smtpOAuthRefreshToken,
+    );
+    const transporter = nodemailer.createTransport({
+      host: config.smtpHost,
+      port: config.smtpPort,
+      secure: config.smtpSecure,
+      requireTLS: !config.smtpSecure,
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 10_000,
+      tls: { minVersion: 'TLSv1.2' },
+      auth: oauthReady
+        ? {
+            type: 'OAuth2',
+            user: config.smtpUser,
+            clientId: config.smtpOAuthClientId,
+            clientSecret: config.smtpOAuthClientSecret,
+            refreshToken: config.smtpOAuthRefreshToken,
+          }
+        : { user: config.smtpUser, pass: config.smtpPassword },
+    });
+    try {
+      await transporter.sendMail({
+        from: config.emailFrom || config.smtpUser,
+        to: row.email,
+        subject: row.title,
+        text: `${row.severity} platform alert\\n\\n${row.message}\\n\\nOpen the Vozia Admin Panel → Platform Operations for details.`,
+      });
+      return;
+    } finally {
+      transporter.close();
+    }
+  }
+
+  if (!config.resendApiKey || !config.emailFrom) {
+    throw new Error('Email delivery is not configured: provide SMTP or Resend settings');
+  }
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: { authorization: `Bearer ${env.alertDelivery.resendApiKey}`, 'content-type': 'application/json' },
+    headers: { authorization: `Bearer ${config.resendApiKey}`, 'content-type': 'application/json' },
     body: JSON.stringify({
-      from: env.alertDelivery.emailFrom, to: [row.email],
+      from: config.emailFrom, to: [row.email],
       subject: row.title,
-      text: `${row.severity} platform alert\n\n${row.message}\n\nOpen the Voiza Admin Panel → Platform Operations for details.`,
+      text: `${row.severity} platform alert\\n\\n${row.message}\\n\\nOpen the Vozia Admin Panel → Platform Operations for details.`,
     }),
     signal: AbortSignal.timeout(10_000),
   });

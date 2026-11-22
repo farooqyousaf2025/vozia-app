@@ -25,6 +25,14 @@ function int(name: string, fallback: number): number {
   return parsed;
 }
 
+function bool(name: string, fallback: boolean): boolean {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  if (['true', '1', 'yes', 'on'].includes(raw.toLowerCase())) return true;
+  if (['false', '0', 'no', 'off'].includes(raw.toLowerCase())) return false;
+  throw new Error(`[config] ${name} must be true or false, got "${raw}"`);
+}
+
 const nodeEnv = str('NODE_ENV', 'development');
 const isProduction = nodeEnv === 'production';
 
@@ -105,6 +113,7 @@ export const env = {
     // machine without a cloud project gets.
     fcmProjectId: str('FCM_PROJECT_ID', ''),
     serviceAccountFile: str('FCM_SERVICE_ACCOUNT_FILE', str('GOOGLE_APPLICATION_CREDENTIALS', '')),
+    serviceAccountJsonBase64: str('FCM_SERVICE_ACCOUNT_JSON_BASE64', ''),
     // Must match the channel the app registers with NotificationManager.
     androidChannel: str('PUSH_ANDROID_CHANNEL', 'voiza_activity'),
   },
@@ -112,6 +121,14 @@ export const env = {
   alertDelivery: {
     resendApiKey: str('RESEND_API_KEY', ''),
     emailFrom: str('ALERT_EMAIL_FROM', ''),
+    smtpHost: str('SMTP_HOST', ''),
+    smtpPort: int('SMTP_PORT', 587),
+    smtpSecure: bool('SMTP_SECURE', false),
+    smtpUser: str('SMTP_USER', ''),
+    smtpPassword: str('SMTP_PASS', ''),
+    smtpOAuthClientId: str('SMTP_OAUTH_CLIENT_ID', ''),
+    smtpOAuthClientSecret: str('SMTP_OAUTH_CLIENT_SECRET', ''),
+    smtpOAuthRefreshToken: str('SMTP_OAUTH_REFRESH_TOKEN', ''),
     webhookUrl: str('ALERT_WEBHOOK_URL', ''),
     webhookSecret: str('ALERT_WEBHOOK_SECRET', ''),
   },
