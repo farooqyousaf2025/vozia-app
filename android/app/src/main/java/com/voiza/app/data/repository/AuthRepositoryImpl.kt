@@ -1,6 +1,7 @@
 package com.voiza.app.data.repository
 
 import com.voiza.app.data.mapper.toDomain
+import com.voiza.app.data.notifications.FcmTokenRegistrar
 import com.voiza.app.data.remote.ApiResult
 import com.voiza.app.data.remote.SessionManager
 import com.voiza.app.data.remote.VoizaApiService
@@ -86,11 +87,8 @@ class AuthRepositoryImpl(
     override fun logout() {
         val token = sessionManager.token.value
         if (!token.isNullOrBlank()) {
-            // Capture the bearer before clearing local credentials; explicit
-            // authorization lets best-effort unregister finish after logout.
-            scope.launch(Dispatchers.IO) {
-                runCatching { api.clearDeviceToken("Bearer $token") }
-            }
+            // Serialize unregister with token registration before dropping local credentials.
+            FcmTokenRegistrar.unregister(api, "Bearer $token")
         }
         sessionManager.clear()
     }
