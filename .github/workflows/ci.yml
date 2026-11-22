@@ -142,6 +142,16 @@ jobs:
         timeout-minutes: 5
         run: npm run test:device-tokens
 
+      - name: Mock push private-channel suite
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://voiza:voiza@localhost:5432/voiza
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci-only-jwt-secret-not-a-default
+          NOTIFICATION_DELIVERY_MODE: mock
+        timeout-minutes: 5
+        run: npm run test:mock-push
+
       # Two more live suites run against the same API, each as its own step so a red
       # pipeline says which domain broke. Both mint their own accounts over HTTP — the
       # dev OTP back door and the `+10000000000 / 424242` bootstrap admin are
