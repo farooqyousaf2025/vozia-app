@@ -5,6 +5,7 @@ import com.stripe.android.PaymentConfiguration
 import com.voiza.app.BuildConfig
 import com.voiza.app.data.livekit.LiveKitRoomManager
 import com.voiza.app.data.notifications.VoizaNotifier
+import com.voiza.app.data.notifications.FcmTokenRegistrar
 import com.voiza.app.data.remote.NetworkModule
 import com.voiza.app.data.remote.SessionManager
 import com.voiza.app.data.remote.VoizaApiService
@@ -47,6 +48,11 @@ import com.voiza.app.domain.usecase.RechargeWalletUseCase
 import com.voiza.app.domain.usecase.SendGiftUseCase
 import com.voiza.app.domain.usecase.TakeSeatUseCase
 import com.voiza.app.domain.usecase.ToggleMuteUseCase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 /**
  * Hand-written dependency container (no Hilt/Koin by design — see README).
@@ -192,6 +198,13 @@ object ServiceLocator {
             notifier = VoizaNotifier(appContext, socketClient, sessionManager)
 
             initialized = true
+
+            // Register a token obtained before sign-in as soon as a member session exists.
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                sessionManager.token.collectLatest { token ->
+                    if (!token.isNullOrBlank()) FcmTokenRegistrar.syncPending(appContext)
+                }
+            }
         }
     }
 
