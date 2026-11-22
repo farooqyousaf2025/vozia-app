@@ -9,7 +9,7 @@ import { toAdmin, toUser } from '../utils/serialize';
 import { issueOtp, verifyOtpAndResolve } from '../services/otp.service';
 import { signAdminToken, signUserToken } from '../services/token.service';
 import { adminPermissions } from '../services/rbac.service';
-import { clearDeviceToken, registerDeviceToken } from '../services/push.service';
+import { clearDeviceToken, clearLegacyDeviceToken, registerDeviceToken, registerLegacyDeviceToken } from '../services/push.service';
 import { findAdminByUsername } from '../services/admin.service';
 
 export const requestOtp = asyncHandler(async (req: Request, res: Response) => {
@@ -121,17 +121,30 @@ export const me = asyncHandler(async (req: Request, res: Response) => {
  * start (and whenever Firebase rotates the token), so a reinstall or a new phone
  * picks up the current target instead of pushing into a dead token.
  */
+/** New app API: one authenticated FCM registration per physical installation. */
 export const setDeviceToken = asyncHandler(async (req: Request, res: Response) => {
   const token = requireString(req.body?.deviceToken, 'deviceToken', { min: 20, max: 600 });
   await registerDeviceToken(req.user!.sub, token);
   res.json({ ok: true });
 });
 
+/** Compatibility API used by older Android builds which have only one token slot. */
+export const setLegacyDeviceToken = asyncHandler(async (req: Request, res: Response) => {
+  const token = requireString(req.body?.deviceToken, 'deviceToken', { min: 20, max: 600 });
+  await registerLegacyDeviceToken(req.user!.sub, token);
+  res.json({ ok: true });
+});
+
+/** New app API: logout this exact installation without disturbing other devices. */
 export const clearMyDeviceToken = asyncHandler(async (req: Request, res: Response) => {
-  const token = req.body?.deviceToken === undefined
-    ? undefined
-    : requireString(req.body.deviceToken, 'deviceToken', { min: 20, max: 600 });
+  const token = requireString(req.body?.deviceToken, 'deviceToken', { min: 20, max: 600 });
   await clearDeviceToken(req.user!.sub, token);
+  res.json({ ok: true });
+});
+
+/** Compatibility API: older builds cannot identify their token on logout. */
+export const clearLegacyMyDeviceToken = asyncHandler(async (req: Request, res: Response) => {
+  await clearLegacyDeviceToken(req.user!.sub);
   res.json({ ok: true });
 });
 
