@@ -42,6 +42,7 @@ import com.voiza.app.viewmodel.voizaViewModelFactory
 fun VoizaNavHost(
     startOnHome: Boolean,
     onLogout: () -> Unit,
+    onAuthenticated: () -> Unit = {},
     navController: NavHostController = rememberNavController(),
 ) {
     NavHost(
@@ -54,6 +55,7 @@ fun VoizaNavHost(
                     navController.navigate(Routes.HOME) {
                         popUpTo(Routes.AUTH) { inclusive = true }
                     }
+                    onAuthenticated()
                 },
             )
         }

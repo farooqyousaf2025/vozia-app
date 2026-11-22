@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -89,10 +90,17 @@ class VoizaNotifier(
     private fun shouldNotify(): Boolean =
         !ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && canPost()
 
-    private fun canPost(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) ==
+    private fun canPost(): Boolean {
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
+        ) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            manager.getNotificationChannel(CHANNEL_ACTIVITY)?.importance == NotificationManager.IMPORTANCE_NONE
+        ) return false
+        return true
+    }
 
     private fun isForMe(event: GiftAnimatedEvent): Boolean {
         val me = session.user.value?.id ?: return false
@@ -101,7 +109,7 @@ class VoizaNotifier(
 
     /** Post a private-message alert only when the app is backgrounded; the live socket updates an active session. */
     fun showDirectMessagePush(title: String, body: String, partnerId: String) {
-        if (!partnerId.matches(UUID_PATTERN) || !shouldNotify()) return
+        if (!NotificationTargetPolicy.isValidPartnerId(partnerId) || !shouldNotify()) return
         notify(id = "dm:$partnerId".hashCode(), title = title, body = body, partnerId = partnerId)
     }
 
@@ -128,7 +136,6 @@ class VoizaNotifier(
 
     companion object {
         const val CHANNEL_ACTIVITY = "voiza_activity"
-        private val UUID_PATTERN = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
         private const val NOTIFICATION_WARNING = 9_001
         private const val NOTIFICATION_KICKED = 9_002
     }
