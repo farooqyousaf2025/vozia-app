@@ -65,7 +65,7 @@ class VoizaNotifier(
                 notify(
                     id = event.hashCode(),
                     title = "${event.sender.username} sent you ${event.gift.name}",
-                    body = "\u2756 ${event.totalDiamonds} \u2192 you earned \u25C9 ${event.totalRCoins}",
+                    body = "❖ ${event.totalDiamonds} → you earned ◉ ${event.totalRCoins}",
                 )
             }
         }
@@ -89,22 +89,29 @@ class VoizaNotifier(
     }
 
     /**
-     * Only while the app is not in the foreground and the room screen is not
-     * already showing the same thing.
+     * Only while the app is not in the foreground and Android/user notification settings allow it.
+     * The decision is delegated to a pure policy so every suppression condition is covered by JVM tests.
      */
-    private fun shouldNotify(): Boolean =
-        !ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && canPost()
+    private fun shouldNotify(): Boolean {
+        val isAppForeground =
+            ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        val notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+        val postNotificationsPermissionGranted =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.POST_NOTIFICATIONS,
+                ) == PackageManager.PERMISSION_GRANTED
+        val channelEnabled =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                manager.getNotificationChannel(CHANNEL_ACTIVITY)?.importance != NotificationManager.IMPORTANCE_NONE
 
-    private fun canPost(): Boolean {
-        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) return false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            manager.getNotificationChannel(CHANNEL_ACTIVITY)?.importance == NotificationManager.IMPORTANCE_NONE
-        ) return false
-        return true
+        return NotificationTargetPolicy.shouldPostNotification(
+            isAppForeground = isAppForeground,
+            notificationsEnabled = notificationsEnabled,
+            postNotificationsPermissionGranted = postNotificationsPermissionGranted,
+            channelEnabled = channelEnabled,
+        )
     }
 
     private fun isForMe(event: GiftAnimatedEvent): Boolean {
@@ -115,12 +122,12 @@ class VoizaNotifier(
     /** Local Docker mock transport: render the same Android notification without Firebase. */
     fun showMockPush(title: String, body: String, data: Map<String, String>) {
         if (!shouldNotify()) return
-        val partnerId = NotificationTargetPolicy.partnerIdFrom(data["type"], data["partnerId"])
+        val presentation = NotificationTargetPolicy.mockPushPresentation(title, body, data)
         notify(
             id = ("mock:${System.nanoTime()}").hashCode(),
-            title = title.ifBlank { "Vozia notification" },
-            body = body.ifBlank { "You have a new update." },
-            partnerId = partnerId,
+            title = presentation.title,
+            body = presentation.body,
+            partnerId = presentation.partnerId,
         )
     }
 
