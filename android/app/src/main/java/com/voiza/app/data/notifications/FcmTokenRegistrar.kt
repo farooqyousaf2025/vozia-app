@@ -102,7 +102,15 @@ object FcmTokenRegistrar {
         unregisterInProgress = true
         scope.launch {
             registrationMutex.withLock {
-                runCatching { api.clearDeviceToken(authorization) }
+                runCatching {
+                    val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    val token = currentToken(prefs)
+                    if (token.isNullOrBlank()) {
+                        api.clearAllDeviceTokens(authorization)
+                    } else {
+                        api.clearDeviceToken(mapOf("deviceToken" to token), authorization)
+                    }
+                }
                     .onFailure { Log.w(TAG, "FCM unregister failed; the next login will register again", it) }
                 app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                     .edit()
