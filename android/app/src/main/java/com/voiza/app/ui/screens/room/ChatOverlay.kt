@@ -109,10 +109,14 @@ fun ChatOverlay(
         }
     }
 
-    // Keep pinned to the newest message.
+    // Follow new messages only while the reader is already near the bottom.
+    // This keeps incoming chat from yanking someone away from older messages.
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem((messages.size - 1).coerceAtLeast(0))
+        val visibleLast = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+        val total = listState.layoutInfo.totalItemsCount
+        val wasFollowing = visibleLast == null || visibleLast >= total - 2
+        if (messages.isNotEmpty() && wasFollowing) {
+            listState.animateScrollToItem(messages.lastIndex)
         }
     }
 
