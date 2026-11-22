@@ -176,7 +176,7 @@ interface VoizaApiService {
     ): OkResponse
 
     /** Compatibility fallback for registrations made by a pre-multi-device app version. */
-    @DELETE("api/auth/me/device-tokens")
+    @DELETE("api/auth/me/device-token")
     suspend fun clearAllDeviceTokens(@Header("Authorization") authorization: String): OkResponse
 
     @PATCH("api/auth/me")
