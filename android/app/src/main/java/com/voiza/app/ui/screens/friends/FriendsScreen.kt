@@ -548,7 +548,7 @@ private fun MessagesPane(
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(8.dp))
-            IconButton(onClick = onSend, enabled = state.draft.isNotBlank() && !state.busy) {
+            IconButton(onClick = onSend, enabled = state.draft.isNotBlank() && !state.busy && !state.loadingMessages) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = if (state.busy) OnDarkMuted else Violet)
             }
         }
