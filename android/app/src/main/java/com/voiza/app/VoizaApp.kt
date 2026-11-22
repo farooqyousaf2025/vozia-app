@@ -3,6 +3,10 @@ package com.voiza.app
 import android.app.Application
 import android.os.Build
 import coil.ImageLoader
+import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseOptions
+import com.google.firebase.messaging.FirebaseMessaging
+import com.voiza.app.data.notifications.FcmTokenRegistrar
 import coil.ImageLoaderFactory
 import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
@@ -17,6 +21,24 @@ class VoizaApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         ServiceLocator.init(this)
+        initializePush()
+    }
+
+    private fun initializePush() {
+        val values = listOf(BuildConfig.FCM_ANDROID_API_KEY, BuildConfig.FCM_ANDROID_APP_ID, BuildConfig.FCM_ANDROID_PROJECT_ID, BuildConfig.FCM_ANDROID_SENDER_ID)
+        if (values.any { it.isBlank() }) return
+        runCatching {
+            val app = FirebaseApp.getApps(this).firstOrNull { it.name == FirebaseApp.DEFAULT_APP_NAME }
+                ?: FirebaseApp.initializeApp(this, FirebaseOptions.Builder()
+                    .setApiKey(BuildConfig.FCM_ANDROID_API_KEY)
+                    .setApplicationId(BuildConfig.FCM_ANDROID_APP_ID)
+                    .setProjectId(BuildConfig.FCM_ANDROID_PROJECT_ID)
+                    .setGcmSenderId(BuildConfig.FCM_ANDROID_SENDER_ID)
+                    .build())
+            if (app != null) FirebaseMessaging.getInstance(app).token
+                .addOnSuccessListener { token -> FcmTokenRegistrar.persistAndSync(this, token) }
+        }.onFailure { android.util.Log.w("VoizaPush", "Firebase push is not configured; socket notifications remain active", it) }
+    }
     }
 
     /**
