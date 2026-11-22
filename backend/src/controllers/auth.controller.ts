@@ -128,7 +128,10 @@ export const setDeviceToken = asyncHandler(async (req: Request, res: Response) =
 });
 
 export const clearMyDeviceToken = asyncHandler(async (req: Request, res: Response) => {
-  await clearDeviceToken(req.user!.sub);
+  const token = req.body?.deviceToken === undefined
+    ? undefined
+    : requireString(req.body.deviceToken, 'deviceToken', { min: 20, max: 600 });
+  await clearDeviceToken(req.user!.sub, token);
   res.json({ ok: true });
 });
 
