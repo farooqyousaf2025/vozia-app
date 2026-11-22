@@ -29,6 +29,7 @@ x-app-env: &app-env
   # at that path (see .env.example).
   FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
   FCM_SERVICE_ACCOUNT_FILE: ${FCM_SERVICE_ACCOUNT_FILE:-}
+  FCM_SERVICE_ACCOUNT_JSON_BASE64: ${FCM_SERVICE_ACCOUNT_JSON_BASE64:-}
   PUSH_ANDROID_CHANNEL: ${PUSH_ANDROID_CHANNEL:-voiza_activity}
   # Optional external platform alert delivery. Secrets are mounted as environment variables only.
   RESEND_API_KEY: ${RESEND_API_KEY:-}
