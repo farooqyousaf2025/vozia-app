@@ -84,6 +84,14 @@ class AuthRepositoryImpl(
     }
 
     override fun logout() {
+        val token = sessionManager.token.value
+        if (!token.isNullOrBlank()) {
+            // Capture the bearer before clearing local credentials; explicit
+            // authorization lets best-effort unregister finish after logout.
+            scope.launch(Dispatchers.IO) {
+                runCatching { api.clearDeviceToken("Bearer $token") }
+            }
+        }
         sessionManager.clear()
     }
 
