@@ -182,6 +182,13 @@ class HomeViewModel(
         loadRooms()
     }
 
+    /** Discover always browses the lobby, not the Home-only My Room view. */
+    fun showAllRooms() {
+        if (!_state.value.showingMyRooms) return
+        _state.update { it.copy(showingMyRooms = false) }
+        loadRooms()
+    }
+
     /** Quick Join: ask the server for a room, then let the caller tap into it. */
     fun quickJoin() {
         viewModelScope.launch {
