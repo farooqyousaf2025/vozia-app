@@ -207,6 +207,20 @@ export async function pushToUser(userId: string, message: PushMessage): Promise<
   );
   if (!registrations.length) return;
 
+  if (env.notificationDeliveryMode === 'mock') {
+    if (!env.isProduction) {
+      console.info('[notifications:mock-push]', JSON.stringify({
+        userId,
+        deviceCount: registrations.length,
+        title: message.title,
+        body: message.body,
+        data: message.data ?? {},
+        sent: false,
+      }));
+    }
+    return;
+  }
+
   if (!pushIsConfigured()) {
     if (!env.isProduction) {
       console.info(`[push] skipped (no FCM config) -> ${userId}: ${registrations.length} device(s)`);
