@@ -80,11 +80,7 @@ async function oauthAccessToken(): Promise<string | null> {
   return accessToken.value;
 }
 
-/**
- * One physical app installation has one current FCM token. The token is globally
- * unique and can move between member accounts when a device signs into another account.
- * Each member is capped at ten active registrations to prevent unbounded token growth.
- */
+/** Update the single-token slot used by older Android app versions. */
 export async function registerLegacyDeviceToken(userId: string, token: string): Promise<void> {
   await withTransaction(async (client) => {
     const owner = await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
@@ -104,6 +100,10 @@ export async function registerLegacyDeviceToken(userId: string, token: string): 
   });
 }
 
+/**
+ * Store a token for one installation. Tokens are globally unique, can move between
+ * accounts on sign-in, and each member may keep at most ten current installations.
+ */
 export async function registerDeviceToken(userId: string, token: string): Promise<void> {
   await withTransaction(async (client) => {
     const owner = await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
@@ -175,12 +175,15 @@ export async function clearDeviceToken(userId: string, expectedToken: string): P
 export async function clearLegacyDeviceToken(userId: string): Promise<void> {
   await query(
     `WITH previous AS (
-       UPDATE users SET device_token = NULL WHERE id = $1 RETURNING device_token
+       SELECT device_token AS token FROM users WHERE id = $1 FOR UPDATE
+     ),
+     removed AS (
+       DELETE FROM user_device_tokens AS registrations
+        USING previous
+        WHERE registrations.user_id = $1
+          AND registrations.token = previous.token
      )
-     DELETE FROM user_device_tokens AS registrations
-      USING previous
-      WHERE registrations.user_id = $1
-        AND registrations.token = previous.device_token`,
+     UPDATE users SET device_token = NULL WHERE id = $1`,
     [userId],
   );
 }
