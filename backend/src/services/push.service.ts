@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { env } from '../config/env';
 import { many, query, withTransaction } from '../config/db';
+import { emitToUser } from './socket.service';
 
 export type PushMessage = { title: string; body: string; data?: Record<string, string> };
 
@@ -197,6 +198,27 @@ export async function clearLegacyDeviceToken(userId: string): Promise<void> {
  * read during the rolling-upgrade window so older app builds continue receiving pushes.
  */
 export async function pushToUser(userId: string, message: PushMessage): Promise<void> {
+  // Local mock delivery uses the authenticated per-user Socket.IO channel. It deliberately
+  // does not require an FCM token, service account, or any external network request.
+  if (env.notificationDeliveryMode === 'mock') {
+    if (!env.isProduction) {
+      emitToUser(userId, 'push:mock', {
+        title: message.title,
+        body: message.body,
+        data: message.data ?? {},
+      });
+      console.info('[notifications:mock-push]', JSON.stringify({
+        userId,
+        title: message.title,
+        body: message.body,
+        data: message.data ?? {},
+        transport: 'authenticated-socket',
+        sent: false,
+      }));
+    }
+    return;
+  }
+
   const registrations = await many<DeviceTokenRow>(
     `SELECT token FROM user_device_tokens WHERE user_id = $1
      UNION
@@ -207,19 +229,6 @@ export async function pushToUser(userId: string, message: PushMessage): Promise<
   );
   if (!registrations.length) return;
 
-  if (env.notificationDeliveryMode === 'mock') {
-    if (!env.isProduction) {
-      console.info('[notifications:mock-push]', JSON.stringify({
-        userId,
-        deviceCount: registrations.length,
-        title: message.title,
-        body: message.body,
-        data: message.data ?? {},
-        sent: false,
-      }));
-    }
-    return;
-  }
 
   if (!pushIsConfigured()) {
     if (!env.isProduction) {

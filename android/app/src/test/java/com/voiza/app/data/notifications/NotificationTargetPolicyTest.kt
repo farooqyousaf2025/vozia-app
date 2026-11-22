@@ -17,6 +17,13 @@ class NotificationTargetPolicyTest {
     }
 
     @Test
+    fun `mock notification data cannot create an unsafe navigation target`() {
+        assertEquals(partnerId, NotificationTargetPolicy.partnerIdFrom("direct_message", partnerId))
+        assertEquals(null, NotificationTargetPolicy.partnerIdFrom("direct_message", "javascript:alert(1)"))
+        assertEquals(null, NotificationTargetPolicy.partnerIdFrom("room", partnerId))
+    }
+
+    @Test
     fun `notification tap waits for an authenticated session`() {
         assertTrue(NotificationTargetPolicy.canOpenPartner(true, partnerId))
         assertFalse(NotificationTargetPolicy.canOpenPartner(false, partnerId))

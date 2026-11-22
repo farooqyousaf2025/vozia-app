@@ -76,6 +76,11 @@ class VoizaNotifier(
             }
         }
         scope.launch {
+            socket.mockPushes.collect { push ->
+                showMockPush(push.title, push.body, push.data)
+            }
+        }
+        scope.launch {
             socket.kickedFrom.collect {
                 if (!shouldNotify()) return@collect
                 notify(id = NOTIFICATION_KICKED, title = "Removed from the room", body = "The host ended your turn in this room.")
@@ -105,6 +110,18 @@ class VoizaNotifier(
     private fun isForMe(event: GiftAnimatedEvent): Boolean {
         val me = session.user.value?.id ?: return false
         return event.receiver.id == me
+    }
+
+    /** Local Docker mock transport: render the same Android notification without Firebase. */
+    fun showMockPush(title: String, body: String, data: Map<String, String>) {
+        if (!shouldNotify()) return
+        val partnerId = NotificationTargetPolicy.partnerIdFrom(data["type"], data["partnerId"])
+        notify(
+            id = ("mock:${System.nanoTime()}").hashCode(),
+            title = title.ifBlank { "Vozia notification" },
+            body = body.ifBlank { "You have a new update." },
+            partnerId = partnerId,
+        )
     }
 
     /** Post a private-message alert only when the app is backgrounded; the live socket updates an active session. */
