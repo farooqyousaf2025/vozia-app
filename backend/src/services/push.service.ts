@@ -95,7 +95,13 @@ export async function registerDeviceToken(userId: string, token: string): Promis
   await query('UPDATE users SET device_token = $2 WHERE id = $1', [userId, token]);
 }
 
-export async function clearDeviceToken(userId: string): Promise<void> {
+export async function clearDeviceToken(userId: string, expectedToken?: string): Promise<void> {
+  if (expectedToken) {
+    // An FCM send can fail after the member has already registered a replacement token.
+    // Only clear the exact token that failed; never erase the newer registration.
+    await query('UPDATE users SET device_token = NULL WHERE id = $1 AND device_token = $2', [userId, expectedToken]);
+    return;
+  }
   await query('UPDATE users SET device_token = NULL WHERE id = $1', [userId]);
 }
 
@@ -139,14 +145,17 @@ export async function pushToUser(userId: string, message: PushMessage): Promise<
       }),
     });
     if (res.ok) return;
-    if (res.status === 404 || res.status === 400) {
-      // UNREGISTERED / INVALID_ARGUMENT: the app was uninstalled or the token
-      // rotated. Drop it so every later send does not repeat the same failure.
-      console.warn(`[push] device token for ${userId} is no longer valid; clearing it`);
-      await clearDeviceToken(userId);
+    const responseBody = await res.text();
+    if (res.status === 404) {
+      // UNREGISTERED means the exact token we sent is gone. Conditional clearing
+      // protects a replacement token registered while this request was in flight.
+      console.warn(`[push] device token for ${userId} is no longer valid; clearing that token`);
+      await clearDeviceToken(userId, token);
       return;
     }
-    console.error('[push] send failed', res.status, (await res.text()).slice(0, 200));
+    // HTTP 400 can also mean the message payload is invalid. Do not discard a good
+    // device token for a request-format problem.
+    console.error('[push] send failed', res.status, responseBody.slice(0, 200));
   } catch (err) {
     console.error('[push] send threw', (err as Error).message);
   }
