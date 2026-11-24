@@ -9,17 +9,15 @@ plugins {
 // ---------------------------------------------------------------------------
 // BuildConfig value resolution: gradle property -> env var -> emulator default
 // ---------------------------------------------------------------------------
-fun prop(name: String, default: String): String {
-    return (
-        providers.gradleProperty(name).orNull
-            ?: providers.environmentVariable(name).orNull
-            ?: default
-        )
-}
+fun prop(name: String, default: String): String =
+    providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
+        ?: providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
+        ?: default
 
-/** The same lookup with no fallback: null means "nobody told me". */
+/** The same lookup with no fallback: null means "nobody told me" (or supplied a blank value). */
 fun explicitProp(name: String): String? =
-    providers.gradleProperty(name).orNull ?: providers.environmentVariable(name).orNull
+    providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
+        ?: providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
 
 // Whether this invocation builds the release variant at all. The release address check is gated on
 // it so `assembleDebug` — the emulator build — still needs no flags.
