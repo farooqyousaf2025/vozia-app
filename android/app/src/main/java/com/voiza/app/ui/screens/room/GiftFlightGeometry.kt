@@ -50,6 +50,16 @@ internal object GiftFlightGeometry {
         return if (receiverId == hostId) seats.firstOrNull { it.seatIndex == 0 } else null
     }
 
+    fun fallbackCenterInRoot(
+        isSeated: Boolean,
+        audienceStripCenterInRoot: Offset?,
+        seatLayerCenterInRoot: Offset?,
+    ): Offset? = if (isSeated) {
+        seatLayerCenterInRoot ?: audienceStripCenterInRoot
+    } else {
+        audienceStripCenterInRoot ?: seatLayerCenterInRoot
+    }
+
     fun toOverlayLocal(globalCenter: Offset, overlayOrigin: Offset, density: Float): Offset {
         require(density > 0f) { "Display density must be positive" }
         return (globalCenter - overlayOrigin) / density

@@ -96,6 +96,36 @@ class GiftFlightGeometryTest {
     }
 
     @Test
+    fun `an audience flight fallback stays on the audience strip`() {
+        val audience = Offset(300f, 820f)
+        val seats = Offset(210f, 430f)
+
+        assertEquals(
+            audience,
+            GiftFlightGeometry.fallbackCenterInRoot(
+                isSeated = false,
+                audienceStripCenterInRoot = audience,
+                seatLayerCenterInRoot = seats,
+            ),
+        )
+    }
+
+    @Test
+    fun `a seated flight fallback stays in the speaker area`() {
+        val audience = Offset(300f, 820f)
+        val seats = Offset(210f, 430f)
+
+        assertEquals(
+            seats,
+            GiftFlightGeometry.fallbackCenterInRoot(
+                isSeated = true,
+                audienceStripCenterInRoot = audience,
+                seatLayerCenterInRoot = seats,
+            ),
+        )
+    }
+
+    @Test
     fun `root pixel coordinates are translated into overlay local dp coordinates`() {
         val local = GiftFlightGeometry.toOverlayLocal(
             globalCenter = Offset(420f, 260f),
