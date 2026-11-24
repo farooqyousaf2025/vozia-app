@@ -303,28 +303,14 @@ jobs:
           disable-linux-hw-accel: auto
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: |
-            cd android
-            if ./gradlew --no-daemon connectedDebugAndroidTest; then
-              exit 0
-            fi
-
-            # The emulator action shuts the device down after the script exits.
-            # Capture logcat now so instrumentation-process crashes are diagnosable.
-            mkdir -p app/build/reports/androidTests/diagnostics
-            adb logcat -d -v threadtime > app/build/reports/androidTests/diagnostics/logcat.txt || true
-            adb shell dumpsys activity processes > app/build/reports/androidTests/diagnostics/activity-processes.txt || true
-            adb shell dumpsys meminfo com.voiza.app > app/build/reports/androidTests/diagnostics/target-meminfo.txt || true
-            exit 1
+          script: cd android && bash ./scripts/run-device-tests-with-diagnostics.sh
 
       - name: Upload Android device test diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: android-device-test-diagnostics
-          path: |
-            android/app/build/reports/androidTests/connected/debug/
-            android/app/build/reports/androidTests/diagnostics/
+          path: android/app/build/reports/androidTests/
           if-no-files-found: warn
           retention-days: 7
 
