@@ -103,10 +103,10 @@ fun GiftFlightOverlay(
             )
             val start = (measuredStartRoot ?: fallbackStartRoot)
                 ?.let { GiftFlightGeometry.toOverlayLocal(it, coordinateOriginInRoot, density) }
-                ?: (width / 2f to height * 0.88f)
+                ?: Offset(width / 2f, height * 0.88f)
             val end = (measuredEndRoot ?: fallbackEndRoot)
                 ?.let { GiftFlightGeometry.toOverlayLocal(it, coordinateOriginInRoot, density) }
-                ?: (width / 2f to height * 0.12f)
+                ?: Offset(width / 2f, height * 0.12f)
 
             var visible by remember(eventKey) { mutableStateOf(false) }
             val progress = remember(eventKey) { Animatable(0f) }
