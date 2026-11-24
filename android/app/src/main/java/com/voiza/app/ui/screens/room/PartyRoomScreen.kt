@@ -119,10 +119,12 @@ fun PartyRoomScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val socketConnected by viewModel.socketConnected.collectAsStateWithLifecycle()
-    // Measured in root pixels so gift flights land on the exact seat cells, not estimated grid slots.
+    // All anchors are measured in root pixels. The flight layer is a root-level sibling, above
+    // the audience strip, so a gift can travel between the strip and seats without being covered.
     val seatCentersInRoot = remember { mutableStateMapOf<Int, Offset>() }
     val audienceCentersInRoot = remember { mutableStateMapOf<String, Offset>() }
-    var seatLayerOriginInRoot by remember { mutableStateOf(Offset.Zero) }
+    var rootOverlayOriginInRoot by remember { mutableStateOf(Offset.Zero) }
+    var seatLayerFallbackCenterInRoot by remember { mutableStateOf<Offset?>(null) }
     var audienceStripCenterInRoot by remember { mutableStateOf<Offset?>(null) }
 
     // Runtime mic permission: request once we may publish without the grant.
@@ -156,7 +158,11 @@ fun PartyRoomScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(VoizaHeroGradient),
+            .background(VoizaHeroGradient)
+            .onGloballyPositioned { coordinates ->
+                val origin = coordinates.positionInRoot()
+                if (origin != rootOverlayOriginInRoot) rootOverlayOriginInRoot = origin
+            },
     ) {
         // Theme wallpaper from the backend, then the ambient loop it pairs with.
         RoomWallpaper(wallpaperUrl = state.room?.themeWallpaper)
@@ -268,7 +274,8 @@ fun PartyRoomScreen(
                         .weight(1f)
                         .onGloballyPositioned { coordinates ->
                             val origin = coordinates.positionInRoot()
-                            if (origin != seatLayerOriginInRoot) seatLayerOriginInRoot = origin
+                            val center = origin + Offset(coordinates.size.width / 2f, coordinates.size.height / 2f)
+                            if (center != seatLayerFallbackCenterInRoot) seatLayerFallbackCenterInRoot = center
                         },
                 ) {
                     SeatGrid(
@@ -278,16 +285,6 @@ fun PartyRoomScreen(
                         onSeatCenterPositioned = { seatIndex, center ->
                             if (seatCentersInRoot[seatIndex] != center) seatCentersInRoot[seatIndex] = center
                         },
-                    )
-                    GiftFlightOverlay(
-                        events = state.giftTicker + state.giftQueue,
-                        seats = state.seats,
-                        seatCentersInRoot = seatCentersInRoot.toMap(),
-                        audienceCentersInRoot = audienceCentersInRoot.toMap(),
-                        audienceFallbackCenterInRoot = audienceStripCenterInRoot,
-                        coordinateOriginInRoot = seatLayerOriginInRoot,
-                        hostId = state.room?.host?.id,
-                        modifier = Modifier.fillMaxSize(),
                     )
                     BarrageOverlay(
                         messages = state.chat,
@@ -366,6 +363,22 @@ fun PartyRoomScreen(
                     },
                 )
             }
+        }
+
+        // Draw gift flights at the room root, above both speaker seats and the audience strip.
+        // The layer has no clickable content, so chat and room controls remain interactive.
+        if (!state.loading && state.joined) {
+            GiftFlightOverlay(
+                events = state.giftTicker + state.giftQueue,
+                seats = state.seats,
+                seatCentersInRoot = seatCentersInRoot.toMap(),
+                audienceCentersInRoot = audienceCentersInRoot.toMap(),
+                audienceFallbackCenterInRoot = audienceStripCenterInRoot,
+                seatLayerFallbackCenterInRoot = seatLayerFallbackCenterInRoot,
+                coordinateOriginInRoot = rootOverlayOriginInRoot,
+                hostId = state.room?.host?.id,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
 
         // Error snackbar-ish line
