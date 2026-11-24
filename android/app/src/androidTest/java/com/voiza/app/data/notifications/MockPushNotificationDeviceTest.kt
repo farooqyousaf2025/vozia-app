@@ -49,6 +49,7 @@ class MockPushNotificationDeviceTest {
     private lateinit var device: UiDevice
     private lateinit var scenario: ActivityScenario<MainActivity>
     private val postedIds = mutableSetOf<Int>()
+    private var scenarioClosed = false
 
     @Before
     fun setUp() {
@@ -75,7 +76,7 @@ class MockPushNotificationDeviceTest {
         if (::device.isInitialized && !device.isScreenOn) device.wakeUp()
         if (::notificationManager.isInitialized) postedIds.forEach(notificationManager::cancel)
         if (serviceLocatorInitialized()) ServiceLocator.sessionManager.clear()
-        if (::scenario.isInitialized) scenario.close()
+        if (::scenario.isInitialized && !scenarioClosed) scenario.close()
     }
 
     @Test(timeout = 60_000)
@@ -99,7 +100,13 @@ class MockPushNotificationDeviceTest {
         assertEquals(backgroundTitle, notification?.extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString())
         assertEquals(backgroundBody, notification?.extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString())
 
-        // Explicitly resume the same singleTask activity, as a user would tap the Vozia app icon.
+        // Release ActivityScenario's lifecycle tracking before the external launcher intent.
+        // MainActivity is singleTask, so relaunching it while this scenario still tracks it can
+        // leave ActivityScenario with no last lifecycle stage and make close() crash in @After.
+        scenario.close()
+        scenarioClosed = true
+
+        // Resume Vozia as a user would by tapping its app icon.
         context.startActivity(
             Intent(context, MainActivity::class.java).addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP,
