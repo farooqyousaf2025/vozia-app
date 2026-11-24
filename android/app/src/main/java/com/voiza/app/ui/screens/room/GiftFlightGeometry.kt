@@ -12,6 +12,29 @@ internal object GiftFlightGeometry {
     fun senderSeat(seats: List<Seat>, senderId: String): Seat? =
         seats.firstOrNull { it.user?.id == senderId }
 
+    fun senderCenterInRoot(
+        senderId: String,
+        seats: List<Seat>,
+        seatCentersInRoot: Map<Int, Offset>,
+        audienceCentersInRoot: Map<String, Offset>,
+    ): Offset? {
+        val seatedCenter = senderSeat(seats, senderId)?.let { seatCentersInRoot[it.seatIndex] }
+        return seatedCenter ?: audienceCentersInRoot[senderId]
+    }
+
+    fun receiverCenterInRoot(
+        receiverId: String,
+        seats: List<Seat>,
+        receiverSeatIndex: Int?,
+        hostId: String?,
+        seatCentersInRoot: Map<Int, Offset>,
+        audienceCentersInRoot: Map<String, Offset>,
+    ): Offset? {
+        val seatedCenter = receiverSeat(seats, receiverId, receiverSeatIndex, hostId)
+            ?.let { seatCentersInRoot[it.seatIndex] }
+        return seatedCenter ?: audienceCentersInRoot[receiverId]
+    }
+
     fun receiverSeat(
         seats: List<Seat>,
         receiverId: String,

@@ -34,6 +34,47 @@ class GiftFlightGeometryTest {
     }
 
     @Test
+    fun `an audience sender starts from their measured avatar`() {
+        val avatarCenter = Offset(280f, 760f)
+        val resolved = GiftFlightGeometry.senderCenterInRoot(
+            senderId = "listener",
+            seats = listOf(occupied(0, "host")),
+            seatCentersInRoot = mapOf(0 to Offset(180f, 220f)),
+            audienceCentersInRoot = mapOf("listener" to avatarCenter),
+        )
+
+        assertEquals(avatarCenter, resolved)
+    }
+
+    @Test
+    fun `a seated sender anchor takes precedence over an audience entry`() {
+        val seatCenter = Offset(180f, 220f)
+        val resolved = GiftFlightGeometry.senderCenterInRoot(
+            senderId = "sender",
+            seats = listOf(occupied(2, "sender")),
+            seatCentersInRoot = mapOf(2 to seatCenter),
+            audienceCentersInRoot = mapOf("sender" to Offset(280f, 760f)),
+        )
+
+        assertEquals(seatCenter, resolved)
+    }
+
+    @Test
+    fun `an audience receiver can be targeted at their visible avatar`() {
+        val avatarCenter = Offset(280f, 760f)
+        val resolved = GiftFlightGeometry.receiverCenterInRoot(
+            receiverId = "listener",
+            seats = listOf(occupied(0, "host")),
+            receiverSeatIndex = null,
+            hostId = "host",
+            seatCentersInRoot = mapOf(0 to Offset(180f, 220f)),
+            audienceCentersInRoot = mapOf("listener" to avatarCenter),
+        )
+
+        assertEquals(avatarCenter, resolved)
+    }
+
+    @Test
     fun `receiver identity wins over a stale seat index`() {
         val receiver = occupied(5, "receiver")
         val seats = listOf(occupied(0, "host"), occupied(2, "other"), receiver)

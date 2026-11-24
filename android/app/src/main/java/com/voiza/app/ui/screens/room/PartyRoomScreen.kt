@@ -38,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -120,7 +121,9 @@ fun PartyRoomScreen(
     val socketConnected by viewModel.socketConnected.collectAsStateWithLifecycle()
     // Measured in root pixels so gift flights land on the exact seat cells, not estimated grid slots.
     val seatCentersInRoot = remember { mutableStateMapOf<Int, Offset>() }
+    val audienceCentersInRoot = remember { mutableStateMapOf<String, Offset>() }
     var seatLayerOriginInRoot by remember { mutableStateOf(Offset.Zero) }
+    var audienceStripCenterInRoot by remember { mutableStateOf<Offset?>(null) }
 
     // Runtime mic permission: request once we may publish without the grant.
     var permissionAsked by remember { mutableStateOf(false) }
@@ -280,6 +283,8 @@ fun PartyRoomScreen(
                         events = state.giftTicker + state.giftQueue,
                         seats = state.seats,
                         seatCentersInRoot = seatCentersInRoot.toMap(),
+                        audienceCentersInRoot = audienceCentersInRoot.toMap(),
+                        audienceFallbackCenterInRoot = audienceStripCenterInRoot,
                         coordinateOriginInRoot = seatLayerOriginInRoot,
                         hostId = state.room?.host?.id,
                         modifier = Modifier.fillMaxSize(),
@@ -312,11 +317,19 @@ fun PartyRoomScreen(
                 // ---- Audience strip (tap for the full roster) ----
                 AudienceStrip(
                     audience = state.audience,
+                    seats = state.seats,
                     count = state.listenerCount,
                     handRaisedCount = state.handRaises.size,
                     barrageOn = barrageOn,
                     onToggleBarrage = { barrageOn = !barrageOn },
                     onOpenList = viewModel::openAudienceList,
+                    onAvatarCenterPositioned = { userId, center ->
+                        if (center == null) audienceCentersInRoot.remove(userId)
+                        else if (audienceCentersInRoot[userId] != center) audienceCentersInRoot[userId] = center
+                    },
+                    onStripCenterPositioned = { center ->
+                        if (audienceStripCenterInRoot != center) audienceStripCenterInRoot = center
+                    },
                     modifier = Modifier.padding(vertical = 6.dp),
                 )
 
@@ -937,16 +950,31 @@ private fun rememberPkClock(enabled: Boolean): Long {
 @Composable
 private fun AudienceStrip(
     audience: List<com.voiza.app.domain.model.MiniUser>,
+    seats: List<com.voiza.app.domain.model.Seat>,
     count: Int,
     handRaisedCount: Int,
     barrageOn: Boolean,
     onToggleBarrage: () -> Unit,
     onOpenList: () -> Unit,
+    onAvatarCenterPositioned: (String, Offset?) -> Unit,
+    onStripCenterPositioned: (Offset) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // The room snapshot can include speakers as well as listeners. Only the actual audience
+    // avatars belong in this strip and can be used as off-seat gift-flight anchors.
+    val seatedIds = seats.asSequence()
+        .filter { it.status == com.voiza.app.domain.model.SeatStatus.OCCUPIED }
+        .mapNotNull { it.user?.id }
+        .toSet()
+    val listeners = audience.filterNot { it.id in seatedIds }
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.padding(horizontal = 12.dp),
+        modifier = modifier
+            .padding(horizontal = 12.dp)
+            .onGloballyPositioned { coordinates ->
+                val origin = coordinates.positionInRoot()
+                onStripCenterPositioned(origin + Offset(coordinates.size.width / 2f, coordinates.size.height / 2f))
+            },
     ) {
         // The whole chip opens the roster sheet.
         Row(
@@ -986,9 +1014,25 @@ private fun AudienceStrip(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier.weight(1f),
         ) {
-            items(audience.size) { idx ->
-                val u = audience[idx]
-                Avatar(url = u.avatarUrl, name = u.username, size = 26.dp)
+            items(listeners.size, key = { idx -> listeners[idx].id }) { idx ->
+                val user = listeners[idx]
+                // LazyRow disposes avatars that scroll out of view. Remove their measured anchors
+                // too, so a later gift never starts from a stale, off-screen position.
+                DisposableEffect(user.id) {
+                    onDispose { onAvatarCenterPositioned(user.id, null) }
+                }
+                Avatar(
+                    url = user.avatarUrl,
+                    name = user.username,
+                    size = 26.dp,
+                    modifier = Modifier.onGloballyPositioned { coordinates ->
+                        val origin = coordinates.positionInRoot()
+                        onAvatarCenterPositioned(
+                            user.id,
+                            origin + Offset(coordinates.size.width / 2f, coordinates.size.height / 2f),
+                        )
+                    },
+                )
             }
         }
         // Barrage (danmaku) on/off, TUIKit-style.
