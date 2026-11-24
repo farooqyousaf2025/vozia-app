@@ -41,8 +41,8 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 /**
- * A short seat-to-seat flourish for every confirmed room gift. Coordinates mirror SeatGrid's
- * 3/4-column SpaceEvenly layout and its 104/88dp cells; no seat state or payment state is changed.
+ * A short sender-to-receiver flourish for every confirmed room gift. The layer spans the room root
+ * so audience-strip anchors remain visible above the strip; no seat state or payment state changes.
  */
 @Composable
 fun GiftFlightOverlay(
@@ -51,6 +51,7 @@ fun GiftFlightOverlay(
     seatCentersInRoot: Map<Int, Offset> = emptyMap(),
     audienceCentersInRoot: Map<String, Offset> = emptyMap(),
     audienceFallbackCenterInRoot: Offset? = null,
+    seatLayerFallbackCenterInRoot: Offset? = null,
     coordinateOriginInRoot: Offset = Offset.Zero,
     hostId: String? = null,
     modifier: Modifier = Modifier,
@@ -63,13 +64,6 @@ fun GiftFlightOverlay(
         val height = maxHeight.value
         val density = LocalDensity.current.density
         val ordered = remember(seats) { seats.sortedBy { it.seatIndex } }
-        val wide = ordered.size > 9
-        val columns = if (wide) 4 else 3
-        val cell = if (wide) 88f else 104f
-        val rowGap = if (wide) 10f else 14f
-        val rowCount = (ordered.size + columns - 1) / columns
-        val gridHeight = rowCount * cell + (rowCount - 1).coerceAtLeast(0) * rowGap
-        val gridTop = ((height - gridHeight) / 2f).coerceAtLeast(0f)
 
         uniqueEvents.forEachIndexed { eventIndex, event ->
             val eventKey = event.eventId ?: "legacy-$eventIndex"
@@ -81,14 +75,14 @@ fun GiftFlightOverlay(
                 hostId = hostId,
             )
 
-            // Prefer the actual Compose-measured cell centers. The old grid calculation remains a
-            // first-frame fallback for the short interval before onGloballyPositioned reports.
+            // Resolve actual anchors first. When a LazyRow avatar is off-screen, the strip center
+            // is the honest fallback; a missing seat measurement falls back to the speaker area.
             val measuredStartRoot = GiftFlightGeometry.senderCenterInRoot(
                 senderId = event.sender.id,
                 seats = ordered,
                 seatCentersInRoot = seatCentersInRoot,
                 audienceCentersInRoot = audienceCentersInRoot,
-            ) ?: audienceFallbackCenterInRoot
+            )
             val measuredEndRoot = GiftFlightGeometry.receiverCenterInRoot(
                 receiverId = event.receiver.id,
                 seats = ordered,
@@ -97,20 +91,22 @@ fun GiftFlightOverlay(
                 seatCentersInRoot = seatCentersInRoot,
                 audienceCentersInRoot = audienceCentersInRoot,
             )
-            val measuredStart = measuredStartRoot?.let {
-                GiftFlightGeometry.toOverlayLocal(it, coordinateOriginInRoot, density)
-            }
-            val measuredEnd = measuredEndRoot?.let {
-                GiftFlightGeometry.toOverlayLocal(it, coordinateOriginInRoot, density)
-            }
-            val fallbackStart = senderSeat?.let {
-                seatCenter(it.seatIndex, ordered, columns, cell, rowGap, gridTop, width)
-            } ?: (width / 2f to height * 0.88f)
-            val fallbackEnd = receiverSeat?.let {
-                seatCenter(it.seatIndex, ordered, columns, cell, rowGap, gridTop, width)
-            } ?: (width / 2f to height * 0.12f)
-            val start = measuredStart?.let { it.x to it.y } ?: fallbackStart
-            val end = measuredEnd?.let { it.x to it.y } ?: fallbackEnd
+            val fallbackStartRoot = GiftFlightGeometry.fallbackCenterInRoot(
+                isSeated = senderSeat != null,
+                audienceStripCenterInRoot = audienceFallbackCenterInRoot,
+                seatLayerCenterInRoot = seatLayerFallbackCenterInRoot,
+            )
+            val fallbackEndRoot = GiftFlightGeometry.fallbackCenterInRoot(
+                isSeated = receiverSeat != null,
+                audienceStripCenterInRoot = audienceFallbackCenterInRoot,
+                seatLayerCenterInRoot = seatLayerFallbackCenterInRoot,
+            )
+            val start = (measuredStartRoot ?: fallbackStartRoot)
+                ?.let { GiftFlightGeometry.toOverlayLocal(it, coordinateOriginInRoot, density) }
+                ?: (width / 2f to height * 0.88f)
+            val end = (measuredEndRoot ?: fallbackEndRoot)
+                ?.let { GiftFlightGeometry.toOverlayLocal(it, coordinateOriginInRoot, density) }
+                ?: (width / 2f to height * 0.12f)
 
             var visible by remember(eventKey) { mutableStateOf(false) }
             val progress = remember(eventKey) { Animatable(0f) }
@@ -167,21 +163,3 @@ fun GiftFlightOverlay(
     }
 }
 
-private fun seatCenter(
-    seatIndex: Int,
-    seats: List<Seat>,
-    columns: Int,
-    cell: Float,
-    rowGap: Float,
-    gridTop: Float,
-    width: Float,
-): Pair<Float, Float> {
-    val position = seats.indexOfFirst { it.seatIndex == seatIndex }.coerceAtLeast(0)
-    val row = position / columns
-    val rowStart = row * columns
-    val rowSize = (seats.size - rowStart).coerceAtMost(columns).coerceAtLeast(1)
-    val column = position - rowStart
-    val x = (width + cell) * (column + 1f) / (rowSize + 1f) - cell / 2f
-    val y = gridTop + row * (cell + rowGap) + cell / 2f
-    return x to y
-}
