@@ -240,7 +240,9 @@ jobs:
         run: npm run build
 
   android:
-    runs-on: ubuntu-latest
+    # Pin to the supported 24.04 image while the emulator action catches up with 26.04.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
     env:
       VOIZA_API_BASE_URL: ${{ secrets.VOIZA_API_BASE_URL }}
     steps:
