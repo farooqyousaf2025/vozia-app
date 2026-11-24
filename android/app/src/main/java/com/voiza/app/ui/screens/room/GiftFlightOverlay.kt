@@ -49,6 +49,8 @@ fun GiftFlightOverlay(
     events: List<GiftAnimatedEvent>,
     seats: List<Seat>,
     seatCentersInRoot: Map<Int, Offset> = emptyMap(),
+    audienceCentersInRoot: Map<String, Offset> = emptyMap(),
+    audienceFallbackCenterInRoot: Offset? = null,
     coordinateOriginInRoot: Offset = Offset.Zero,
     hostId: String? = null,
     modifier: Modifier = Modifier,
@@ -81,10 +83,26 @@ fun GiftFlightOverlay(
 
             // Prefer the actual Compose-measured cell centers. The old grid calculation remains a
             // first-frame fallback for the short interval before onGloballyPositioned reports.
-            val measuredStart = senderSeat?.let { seatCentersInRoot[it.seatIndex] }
-                ?.let { GiftFlightGeometry.toOverlayLocal(it, coordinateOriginInRoot, density) }
-            val measuredEnd = receiverSeat?.let { seatCentersInRoot[it.seatIndex] }
-                ?.let { GiftFlightGeometry.toOverlayLocal(it, coordinateOriginInRoot, density) }
+            val measuredStartRoot = GiftFlightGeometry.senderCenterInRoot(
+                senderId = event.sender.id,
+                seats = ordered,
+                seatCentersInRoot = seatCentersInRoot,
+                audienceCentersInRoot = audienceCentersInRoot,
+            ) ?: audienceFallbackCenterInRoot
+            val measuredEndRoot = GiftFlightGeometry.receiverCenterInRoot(
+                receiverId = event.receiver.id,
+                seats = ordered,
+                receiverSeatIndex = event.seatIndex,
+                hostId = hostId,
+                seatCentersInRoot = seatCentersInRoot,
+                audienceCentersInRoot = audienceCentersInRoot,
+            )
+            val measuredStart = measuredStartRoot?.let {
+                GiftFlightGeometry.toOverlayLocal(it, coordinateOriginInRoot, density)
+            }
+            val measuredEnd = measuredEndRoot?.let {
+                GiftFlightGeometry.toOverlayLocal(it, coordinateOriginInRoot, density)
+            }
             val fallbackStart = senderSeat?.let {
                 seatCenter(it.seatIndex, ordered, columns, cell, rowGap, gridTop, width)
             } ?: (width / 2f to height * 0.88f)
