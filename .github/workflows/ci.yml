@@ -272,22 +272,61 @@ jobs:
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug
 
+      # GitHub-hosted Ubuntu runners can use KVM for the x86_64 emulator.
+      # Enable the device node permissions before the emulator action checks it.
+      # Only fall back to TCG when this runner genuinely has no usable KVM device.
+      - name: Enable KVM for Android emulator
+        run: |
+          if [ -e /dev/kvm ]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+          fi
+
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            echo "KVM is unavailable; allowing the emulator's TCG fallback."
+            echo "ANDROID_I_WANT_MY_TCG=yes" >> "$GITHUB_ENV"
+          else
+            echo "KVM is available; the emulator will use hardware CPU acceleration."
+          fi
+
       # Run the production notification path against Android's real NotificationManager
       # and process lifecycle on an API 35 emulator; no backend or Firebase credentials.
       - name: Android notification device smoke (API 35 emulator)
         uses: reactivecircus/android-emulator-runner@v2
-        # GitHub-hosted runners may not expose /dev/kvm. The action therefore disables
-        # hardware acceleration; Android Emulator requires this opt-in to use TCG mode.
-        env:
-          ANDROID_I_WANT_MY_TCG: 'yes'
         with:
           api-level: 35
           target: google_apis
           arch: x86_64
           profile: pixel_2
           disable-animations: true
+          disable-linux-hw-accel: auto
           emulator-boot-timeout: 900
-          script: cd android && ./gradlew --no-daemon connectedDebugAndroidTest
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            cd android
+            if ./gradlew --no-daemon connectedDebugAndroidTest; then
+              exit 0
+            fi
+
+            # The emulator action shuts the device down after the script exits.
+            # Capture logcat now so instrumentation-process crashes are diagnosable.
+            mkdir -p app/build/reports/androidTests/diagnostics
+            adb logcat -d -v threadtime > app/build/reports/androidTests/diagnostics/logcat.txt || true
+            adb shell dumpsys activity processes > app/build/reports/androidTests/diagnostics/activity-processes.txt || true
+            adb shell dumpsys meminfo com.voiza.app > app/build/reports/androidTests/diagnostics/target-meminfo.txt || true
+            exit 1
+
+      - name: Upload Android device test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-device-test-diagnostics
+          path: |
+            android/app/build/reports/androidTests/connected/debug/
+            android/app/build/reports/androidTests/diagnostics/
+          if-no-files-found: warn
+          retention-days: 7
 
       # Release configuration requires the real production API origin. Do not invent
       # a domain or bake a development URL into a release artifact: when the repository
