@@ -121,9 +121,9 @@ fun GiftFlightOverlay(
 
             if (visible) {
                 val p = progress.value
-                val x = start.first + (end.first - start.first) * p
+                val x = start.x + (end.x - start.x) * p
                 val arc = sin(PI.toFloat() * p) * 54f
-                val y = start.second + (end.second - start.second) * p - arc
+                val y = start.y + (end.y - start.y) * p - arc
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
