@@ -40,10 +40,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -114,6 +118,9 @@ fun PartyRoomScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val socketConnected by viewModel.socketConnected.collectAsStateWithLifecycle()
+    // Measured in root pixels so gift flights land on the exact seat cells, not estimated grid slots.
+    val seatCentersInRoot = remember { mutableStateMapOf<Int, Offset>() }
+    var seatLayerOriginInRoot by remember { mutableStateOf(Offset.Zero) }
 
     // Runtime mic permission: request once we may publish without the grant.
     var permissionAsked by remember { mutableStateOf(false) }
@@ -255,16 +262,26 @@ fun PartyRoomScreen(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
+                        .weight(1f)
+                        .onGloballyPositioned { coordinates ->
+                            val origin = coordinates.positionInRoot()
+                            if (origin != seatLayerOriginInRoot) seatLayerOriginInRoot = origin
+                        },
                 ) {
                     SeatGrid(
                         seats = state.seats,
                         speakingLevels = state.speakingLevels,
                         onSeatClick = viewModel::onSeatTapped,
+                        onSeatCenterPositioned = { seatIndex, center ->
+                            if (seatCentersInRoot[seatIndex] != center) seatCentersInRoot[seatIndex] = center
+                        },
                     )
                     GiftFlightOverlay(
                         events = state.giftTicker + state.giftQueue,
                         seats = state.seats,
+                        seatCentersInRoot = seatCentersInRoot.toMap(),
+                        coordinateOriginInRoot = seatLayerOriginInRoot,
+                        hostId = state.room?.host?.id,
                         modifier = Modifier.fillMaxSize(),
                     )
                     BarrageOverlay(
