@@ -18,6 +18,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -46,6 +48,9 @@ import kotlin.math.sin
 fun GiftFlightOverlay(
     events: List<GiftAnimatedEvent>,
     seats: List<Seat>,
+    seatCentersInRoot: Map<Int, Offset> = emptyMap(),
+    coordinateOriginInRoot: Offset = Offset.Zero,
+    hostId: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val uniqueEvents = events.filterIndexed { index, event ->
@@ -54,6 +59,7 @@ fun GiftFlightOverlay(
     BoxWithConstraints(modifier = modifier) {
         val width = maxWidth.value
         val height = maxHeight.value
+        val density = LocalDensity.current.density
         val ordered = remember(seats) { seats.sortedBy { it.seatIndex } }
         val wide = ordered.size > 9
         val columns = if (wide) 4 else 3
@@ -65,14 +71,28 @@ fun GiftFlightOverlay(
 
         uniqueEvents.forEachIndexed { eventIndex, event ->
             val eventKey = event.eventId ?: "legacy-$eventIndex"
-            val senderSeat = ordered.firstOrNull { it.user?.id == event.sender.id }
-            val receiverSeat = ordered.firstOrNull { it.user?.id == event.receiver.id }
-                ?: event.seatIndex?.let { index -> ordered.firstOrNull { it.seatIndex == index } }
+            val senderSeat = GiftFlightGeometry.senderSeat(ordered, event.sender.id)
+            val receiverSeat = GiftFlightGeometry.receiverSeat(
+                seats = ordered,
+                receiverId = event.receiver.id,
+                receiverSeatIndex = event.seatIndex,
+                hostId = hostId,
+            )
 
-            val start = senderSeat?.let { seatCenter(it.seatIndex, ordered, columns, cell, rowGap, gridTop, width) }
-                ?: (width / 2f to height * 0.88f)
-            val end = receiverSeat?.let { seatCenter(it.seatIndex, ordered, columns, cell, rowGap, gridTop, width) }
-                ?: (width / 2f to height * 0.12f)
+            // Prefer the actual Compose-measured cell centers. The old grid calculation remains a
+            // first-frame fallback for the short interval before onGloballyPositioned reports.
+            val measuredStart = senderSeat?.let { seatCentersInRoot[it.seatIndex] }
+                ?.let { GiftFlightGeometry.toOverlayLocal(it, coordinateOriginInRoot, density) }
+            val measuredEnd = receiverSeat?.let { seatCentersInRoot[it.seatIndex] }
+                ?.let { GiftFlightGeometry.toOverlayLocal(it, coordinateOriginInRoot, density) }
+            val fallbackStart = senderSeat?.let {
+                seatCenter(it.seatIndex, ordered, columns, cell, rowGap, gridTop, width)
+            } ?: (width / 2f to height * 0.88f)
+            val fallbackEnd = receiverSeat?.let {
+                seatCenter(it.seatIndex, ordered, columns, cell, rowGap, gridTop, width)
+            } ?: (width / 2f to height * 0.12f)
+            val start = measuredStart?.let { it.x to it.y } ?: fallbackStart
+            val end = measuredEnd?.let { it.x to it.y } ?: fallbackEnd
 
             var visible by remember(eventKey) { mutableStateOf(false) }
             val progress = remember(eventKey) { Animatable(0f) }

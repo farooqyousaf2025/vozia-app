@@ -26,6 +26,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +65,7 @@ fun SeatGrid(
     speakingLevels: Map<String, Double>,
     onSeatClick: (Seat) -> Unit,
     modifier: Modifier = Modifier,
+    onSeatCenterPositioned: (Int, Offset) -> Unit = { _, _ -> },
 ) {
     val ordered = seats.sortedBy { it.seatIndex }
     val wide = ordered.size > 9
@@ -86,6 +90,7 @@ fun SeatGrid(
                         cell = cell,
                         level = seat.user?.id?.let { speakingLevels[it] } ?: 0.0,
                         onClick = { onSeatClick(seat) },
+                        onCenterPositioned = onSeatCenterPositioned,
                     )
                 }
             }
@@ -102,13 +107,21 @@ private fun SeatCell(
     cell: androidx.compose.ui.unit.Dp,
     level: Double,
     onClick: () -> Unit,
+    onCenterPositioned: (Int, Offset) -> Unit,
 ) {
     val outer = if (isHostSeat) cell - 28.dp else cell - 40.dp
     val isSpeaking = level > 0.03 && seat.status == SeatStatus.OCCUPIED && !seat.isMuted
 
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier.size(cell).clickable(onClick = onClick),
+        modifier = Modifier
+            .size(cell)
+            .onGloballyPositioned { coordinates ->
+                val origin = coordinates.positionInRoot()
+                val center = origin + Offset(coordinates.size.width / 2f, coordinates.size.height / 2f)
+                onCenterPositioned(seat.seatIndex, center)
+            }
+            .clickable(onClick = onClick),
     ) {
         // Speaking pulse sits behind everything.
         if (isSpeaking) {
