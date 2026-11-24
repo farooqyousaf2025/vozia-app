@@ -276,12 +276,17 @@ jobs:
       # and process lifecycle on an API 35 emulator; no backend or Firebase credentials.
       - name: Android notification device smoke (API 35 emulator)
         uses: reactivecircus/android-emulator-runner@v2
+        # GitHub-hosted runners may not expose /dev/kvm. The action therefore disables
+        # hardware acceleration; Android Emulator requires this opt-in to use TCG mode.
+        env:
+          ANDROID_I_WANT_MY_TCG: 'yes'
         with:
           api-level: 35
           target: google_apis
           arch: x86_64
           profile: pixel_2
           disable-animations: true
+          emulator-boot-timeout: 900
           script: cd android && ./gradlew --no-daemon connectedDebugAndroidTest
 
       # Release configuration requires the real production API origin. Do not invent
