@@ -272,6 +272,22 @@ jobs:
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Start Android mock-push Socket.IO bridge
+        run: |
+          npm ci --prefix backend
+          node backend/scripts/mock-push-android-bridge.cjs > /tmp/vozia-mock-push-bridge.log 2>&1 &
+          for i in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:4000/health; then break; fi
+            sleep 1
+            if [ "$i" = 20 ]; then cat /tmp/vozia-mock-push-bridge.log; exit 1; fi
+          done
+
       # GitHub-hosted Ubuntu runners can use KVM for the x86_64 emulator.
       # Enable the device node permissions before the emulator action checks it.
       # Only fall back to TCG when this runner genuinely has no usable KVM device.
