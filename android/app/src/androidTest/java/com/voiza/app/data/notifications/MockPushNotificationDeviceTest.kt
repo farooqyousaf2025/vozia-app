@@ -8,6 +8,8 @@ import android.content.Intent
 import android.os.PowerManager
 import android.os.SystemClock
 import android.view.KeyEvent
+import java.net.HttpURLConnection
+import java.net.URL
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.test.core.app.ActivityScenario
@@ -181,6 +183,55 @@ class MockPushNotificationDeviceTest {
     }
 
     @Test(timeout = 60_000)
+    fun authenticatedSocketReconnectRestoresBackgroundMockPushDelivery() {
+        val user = UserDto(
+            id = "44444444-4444-4444-8444-444444444444",
+            phone = "+15550000004",
+            username = "socket_reconnect_device_test",
+        )
+        device.pressHome()
+        assertTrue(
+            "Process did not enter the background",
+            awaitCondition { !ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) },
+        )
+        ServiceLocator.sessionManager.storeSession(
+            "vozia-android-mock-push-integration-token",
+            user,
+        )
+        assertTrue(
+            "Initial authenticated Socket.IO connection did not open",
+            awaitCondition(timeoutMs = 15_000) { ServiceLocator.socketClient.isConnected.value },
+        )
+        assertNotNull("Initial socket push was not posted", awaitNotification("Android socket mock push integration"))
+
+        // The CI bridge closes the underlying Engine.IO transport. This simulates a real
+        // network drop rather than calling the app's explicit logout/disconnect method.
+        val connection = URL("http://10.0.2.2:4000/drop-transport").openConnection() as HttpURLConnection
+        connection.connectTimeout = 5_000
+        connection.readTimeout = 5_000
+        try {
+            assertEquals("CI bridge did not accept the transport-drop request", 200, connection.responseCode)
+        } finally {
+            connection.disconnect()
+        }
+
+        assertTrue(
+            "Socket client never observed the network interruption",
+            awaitCondition(timeoutMs = 10_000) { !ServiceLocator.socketClient.isConnected.value },
+        )
+        assertTrue(
+            "Socket client did not reconnect with its authenticated session",
+            awaitCondition(timeoutMs = 20_000) { ServiceLocator.socketClient.isConnected.value },
+        )
+        val recovered = awaitNotification("Android socket reconnect mock push")
+        assertNotNull("No background notification arrived after socket reconnection", recovered)
+        assertEquals(
+            "Received after authenticated Socket.IO reconnect #2",
+            recovered?.extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
+        )
+    }
+
+    @Test(timeout = 60_000)
     fun logoutAndLoginOnTheSameInstallationReplaceTheEncryptedSessionIdentity() {
         val session = SessionManager(context)
         session.clear()
@@ -194,6 +245,10 @@ class MockPushNotificationDeviceTest {
         assertTrue(session.hasSession)
         assertEquals("device-test-token-one", session.token.value)
         assertEquals(firstUser.id, session.user.value?.id)
+        // A newly constructed manager re-reads the encrypted preferences, as a fresh app process does.
+        val restoredFirstSession = SessionManager(context)
+        assertEquals("device-test-token-one", restoredFirstSession.token.value)
+        assertEquals(firstUser.id, restoredFirstSession.user.value?.id)
 
         session.clear()
         assertFalse(session.hasSession)
@@ -209,6 +264,9 @@ class MockPushNotificationDeviceTest {
         assertTrue(session.hasSession)
         assertEquals("device-test-token-two", session.token.value)
         assertEquals(secondUser.id, session.user.value?.id)
+        val restoredSecondSession = SessionManager(context)
+        assertEquals("device-test-token-two", restoredSecondSession.token.value)
+        assertEquals(secondUser.id, restoredSecondSession.user.value?.id)
     }
 
     private fun serviceLocatorInitialized(): Boolean = runCatching { ServiceLocator.sessionManager }.isSuccess

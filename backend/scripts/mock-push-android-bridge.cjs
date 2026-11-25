@@ -14,20 +14,31 @@ const httpServer = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/plain' });
     return res.end('ok');
   }
+  if (req.url === '/drop-transport') {
+    const sockets = [...io.sockets.sockets.values()];
+    sockets.forEach((socket) => socket.conn.close());
+    res.writeHead(200, { 'content-type': 'application/json' });
+    return res.end(JSON.stringify({ disconnected: sockets.length }));
+  }
   res.writeHead(404);
   res.end();
 });
 const io = new Server(httpServer, { path: '/socket.io', cors: { origin: '*' } });
+let connectionCount = 0;
 
 io.use((socket, next) => {
   if (socket.handshake.auth?.token !== TOKEN) return next(new Error('unauthorized'));
   next();
 });
 io.on('connection', (socket) => {
+  connectionCount += 1;
+  const firstConnection = connectionCount === 1;
   socket.emit('push:mock', {
-    title: 'Android socket mock push integration',
-    body: 'Received through VoizaSocketClient and posted by VoizaNotifier',
-    data: { type: 'integration_test', source: 'ci_socket_bridge' },
+    title: firstConnection ? 'Android socket mock push integration' : 'Android socket reconnect mock push',
+    body: firstConnection
+      ? 'Received through VoizaSocketClient and posted by VoizaNotifier'
+      : `Received after authenticated Socket.IO reconnect #${connectionCount}`,
+    data: { type: 'integration_test', source: 'ci_socket_bridge', connection: String(connectionCount) },
   });
 });
 
