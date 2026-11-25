@@ -9,17 +9,15 @@ plugins {
 // ---------------------------------------------------------------------------
 // BuildConfig value resolution: gradle property -> env var -> emulator default
 // ---------------------------------------------------------------------------
-fun prop(name: String, default: String): String {
-    return (
-        providers.gradleProperty(name).orNull
-            ?: providers.environmentVariable(name).orNull
-            ?: default
-        )
-}
+fun prop(name: String, default: String): String =
+    providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
+        ?: providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
+        ?: default
 
-/** The same lookup with no fallback: null means "nobody told me". */
+/** The same lookup with no fallback: null means "nobody told me" (or supplied a blank value). */
 fun explicitProp(name: String): String? =
-    providers.gradleProperty(name).orNull ?: providers.environmentVariable(name).orNull
+    providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
+        ?: providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
 
 // Whether this invocation builds the release variant at all. The release address check is gated on
 // it so `assembleDebug` — the emulator build — still needs no flags.
@@ -59,6 +57,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Backend API base. These defaults are the emulator's route to this machine and are for
         // debug builds only; the release block below refuses to ship them.
@@ -236,6 +235,10 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("androidx.test:core-ktx:1.6.1")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }

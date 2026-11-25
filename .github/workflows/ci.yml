@@ -240,7 +240,9 @@ jobs:
         run: npm run build
 
   android:
-    runs-on: ubuntu-latest
+    # Pin to the supported 24.04 image while the emulator action catches up with 26.04.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
     env:
       VOIZA_API_BASE_URL: ${{ secrets.VOIZA_API_BASE_URL }}
     steps:
@@ -269,6 +271,48 @@ jobs:
       - name: Debug APK
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug
+
+      # GitHub-hosted Ubuntu runners can use KVM for the x86_64 emulator.
+      # Enable the device node permissions before the emulator action checks it.
+      # Only fall back to TCG when this runner genuinely has no usable KVM device.
+      - name: Enable KVM for Android emulator
+        run: |
+          if [ -e /dev/kvm ]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+          fi
+
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            echo "KVM is unavailable; allowing the emulator's TCG fallback."
+            echo "ANDROID_I_WANT_MY_TCG=yes" >> "$GITHUB_ENV"
+          else
+            echo "KVM is available; the emulator will use hardware CPU acceleration."
+          fi
+
+      # Run the production notification path against Android's real NotificationManager
+      # and process lifecycle on an API 35 emulator; no backend or Firebase credentials.
+      - name: Android notification device smoke (API 35 emulator)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          disable-linux-hw-accel: auto
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: cd android && bash ./scripts/run-device-tests-with-diagnostics.sh
+
+      - name: Upload Android device test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-device-test-diagnostics
+          path: android/app/build/reports/androidTests/
+          if-no-files-found: warn
+          retention-days: 7
 
       # Release configuration requires the real production API origin. Do not invent
       # a domain or bake a development URL into a release artifact: when the repository
