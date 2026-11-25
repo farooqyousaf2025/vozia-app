@@ -150,6 +150,37 @@ class MockPushNotificationDeviceTest {
     }
 
     @Test(timeout = 60_000)
+    fun authenticatedSocketMockPushReachesAndroidNotificationManager() {
+        val title = "Android socket mock push integration"
+        val body = "Received through VoizaSocketClient and posted by VoizaNotifier"
+        val user = UserDto(
+            id = "33333333-3333-4333-8333-333333333333",
+            phone = "+15550000003",
+            username = "socket_push_device_test",
+        )
+
+        // Keep the app backgrounded before the authenticated socket receives its event.
+        device.pressHome()
+        assertTrue(
+            "Process did not enter the background",
+            awaitCondition { !ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) },
+        )
+        ServiceLocator.sessionManager.storeSession(
+            "vozia-android-mock-push-integration-token",
+            user,
+        )
+        assertTrue(
+            "VoizaSocketClient did not connect to the CI mock-push bridge",
+            awaitCondition(timeoutMs = 15_000) { ServiceLocator.socketClient.isConnected.value },
+        )
+
+        val notification = awaitNotification(title)
+        assertNotNull("Socket-delivered mock push was not posted", notification)
+        assertEquals(title, notification?.extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString())
+        assertEquals(body, notification?.extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString())
+    }
+
+    @Test(timeout = 60_000)
     fun logoutAndLoginOnTheSameInstallationReplaceTheEncryptedSessionIdentity() {
         val session = SessionManager(context)
         session.clear()
